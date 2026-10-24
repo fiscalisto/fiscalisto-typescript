@@ -810,6 +810,102 @@ export interface SatListCheck {
 	lists_updated_at: string | null;
 }
 
+/** Si los datos fiscales de un cliente van a pasar el SAT. */
+export interface TaxIdValidation {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "tax_id_validation";
+	/** El RFC revisado. */
+	tax_id: string;
+	/** company (persona moral, 12 caracteres), person (persona física, 13) o generic (XAXX010101000, XEXX010101000). */
+	kind: "company" | "person" | "generic";
+	/** true si no hay errores: con lo que mandó, el SAT no debería rechazar la factura por los datos del cliente. */
+	valid: boolean;
+	/** true si se comparó con el registro del SAT (mandó cif_id y el SAT contestó). */
+	checked_with_sat: boolean;
+	/** Lo que haría que el SAT rechace la factura. Cada uno con el campo (param), un código, la explicación y, si se puede, el valor correcto (suggestion). */
+	errors: {
+		/** El campo: tax_id, legal_name, tax_system, zip, use o cif_id. */
+		param: string;
+		/** Qué falló, para su código: tax_id_format, tax_id_date, legal_name_capital_regime, legal_name_mismatch, tax_system_person, tax_system_mismatch, zip_unknown, zip_mismatch, use_tax_system, cif_id_not_found… */
+		code: string;
+		/** La explicación, para mostrarla a su usuario. */
+		message: string;
+		/** El valor correcto cuando se sabe (el del SAT con cif_id, o el nombre sin régimen de capital); null si no. */
+		suggestion: string | null;
+	}[];
+	/** Lo que no impide timbrar pero conviene revisar: el dígito verificador, mayúsculas, si el RFC está en las listas del SAT. */
+	warnings: {
+		/** El campo. */
+		param: string;
+		/** tax_id_check_digit, legal_name_format, tax_id_listed_69b o tax_id_listed_69. */
+		code: string;
+		/** La explicación. */
+		message: string;
+		/** El valor sugerido, o null. */
+		suggestion: string | null;
+	}[];
+	/** Lo que tiene el SAT en la constancia (con cif_id): nombre, código postal y regímenes vigentes. null sin cif_id. */
+	sat_record: {
+		/** El nombre o razón social, como lo tiene el SAT. */
+		legal_name: string | null;
+		/** El código postal de su domicilio fiscal. */
+		zip: string | null;
+		/** Sus regímenes vigentes (c_RegimenFiscal). */
+		tax_systems: string[];
+	} | null;
+	/** Si el SAT no contestó a tiempo (con cif_id): reintente en unos minutos. null si contestó o no se consultó. */
+	sat_error: string | null;
+	/** Si el RFC aparece en las listas del SAT. null con un RFC genérico o mal escrito. */
+	sat_lists: SatListCheck | null;
+}
+
+/** Una liga para que un cliente dé sus datos fiscales. */
+export interface CustomerDataRequest {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "customer_data_request";
+	/** El emisor que le va a facturar. */
+	issuer: string;
+	/** open (la liga espera), completed (el cliente mandó sus datos), expired (venció) o canceled. */
+	status: "open" | "completed" | "expired" | "canceled";
+	/** La liga para su cliente, en fiscalisto.com. null cuando ya no está abierta. */
+	url: string | null;
+	/** Su id para este cliente o pedido. */
+	reference: string | null;
+	/** Lo que el cliente ve arriba del formulario. */
+	description: string | null;
+	/** Cuándo deja de servir la liga. */
+	expires_at: string | null;
+	/** Cuándo se creó. */
+	created_at: string | null;
+	/** Lo que mandó el cliente (el último envío: puede corregirlo en las 24 horas siguientes). null mientras no conteste. */
+	submission: {
+		/** Su RFC. */
+		tax_id: string;
+		/** Su nombre o razón social, como en su constancia. */
+		legal_name: string;
+		/** Su régimen fiscal (c_RegimenFiscal). */
+		tax_system: string;
+		/** El código postal de su domicilio fiscal. */
+		zip: string;
+		/** El uso del CFDI que eligió (c_UsoCFDI). */
+		use: string;
+		/** Su correo para recibir facturas, si lo dio. */
+		email: string | null;
+		/** constancia (leído de su constancia o del SAT con su idCIF) o manual (escrito). */
+		source: "constancia" | "manual";
+		/** El cliente (cus_…) en el catálogo del emisor: el nuevo, o el que ya existía con ese RFC. */
+		customer: string | null;
+		/** true si quedó en el catálogo. false si el cliente ya existía con otros datos: aplíquelos con POST /v1/customers/{id} si son correctos. */
+		applied: boolean;
+		/** Cuándo los mandó. */
+		submitted_at: string | null;
+	} | null;
+}
+
 /** Una dirección de su servidor que recibe eventos. */
 export interface WebhookEndpoint {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
@@ -860,7 +956,7 @@ export interface WebhookTest {
 }
 
 /** Lo que puede pasar: el tipo de cada evento. */
-export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed";
+export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed";
 
 /** Algo que pasó en su cuenta: el objeto completo como quedó. Se manda a sus webhooks firmado (Standard Webhooks). */
 export interface EventBase<T extends EventType = EventType, O = unknown> {
@@ -868,7 +964,7 @@ export interface EventBase<T extends EventType = EventType, O = unknown> {
 	id: string;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "event";
-	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, retention.stamped, retention.failed, retention.canceled o invoice_batch.completed. */
+	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed o customer_data_request.completed. */
 	type: T;
 	/** Versión de la API con que se armó el objeto. */
 	api_version: string;
@@ -890,7 +986,8 @@ export type Event =
 	| EventBase<"retention.stamped", Retention>
 	| EventBase<"retention.failed", Retention>
 	| EventBase<"retention.canceled", Retention>
-	| EventBase<"invoice_batch.completed", InvoiceBatch>;
+	| EventBase<"invoice_batch.completed", InvoiceBatch>
+	| EventBase<"customer_data_request.completed", CustomerDataRequest>;
 
 /** Confirmación de que se borró. */
 export interface Deleted {
@@ -994,6 +1091,17 @@ export interface CustomerList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: Customer[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface CustomerDataRequestList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: CustomerDataRequest[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -2399,6 +2507,21 @@ export interface ListInvoiceBatchesParams {
 	issuer?: string;
 }
 
+export interface ValidateTaxIdParams {
+	/** El RFC del cliente. */
+	tax_id: string;
+	/** El nombre o razón social que va a poner en la factura. */
+	legal_name?: string;
+	/** Su régimen fiscal (c_RegimenFiscal), como 601 o 612. */
+	tax_system?: string;
+	/** El código postal de su domicilio fiscal. */
+	zip?: string;
+	/** El uso del CFDI (c_UsoCFDI), como G03. */
+	use?: string;
+	/** El idCIF de su constancia de situación fiscal (11 dígitos, arriba a la izquierda, junto al QR). Con él se compara todo con lo que tiene el SAT. */
+	cif_id?: string;
+}
+
 export interface CreateCustomerParams {
 	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
 	issuer?: string;
@@ -2459,6 +2582,27 @@ export interface UpdateCustomerParams {
 	} | null;
 	/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio. */
 	ieps_taxpayer?: boolean;
+}
+
+export interface CreateCustomerDataRequestParams {
+	/** El emisor (iss_…) que va a facturarle. Por omisión, su único emisor. */
+	issuer?: string;
+	/** Su id para este cliente o pedido, como «Pedido 1042». El cliente la ve arriba del formulario y viene de vuelta en el evento. */
+	reference?: string;
+	/** Una línea que el cliente ve arriba del formulario: para qué son sus datos. */
+	description?: string;
+	/** Días que la liga sirve, de 1 a 60. Por omisión 60. */
+	expires_in_days?: number;
+}
+
+/** Los parámetros de GET /v1/customer_data_requests. */
+export interface ListCustomerDataRequestsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
 }
 
 export interface CreateProductParams {
@@ -2583,7 +2727,7 @@ export interface RollWebhookSecretParams {
 
 export interface TestWebhookEndpointParams {
 	/** El evento a mandar. Por omisión invoice.stamped. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed";
 }
 
 /** Los parámetros de GET /v1/events. */
@@ -2593,7 +2737,7 @@ export interface ListEventsParams {
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
 	/** Solo de este tipo. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed";
 	/** Solo los de este objeto (inv_…, ret_…, bat_…). */
 	object?: string;
 }
@@ -3122,6 +3266,26 @@ export class InvoiceBatchesResource {
 	}
 }
 
+/** Clientes: fiscalisto.taxIds. */
+export class TaxIdsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Validar los datos fiscales de un cliente
+	 *
+	 * Antes de timbrar: si el RFC, el nombre, el régimen, el código postal y el uso van a pasar. Sin cif_id revisa lo que se puede revisar sin el SAT (formato, régimen para ese tipo de persona, código postal en el catálogo, uso para el régimen, nombre sin «S.A. de C.V.») y las listas del SAT. Con el idCIF de la constancia lee el registro del SAT y compara nombre, código postal y régimen, como hará el PAC. No usa timbres.
+	 *
+	 * POST /v1/tax_ids/validate
+	 * @see https://fiscalisto.com/docs/api/referencia/clientes/validate-tax-id
+	 */
+	validate(params: ValidateTaxIdParams, options?: RequestOptions): Promise<TaxIdValidation> {
+		return this.#client.request({ method: "POST", path: "/v1/tax_ids/validate", body: params }, options);
+	}
+}
+
 /** Clientes: fiscalisto.customers. */
 export class CustomersResource {
 	readonly #client: Client;
@@ -3177,6 +3341,58 @@ export class CustomersResource {
 	 */
 	delete(id: string, options?: RequestOptions): Promise<Deleted> {
 		return this.#client.request({ method: "DELETE", path: `/v1/customers/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Clientes: fiscalisto.customerDataRequests. */
+export class CustomerDataRequestsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Pedirle sus datos fiscales a un cliente
+	 *
+	 * Una liga (url) que usted le manda a su cliente: la abre en fiscalisto.com y da su RFC, nombre, régimen, código postal y uso, escritos o leídos de su constancia, revisados antes de aceptarlos. Al mandarlos llega customer_data_request.completed. Un cliente nuevo queda en el catálogo del emisor; si ya existía con otros datos, los nuevos vienen en submission para que usted los aplique.
+	 *
+	 * POST /v1/customer_data_requests
+	 * @see https://fiscalisto.com/docs/api/referencia/clientes/create-customer-data-request
+	 */
+	create(params?: CreateCustomerDataRequestParams, options?: RequestOptions): Promise<CustomerDataRequest> {
+		return this.#client.request({ method: "POST", path: "/v1/customer_data_requests", body: params }, options);
+	}
+
+	/**
+	 * Listar solicitudes de datos
+	 *
+	 * GET /v1/customer_data_requests
+	 * @see https://fiscalisto.com/docs/api/referencia/clientes/list-customer-data-requests
+	 */
+	list(params?: ListCustomerDataRequestsParams, options?: RequestOptions): List<CustomerDataRequest> {
+		return this.#client.list({ path: "/v1/customer_data_requests", query: params }, options);
+	}
+
+	/**
+	 * Ver una solicitud de datos
+	 *
+	 * GET /v1/customer_data_requests/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/clientes/get-customer-data-request
+	 */
+	get(id: string, options?: RequestOptions): Promise<CustomerDataRequest> {
+		return this.#client.request({ method: "GET", path: `/v1/customer_data_requests/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Cancelar una solicitud de datos
+	 *
+	 * La liga deja de funcionar. Una que el cliente ya contestó no se cancela.
+	 *
+	 * DELETE /v1/customer_data_requests/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/clientes/cancel-customer-data-request
+	 */
+	cancel(id: string, options?: RequestOptions): Promise<CustomerDataRequest> {
+		return this.#client.request({ method: "DELETE", path: `/v1/customer_data_requests/${encodeURIComponent(id)}` }, options);
 	}
 }
 
@@ -3417,7 +3633,9 @@ export class FiscalistoApi extends Core {
 	readonly employees = new EmployeesResource(this);
 	readonly payrollReceipts = new PayrollReceiptsResource(this);
 	readonly invoiceBatches = new InvoiceBatchesResource(this);
+	readonly taxIds = new TaxIdsResource(this);
 	readonly customers = new CustomersResource(this);
+	readonly customerDataRequests = new CustomerDataRequestsResource(this);
 	readonly products = new ProductsResource(this);
 	readonly satCatalogs = new SatCatalogsResource(this);
 	readonly satLists = new SatListsResource(this);
