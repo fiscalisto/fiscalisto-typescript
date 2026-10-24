@@ -2169,7 +2169,27 @@ export interface CreateAdvanceParams {
 	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
 	issuer?: string;
 	/** Cliente (Receptor): el id de uno de su catálogo (cus_…) o sus datos en un objeto. */
-	customer: unknown;
+	customer: string | {
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string;
+		/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+		legal_name: string;
+		/** Régimen fiscal (RegimenFiscal), clave de c_RegimenFiscal: 601, 612, 626… */
+		tax_system: string;
+		/** Código postal del domicilio fiscal del cliente (DomicilioFiscalReceptor), 5 dígitos. */
+		zip: string;
+		/** Correo a donde se envía (varios separados por comas). Solo se usa si se pide enviarlo. */
+		email?: string | null;
+		/** Si es extranjero: su país de residencia (ResidenciaFiscal, c_Pais) y su número de registro tributario (NumRegIdTrib), con el RFC genérico XEXX010101000. */
+		foreign?: {
+			/** País de residencia fiscal, clave de 3 letras de c_Pais (USA, CAN…). */
+			country: string;
+			/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
+			tax_id: string;
+		};
+		/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio. */
+		ieps_taxpayer?: boolean;
+	};
 	/** Uso del CFDI (UsoCFDI), clave de c_UsoCFDI. Por omisión G03, o S01 con régimen 616. */
 	use?: string;
 	/** Lo que pagó el cliente, con IVA incluido. */
@@ -2189,9 +2209,9 @@ export interface CreateAdvanceParams {
 	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
 	send_email?: boolean;
 	/** Correos con copia, separados por comas. */
-	email_cc?: unknown;
+	email_cc?: string | null;
 	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
-	metadata?: unknown;
+	metadata?: Record<string, string>;
 }
 
 /** Los parámetros de GET /v1/advances. */
