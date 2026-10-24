@@ -9,7 +9,7 @@ import { Webhooks } from "./webhooks.js";
  *
  * const fiscalisto = new Fiscalisto(process.env.FISCALISTO_API_KEY);
  * const factura = await fiscalisto.invoices.create({
- *   customer: { tax_id: "URE180429TM6", legal_name: "UNIVERSIDAD ROBOTICA ESPAÑOLA", tax_system: "601", zip: "86991" },
+ *   customer: { tax_id: "ICV060329BY0", legal_name: "INMOBILIARIA CVA", tax_system: "601", zip: "33826" },
  *   payment_form: "03",
  *   items: [{ description: "Consultoría", product_key: "80101500", unit_price: 1000 }],
  * });
