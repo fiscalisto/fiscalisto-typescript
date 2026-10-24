@@ -226,7 +226,10 @@ async function login(args: string[], g: Globals) {
 			test_key?: string;
 			live_key?: string | null;
 		};
-		if (body.status === "pending") continue;
+		if (body.status === "pending" || body.status === "slow_down" || r.status >= 500) {
+			if (body.status === "slow_down") await sleep(10_000);
+			continue;
+		}
 		if (body.status !== "approved" || !body.account || !body.test_key)
 			throw new Error(
 				body.status === "denied"
