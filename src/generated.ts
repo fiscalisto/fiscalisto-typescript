@@ -779,6 +779,37 @@ export interface SatCatalogEntry {
 	description: string;
 }
 
+/** Si un RFC aparece en las listas del SAT (69-B, 69-B Bis y art. 69). */
+export interface SatListCheck {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "sat_list_check";
+	/** El RFC revisado. */
+	tax_id: string;
+	/** El nombre con que aparece en las listas del SAT (null si no aparece). */
+	name: string | null;
+	/** true si el RFC aparece en alguna lista, aunque haya desvirtuado. */
+	listed: boolean;
+	/** high: 69-B o 69-B Bis como presunto o definitivo (el SAT dice que simula operaciones; sus facturas no se pueden deducir). medium: una lista del art. 69 (no localizado, créditos firmes o exigibles, cancelados, sentencias, CSD sin efectos). none: no aparece, o ya desvirtuó o tiene sentencia favorable. */
+	risk: "high" | "medium" | "none";
+	/** Cada lista en que aparece; vacía si no aparece en ninguna. */
+	lists: {
+		/** 69b: art. 69-B (operaciones simuladas). 69b_bis: art. 69-B Bis (pérdidas fiscales). 69: art. 69 (no localizados, adeudos, cancelados). */
+		list: "69" | "69b" | "69b_bis";
+		/** El archivo del SAT de donde viene (clave). */
+		source: string;
+		/** El nombre del archivo del SAT, para mostrarlo. */
+		source_name: string;
+		/** Su situación según el SAT: Presunto, Definitivo, Desvirtuado, Sentencia favorable; en el art. 69, el supuesto (null si el archivo no la trae). */
+		situation: string | null;
+		/** Fecha de publicación en el SAT o en el DOF (null si no la trae). */
+		published_on: string | null;
+		/** Lo demás que publica el SAT para ese RFC (oficios, fechas, montos), tal cual; null si nada. */
+		details: Record<string, string> | null;
+	}[];
+	/** Cuándo se actualizaron las listas por última vez (cada día a las 00:00 de la Ciudad de México). */
+	lists_updated_at: string | null;
+}
+
 /** Una dirección de su servidor que recibe eventos. */
 export interface WebhookEndpoint {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
@@ -964,6 +995,17 @@ export interface SatCatalogEntryList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: SatCatalogEntry[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface SatListCheckList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: SatListCheck[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -2480,6 +2522,11 @@ export interface GetSatCatalogParams {
 	limit?: number;
 }
 
+export interface CheckSatListsParams {
+	/** Los RFC a revisar, hasta 1000. */
+	tax_ids: string[];
+}
+
 export interface CreateWebhookEndpointParams {
 	/** Dirección https de su servidor que recibe los avisos. */
 	url: string;
@@ -3185,6 +3232,38 @@ export class SatCatalogsResource {
 	}
 }
 
+/** Listas del SAT: fiscalisto.satLists. */
+export class SatListsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Revisar un RFC en las listas del SAT
+	 *
+	 * Si el RFC aparece en la lista 69-B (operaciones simuladas), 69-B Bis o del art. 69 (no localizados, créditos firmes, exigibles, cancelados, sentencias, CSD sin efectos). Las listas se actualizan cada día con los archivos del SAT. No usa timbres.
+	 *
+	 * GET /v1/sat_lists/{tax_id}
+	 * @see https://fiscalisto.com/docs/api/referencia/listas-del-sat/get-sat-list-check
+	 */
+	get(tax_id: string, options?: RequestOptions): Promise<SatListCheck> {
+		return this.#client.request({ method: "GET", path: `/v1/sat_lists/${encodeURIComponent(tax_id)}` }, options);
+	}
+
+	/**
+	 * Revisar varios RFC en las listas del SAT
+	 *
+	 * Hasta 1,000 RFC en una solicitud, en el mismo orden en que los mandó (sin repetidos). No usa timbres.
+	 *
+	 * POST /v1/sat_lists/check
+	 * @see https://fiscalisto.com/docs/api/referencia/listas-del-sat/check-sat-lists
+	 */
+	check(params: CheckSatListsParams, options?: RequestOptions): Promise<SatListCheckList> {
+		return this.#client.request({ method: "POST", path: "/v1/sat_lists/check", body: params }, options);
+	}
+}
+
 /** Webhooks: fiscalisto.webhookEndpoints. */
 export class WebhookEndpointsResource {
 	readonly #client: Client;
@@ -3303,6 +3382,7 @@ export class FiscalistoApi extends Core {
 	readonly customers = new CustomersResource(this);
 	readonly products = new ProductsResource(this);
 	readonly satCatalogs = new SatCatalogsResource(this);
+	readonly satLists = new SatListsResource(this);
 	readonly webhookEndpoints = new WebhookEndpointsResource(this);
 	readonly events = new EventsResource(this);
 }
