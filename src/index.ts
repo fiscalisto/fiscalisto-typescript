@@ -32,6 +32,7 @@ export {
 	type RequestOptions,
 	VERSION,
 } from "./core.js";
+export { ErrorCode } from "./error-codes.js";
 export type * from "./generated.js";
 export {
 	FiscalistoWebhookError,

@@ -4,6 +4,8 @@
  * llamar.
  */
 
+import type { ErrorCode } from "./error-codes.js";
+
 export const VERSION = "0.1.0";
 const DEFAULT_BASE_URL = "https://api.fiscalisto.com";
 
@@ -77,7 +79,8 @@ export type ErrorType =
 export class FiscalistoError extends Error {
 	override readonly name = "FiscalistoError";
 	readonly type: ErrorType;
-	readonly code: string;
+	/** Compárelo con ErrorCode: error.code === ErrorCode.InvoiceRejected. */
+	readonly code: ErrorCode | (string & {});
 	/** El campo que hay que corregir (items.0.unit_price). */
 	readonly param?: string;
 	/** El código del SAT o del PAC cuando ellos lo rechazaron (CFDI40145). */
