@@ -1,0 +1,3308 @@
+// Generado por `bun run openapi` desde la especificación OpenAPI de la API: no lo edite.
+
+import { type Client, Core, type List, type RequestOptions } from "./core.js";
+
+/** La cuenta API de la llave que hizo la solicitud. */
+export interface Account {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "account";
+	/** El nombre de la cuenta API. */
+	name: string;
+	/** La llave con que se hizo la solicitud: id, nombre y emisores a los que se limita. */
+	key: {
+		/** Id de la llave. */
+		id: string;
+		/** Nombre de la llave. */
+		name: string;
+		/** Emisores a los que se limita la llave; null si puede usar todos. */
+		issuers: string[] | null;
+	};
+}
+
+/** Timbres de producción de la cuenta, por paquete, el que vence antes primero. */
+export interface Balance {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "balance";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Timbres disponibles en total. */
+	available: number;
+	/** true si la cuenta timbra sin usar timbres. */
+	unlimited: boolean;
+	/** Los paquetes con timbres, el que vence antes primero (en ese orden se usan). */
+	packs: {
+		/** Timbres del paquete. */
+		timbres: number;
+		/** Los que le quedan. */
+		remaining: number;
+		/** Cuándo se compró. */
+		purchased_at: string | null;
+		/** Cuándo vencen; null si no vencen. */
+		expires_at: string | null;
+	}[];
+}
+
+/** Un emisor: un RFC que timbra desde su cuenta API. */
+export interface Issuer {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "issuer";
+	/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+	tax_id: string;
+	/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+	legal_name: string | null;
+	/** Régimen fiscal (RegimenFiscal), clave de c_RegimenFiscal: 601, 612, 626… */
+	tax_system: string | null;
+	/** Código postal del domicilio fiscal, 5 dígitos, como en la constancia de situación fiscal. El de un emisor es el lugar de expedición (LugarExpedicion) de sus comprobantes. */
+	zip: string | null;
+	/** active: puede timbrar. needs_certificate: falta su CSD. needs_efirma: falta firmar una vez el contrato con el PAC con su e.firma (solo en producción). certificate_expired: su CSD venció. archived: archivado. */
+	status: "active" | "needs_certificate" | "certificate_expired" | "needs_efirma" | "archived";
+	/** Qué le falta al emisor para timbrar, y cómo dárselo. */
+	requirement: string | null;
+	/** El sello digital (CSD) cargado: número de serie y vencimiento. */
+	certificate: {
+		/** Número de serie (NoCertificado). */
+		serial_number: string | null;
+		/** Cuándo vence. */
+		expires_at: string | null;
+	} | null;
+	/** Registro patronal ante el IMSS (RegistroPatronal), 11 caracteres. Necesario para timbrar nómina. */
+	employer_registration: string | null;
+	/** CURP, 18 caracteres. */
+	curp: string | null;
+	/** RFC con el que se timbra: el del emisor en producción y el de pruebas del SAT (EKU9003173C9) en pruebas. */
+	stamps_as: string;
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string | null;
+	/** Cuándo se archivó (ya no timbra), o null. */
+	archived_at: string | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
+}
+
+/** Un concepto, con los mismos campos con que se mandó. */
+export type InvoiceItem = Record<string, unknown>;
+
+/** Un CFDI 4.0 emitido: factura de ingreso o global, traslado, nota de crédito (E), complemento de pago (P) o recibo de nómina (N). */
+export interface Invoice {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "invoice";
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
+	type: "I" | "E" | "P" | "T" | "N";
+	/** processing: el PAC no ha contestado (se resuelve sola; escuche invoice.stamped). valid: timbrada. pending: timbrada con una cancelación en espera del cliente. rejected: el SAT o el PAC no la aceptaron (ver error). canceled: cancelada. */
+	status: "processing" | "pending" | "valid" | "rejected" | "canceled";
+	/** Folio fiscal que asigna el SAT (UUID del Timbre Fiscal Digital), en mayúsculas. */
+	uuid: string | null;
+	/** Serie (Serie), hasta 25 caracteres. Cada serie lleva sus propios folios. */
+	series: string | null;
+	/** Folio (Folio). Fiscalisto asigna el siguiente de la serie; mande uno solo si debe ser ese. */
+	folio: string | null;
+	/** Fecha de emisión (Fecha), hora de la Ciudad de México. */
+	date: string | null;
+	/** Cliente (Receptor): el id de uno de su catálogo (cus_…) o sus datos en un objeto. */
+	customer: {
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string | null;
+		/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+		legal_name: string | null;
+		/** Régimen fiscal (RegimenFiscal), clave de c_RegimenFiscal: 601, 612, 626… */
+		tax_system?: string;
+		/** Código postal del domicilio fiscal del cliente (DomicilioFiscalReceptor), 5 dígitos. */
+		zip?: string;
+		/** Si es extranjero: su país de residencia (ResidenciaFiscal, c_Pais) y su número de registro tributario (NumRegIdTrib), con el RFC genérico XEXX010101000. */
+		foreign?: Record<string, unknown>;
+	};
+	/** Uso del CFDI (UsoCFDI), clave de c_UsoCFDI. Por omisión G03, o S01 con régimen 616. */
+	use: string | null;
+	/** Forma de pago (FormaPago), clave de c_FormaPago: 01 efectivo, 03 transferencia, 04 tarjeta de crédito, 28 débito, 99 por definir… Obligatoria con PUE; con PPD es 99. */
+	payment_form: string | null;
+	/** Método de pago (MetodoPago): PUE (una sola exhibición, por omisión) o PPD (en parcialidades o diferido, se cobra con complementos de pago). */
+	payment_method: string | null;
+	/** Moneda, clave ISO 4217 de c_Moneda (MXN, USD, EUR…). Por omisión MXN. */
+	currency: string;
+	/** Tipo de cambio a pesos (TipoCambio). Obligatorio si la moneda no es MXN; use el del DOF del día anterior. */
+	exchange_rate: number | null;
+	/** Conceptos (Conceptos), al menos uno. */
+	items: InvoiceItem[];
+	/** Suma de los importes antes de impuestos y descuentos (SubTotal). */
+	subtotal: number | null;
+	/** Descuento (Descuento). */
+	discount: number | null;
+	/** Impuestos del comprobante, por tipo. */
+	taxes: {
+		/** IVA trasladado. */
+		iva: number | null;
+		/** IEPS trasladado. */
+		ieps: number | null;
+		/** IVA retenido. */
+		iva_withheld: number | null;
+		/** ISR retenido. */
+		isr_withheld: number | null;
+		/** Impuestos locales trasladados. */
+		local_transferred: number | null;
+		/** Impuestos locales retenidos. */
+		local_withheld: number | null;
+	} | null;
+	/** Total en la moneda del comprobante (Total). */
+	total: number | null;
+	/** CFDI relacionados (CfdiRelacionados): tipo de relación de c_TipoRelacion y los UUID. */
+	related: Record<string, unknown> | null;
+	/** Solo en un complemento de pago (type P). */
+	payment?: {
+		/** Fecha del pago (FechaPago). */
+		date: string | null;
+		/** Forma de pago (FormaPago), clave de c_FormaPago: 01 efectivo, 03 transferencia, 04 tarjeta de crédito, 28 débito, 99 por definir… Obligatoria con PUE; con PPD es 99. */
+		payment_form: string | null;
+		/** Moneda del pago (MonedaP). */
+		currency: string;
+		/** Tipo de cambio a pesos (TipoCambio). Obligatorio si la moneda no es MXN; use el del DOF del día anterior. */
+		exchange_rate: number | null;
+		/** Monto del pago (Monto). */
+		amount: number;
+		/** Número de operación del pago (NumOperacion), como el rastreo SPEI. */
+		operation_number: string | null;
+		/** Las facturas que paga (DoctoRelacionado). */
+		documents: {
+			/** Folio fiscal que asigna el SAT (UUID del Timbre Fiscal Digital), en mayúsculas. */
+			uuid: string;
+			/** Serie de la factura pagada. */
+			series: string | null;
+			/** Folio de la factura pagada. */
+			folio: string | null;
+			/** Moneda de la factura pagada (MonedaDR). */
+			currency: string;
+			/** Número de parcialidad (NumParcialidad). */
+			partiality: number;
+			/** Saldo anterior de la factura (ImpSaldoAnt). */
+			previous_balance: number;
+			/** Lo que se paga de esa factura (ImpPagado), en la moneda de la factura. */
+			amount: number;
+			/** Saldo insoluto después de este pago (ImpSaldoInsoluto). */
+			remaining: number;
+		}[];
+	} | null;
+	/** Solo en un recibo de nómina (type N). */
+	payroll?: {
+		/** Periodicidad del pago (PeriodicidadPago): 02 semanal, 03 catorcenal, 04 quincenal (por omisión), 05 mensual. */
+		periodicity: string;
+		/** Periodo (Periodo): mes inicial, mes final y año. */
+		period: {
+			/** Primer día del periodo (FechaInicialPago), AAAA-MM-DD. */
+			start: string;
+			/** Último día del periodo (FechaFinalPago), AAAA-MM-DD. */
+			end: string;
+			/** Fecha de pago (FechaPago), AAAA-MM-DD. Por omisión el último día del periodo. */
+			payment_date: string;
+		};
+		/** Días pagados (NumDiasPagados). Por omisión, todos los del periodo que le tocan. */
+		days: number;
+		/** El patrón (Emisor del complemento): registro patronal y CURP si es persona física. */
+		employer: {
+			/** Registro patronal ante el IMSS (RegistroPatronal), 11 caracteres. Necesario para timbrar nómina. */
+			employer_registration: string | null;
+			/** CURP, 18 caracteres. */
+			curp: string | null;
+		};
+		/** El empleado (emp_…). */
+		employee: {
+			/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+			id: string | null;
+			/** Número de empleado (NumEmpleado). */
+			number: string;
+			/** CURP, 18 caracteres. */
+			curp: string;
+			/** Número de seguridad social (NumSeguridadSocial), 11 dígitos. */
+			social_security_number: string | null;
+			/** Fecha de inicio de la relación laboral (FechaInicioRelLaboral), AAAA-MM-DD. */
+			start_date: string;
+			/** Tipo de contrato (TipoContrato), c_TipoContrato. Por omisión 01, por tiempo indeterminado. */
+			contract_type: string;
+			/** true si es sindicalizado (Sindicalizado). */
+			unionized: boolean;
+			/** Tipo de jornada (TipoJornada), c_TipoJornada. Por omisión 01, diurna. */
+			workday_type: string;
+			/** Tipo de régimen (TipoRegimen): 02 sueldos y salarios. */
+			regime_type: string;
+			/** Departamento (Departamento). */
+			department?: string | null;
+			/** Puesto (Puesto). */
+			position?: string | null;
+			/** Clase de riesgo del puesto ante el IMSS (RiesgoPuesto), 1 a 5. Por omisión 1. */
+			risk_class: string | null;
+			/** Salario base de cotización (SalarioBaseCotApor). */
+			contribution_base_salary: number | null;
+			/** Salario diario integrado (SalarioDiarioIntegrado): no menor al salario diario. */
+			integrated_daily_salary: number | null;
+			/** Entidad federativa donde trabaja (ClaveEntFed): JAL, CMX, NLE… */
+			state: string;
+		};
+		/** Percepciones (Percepcion): sueldo y demás, gravado y exento. */
+		perceptions: {
+			/** Tipo de percepción (TipoPercepcion), c_TipoPercepcion: 001 sueldos… */
+			type: string;
+			/** Clave del patrón (Clave). */
+			key: string;
+			/** Concepto (Concepto). */
+			concept: string;
+			/** Importe gravado (ImporteGravado). */
+			taxed: number;
+			/** Importe exento (ImporteExento). */
+			exempt: number;
+		}[];
+		/** Deducciones (Deduccion): ISR, cuotas IMSS y demás. */
+		deductions: {
+			/** Tipo de deducción (TipoDeduccion), c_TipoDeduccion: 001 IMSS, 002 ISR… */
+			type: string;
+			/** Clave del patrón (Clave). */
+			key: string;
+			/** Concepto (Concepto). */
+			concept: string;
+			/** Importe (Importe). */
+			amount: number;
+		}[];
+		/** Otros pagos (OtroPago): subsidio para el empleo. */
+		other_payments: {
+			/** Tipo de otro pago (TipoOtroPago), c_TipoOtroPago: 002 subsidio para el empleo. */
+			type: string;
+			/** Clave del patrón (Clave). */
+			key: string;
+			/** Concepto (Concepto). */
+			concept: string;
+			/** Importe pagado (Importe). */
+			amount: number;
+			/** Subsidio causado (SubsidioCausado). */
+			subsidy_caused?: number;
+			/** Del subsidio causado, el ISR que evitó (no va en el XML). */
+			subsidy_applied?: number;
+		}[];
+	};
+	/** Solo en una factura global. */
+	global?: Record<string, unknown>;
+	/** La cancelación, si se pidió: estado, motivo, sustituto y cuándo. */
+	cancellation: {
+		/** pending (espera la respuesta del cliente), accepted (cancelada), rejected (el cliente la rechazó) o lapsed (venció; puede pedirla otra vez). */
+		status: string | null;
+		/** Motivo de cancelación (c_MotivoCancelacion): 01 con errores con relación (lleva substitution), 02 con errores sin relación (por omisión), 03 no se llevó a cabo, 04 nominativa en una global. */
+		motive: string | null;
+		/** El comprobante que sustituye a este (su id o su UUID), con el motivo 01. */
+		substitution: string | null;
+		/** Cuándo se canceló. */
+		canceled_at: string | null;
+	} | null;
+	/** El envío por correo: a quién, con copia a quién y cuándo (null si no se ha enviado). */
+	email: {
+		/** A quién (correos separados por comas). */
+		to: string | null;
+		/** Con copia (correos separados por comas). */
+		cc: string | null;
+		/** Cuándo se envió. */
+		sent_at: string | null;
+	} | null;
+	/** Por qué el SAT o el PAC no lo aceptaron: mensaje, código del SAT y texto original. */
+	error: {
+		/** Qué pasó y cómo corregirlo, para una persona. */
+		message: string;
+		/** Código del SAT o del PAC (CFDI40xxx). */
+		sat_code: string | null;
+		/** El texto original del PAC. */
+		raw: string;
+	} | null;
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
+	/** Avisos que no impidieron timbrar (por ejemplo, el XML se guardará después). */
+	warnings?: string[];
+	/** Por qué no se pudo mandar el correo; el comprobante sí se timbró. */
+	email_error?: string;
+	/** La factura que esta sustituyó y si quedó cancelada. */
+	substitutes?: {
+		/** La factura sustituida (inv_…). */
+		invoice: string;
+		/** true si la sustituida ya quedó cancelada. */
+		canceled: boolean;
+		/** Por qué no se pudo cancelar la sustituida (cancélela con POST /v1/invoices/{id}/cancel). */
+		cancel_error?: string;
+	};
+	/** La aplicación del anticipo: método, nota de aplicación y su estado. */
+	advance_application?: {
+		/** El anticipo, como factura (inv_…). */
+		advance: string | null;
+		/** El folio fiscal del anticipo. */
+		advance_uuid: string;
+		/** egreso (la factura completa y después una nota de crédito por el anticipo, opción A) o remanente (la factura solo por lo que falta, opción B). */
+		method: "egreso" | "remanente";
+		/** done (listo) o credit_note_pending (falta timbrar la nota de aplicación: repita la solicitud con la misma Idempotency-Key). */
+		status: "done" | "credit_note_pending";
+		/** La nota de aplicación del anticipo (inv_…), con method egreso. */
+		credit_note: string | null;
+		/** Por qué no se timbró la nota de aplicación (repita con la misma Idempotency-Key). */
+		credit_note_error?: string;
+	};
+}
+
+/** Una constancia de retenciones e información de pagos (CFDI de retenciones 2.0). */
+export interface Retention {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "retention";
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** processing: el PAC no ha contestado. valid: timbrada. rejected: el SAT o el PAC no la aceptaron (ver error). canceled: cancelada. */
+	status: "processing" | "valid" | "rejected" | "canceled";
+	/** Folio fiscal que asigna el SAT (UUID del Timbre Fiscal Digital), en mayúsculas. */
+	uuid: string | null;
+	/** Folio (Folio). Fiscalisto asigna el siguiente de la serie; mande uno solo si debe ser ese. */
+	folio: number | null;
+	/** Folio interno (FolioInt): RET1, RET2… */
+	internal_folio: string | null;
+	/** Fecha de emisión (Fecha), hora de la Ciudad de México. */
+	date: string | null;
+	/** Clave de la retención (CveRetenc), c_CveRetenc: 01 servicios profesionales, 05 arrendamiento, 14 dividendos, 16 intereses, 18 pagos al extranjero… */
+	code: string;
+	/** Descripción de la retención (DescRetenc). */
+	description: string | null;
+	/** Receptor de la constancia (Receptor): nacional con RFC y código postal, o extranjero. */
+	recipient: {
+		/** true si el receptor es extranjero (sin RFC). */
+		foreign: boolean;
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string | null;
+		/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+		legal_name: string | null;
+		/** Código postal del domicilio fiscal, 5 dígitos, como en la constancia de situación fiscal. El de un emisor es el lugar de expedición (LugarExpedicion) de sus comprobantes. */
+		zip?: string;
+		/** CURP, 18 caracteres. */
+		curp?: string | null;
+	};
+	/** Periodo (Periodo): mes inicial, mes final y año. */
+	period: {
+		/** Año (Ejercicio). */
+		year: number;
+		/** Mes inicial (MesIni), 1 a 12. */
+		from_month: number;
+		/** Mes final (MesFin), 1 a 12, del mismo año. */
+		to_month: number;
+	};
+	/** Totales (Totales). */
+	totals: {
+		/** Monto total de la operación (MontoTotOperacion). */
+		operation: number | null;
+		/** Monto gravado (MontoTotGrav). Por omisión, operation menos exempt. */
+		taxed: number | null;
+		/** Monto exento (MontoTotExent). Por omisión 0. */
+		exempt: number | null;
+		/** Total retenido (MontoTotRet). */
+		withheld: number | null;
+	};
+	/** Impuestos del comprobante, por tipo. */
+	taxes: {
+		/** Impuesto: isr, iva o ieps (ImpuestoRet 001, 002, 003). */
+		tax: string;
+		/** Base del impuesto retenido (BaseRet). */
+		base: number;
+		/** Monto retenido (MontoRet). */
+		amount: number;
+		/** Tipo de pago de la retención (TipoPagoRet): 01 definitivo IVA, 02 definitivo IEPS, 03 definitivo ISR, 04 provisional ISR. Por omisión el usual de cada impuesto. */
+		payment_type: string;
+	}[];
+	/** Complemento de dividendos. */
+	dividends?: Record<string, unknown>;
+	/** Complemento de intereses. */
+	interest?: Record<string, unknown>;
+	/** Complemento de pagos a extranjeros. */
+	foreign_payment?: Record<string, unknown>;
+	/** La cancelación, si se pidió: estado, motivo, sustituto y cuándo. */
+	cancellation: {
+		/** pending (espera la respuesta del cliente), accepted (cancelada), rejected (el cliente la rechazó) o lapsed (venció; puede pedirla otra vez). */
+		status: string;
+		/** Motivo de cancelación (c_MotivoCancelacion): 01 con errores con relación (lleva substitution), 02 con errores sin relación (por omisión), 03 no se llevó a cabo, 04 nominativa en una global. */
+		motive: string | null;
+		/** Cuándo se canceló. */
+		canceled_at: string | null;
+	} | null;
+	/** El envío por correo: a quién, con copia a quién y cuándo (null si no se ha enviado). */
+	email: {
+		/** A quién (correos separados por comas). */
+		to: string | null;
+		/** Cuándo se envió. */
+		sent_at: string | null;
+	} | null;
+	/** Por qué el SAT o el PAC no lo aceptaron: mensaje, código del SAT y texto original. */
+	error: {
+		/** Qué pasó y cómo corregirlo, para una persona. */
+		message: string;
+		/** Código del SAT o del PAC (CFDI40xxx). */
+		sat_code: string | null;
+		/** El texto original del PAC. */
+		raw: string;
+	} | null;
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
+	/** Avisos que no impidieron timbrar (por ejemplo, el XML se guardará después). */
+	warnings?: string[];
+	/** Por qué no se pudo mandar el correo; el comprobante sí se timbró. */
+	email_error?: string;
+}
+
+/** Un cliente del catálogo de un emisor. */
+export interface Customer {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "customer";
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+	tax_id: string;
+	/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+	legal_name: string;
+	/** Régimen fiscal (RegimenFiscal), clave de c_RegimenFiscal: 601, 612, 626… */
+	tax_system: string;
+	/** Código postal del domicilio fiscal, 5 dígitos, como en la constancia de situación fiscal. El de un emisor es el lugar de expedición (LugarExpedicion) de sus comprobantes. */
+	zip: string;
+	/** Correo del cliente (varios separados por comas), a donde van sus facturas. */
+	email: string | null;
+	/** Uso del CFDI (UsoCFDI), clave de c_UsoCFDI. Por omisión G03, o S01 con régimen 616. */
+	use: string | null;
+	/** Si es extranjero: su país de residencia (ResidenciaFiscal, c_Pais) y su número de registro tributario (NumRegIdTrib), con el RFC genérico XEXX010101000. */
+	foreign: {
+		/** País de residencia fiscal, clave de 3 letras de c_Pais (USA, CAN…). */
+		country: string;
+		/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
+		tax_id: string | null;
+	} | null;
+	/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio. */
+	ieps_taxpayer: boolean;
+	/** Cuándo cambió por última vez, ISO 8601 (-06:00). */
+	updated_at: string | null;
+}
+
+/** Un producto o servicio del catálogo de un emisor. */
+export interface Product {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "product";
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Nombre corto para encontrarlo, solo para usted. */
+	name: string | null;
+	/** Descripción que va en el CFDI (Descripcion). */
+	description: string;
+	/** Clave del producto o servicio (ClaveProdServ), 8 dígitos de c_ClaveProdServ. Búsquela con GET /v1/sat_catalogs/product_keys?q=… */
+	product_key: string;
+	/** Clave de unidad (ClaveUnidad) de c_ClaveUnidad: E48 unidad de servicio (por omisión), H87 pieza, ACT actividad… */
+	unit_key: string;
+	/** Nombre de la unidad (Unidad), hasta 20 caracteres. */
+	unit_name: string | null;
+	/** Número de identificación o SKU (NoIdentificacion). */
+	sku: string | null;
+	/** Precio unitario antes de impuestos (ValorUnitario). */
+	unit_price: number;
+	/** Objeto de impuesto (ObjetoImp), c_ObjetoImp: 01 no objeto, 02 sí objeto (por omisión), 03 sin desglose, 04 no causa… */
+	taxability: string;
+	/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
+	iva: string;
+	/** IEPS trasladado: tasa (0.265…) o cuota en pesos por unidad, según ieps_factor. */
+	ieps: number | null;
+	/** Tasa o Cuota (TipoFactor del IEPS). */
+	ieps_factor: string | null;
+	/** Tasa de IVA retenido (por ejemplo 0.106667, dos terceras partes del 16%). */
+	iva_retention: number;
+	/** Tasa de ISR retenido (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
+	isr_retention: number;
+	/** Cuándo cambió por última vez, ISO 8601 (-06:00). */
+	updated_at: string | null;
+}
+
+/** Un empleado de un emisor, para sus recibos de nómina. */
+export interface Employee {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "employee";
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Número de empleado (NumEmpleado). */
+	number: string;
+	/** Nombre completo del empleado. */
+	name: string;
+	/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+	tax_id: string;
+	/** CURP, 18 caracteres. */
+	curp: string;
+	/** Número de seguridad social (NumSeguridadSocial), 11 dígitos. */
+	social_security_number: string;
+	/** Código postal del domicilio fiscal, 5 dígitos, como en la constancia de situación fiscal. El de un emisor es el lugar de expedición (LugarExpedicion) de sus comprobantes. */
+	zip: string;
+	/** Correo del empleado, a donde van sus recibos. */
+	email: string | null;
+	/** Fecha de inicio de la relación laboral (FechaInicioRelLaboral), AAAA-MM-DD. */
+	start_date: string;
+	/** Último día trabajado si ya no trabaja ahí, AAAA-MM-DD. */
+	end_date: string | null;
+	/** Salario diario. */
+	daily_salary: number;
+	/** Salario diario integrado (SalarioDiarioIntegrado): no menor al salario diario. */
+	integrated_daily_salary: number;
+	/** Tipo de contrato (TipoContrato), c_TipoContrato. Por omisión 01, por tiempo indeterminado. */
+	contract_type: string;
+	/** Tipo de jornada (TipoJornada), c_TipoJornada. Por omisión 01, diurna. */
+	workday_type: string;
+	/** Tipo de régimen (TipoRegimen): 02 sueldos y salarios. */
+	regime_type: string;
+	/** Periodicidad del pago (PeriodicidadPago): 02 semanal, 03 catorcenal, 04 quincenal (por omisión), 05 mensual. */
+	periodicity: string;
+	/** Clase de riesgo del puesto ante el IMSS (RiesgoPuesto), 1 a 5. Por omisión 1. */
+	risk_class: string;
+	/** Entidad federativa donde trabaja (ClaveEntFed): JAL, CMX, NLE… */
+	state: string;
+	/** true si trabaja en la zona libre de la frontera norte (salario mínimo de frontera). */
+	border_zone: boolean;
+	/** true si es sindicalizado (Sindicalizado). */
+	unionized: boolean;
+	/** Departamento (Departamento). */
+	department: string | null;
+	/** Puesto (Puesto). */
+	position: string | null;
+	/** Lo que el SAT podría observar de sus datos, antes de timbrar. */
+	warnings: string[];
+}
+
+/** El recibo como se timbraría: percepciones, deducciones (ISR, IMSS), otros pagos (subsidio) y el neto. */
+export interface PayrollReceiptPreview {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "payroll_receipt_preview";
+	/** El empleado (emp_…). */
+	employee: string;
+	/** Periodicidad del pago (PeriodicidadPago): 02 semanal, 03 catorcenal, 04 quincenal (por omisión), 05 mensual. */
+	periodicity: string;
+	/** Periodo (Periodo): mes inicial, mes final y año. */
+	period: {
+		/** Primer día del periodo (FechaInicialPago), AAAA-MM-DD. */
+		start: string;
+		/** Último día del periodo (FechaFinalPago), AAAA-MM-DD. */
+		end: string;
+		/** Fecha de pago (FechaPago), AAAA-MM-DD. Por omisión el último día del periodo. */
+		payment_date: string;
+	};
+	/** Días pagados (NumDiasPagados). Por omisión, todos los del periodo que le tocan. */
+	days: number;
+	/** Salario base de cotización (SalarioBaseCotApor). */
+	contribution_base_salary: number;
+	/** Percepciones (Percepcion): sueldo y demás, gravado y exento. */
+	perceptions: {
+		/** Tipo de percepción (TipoPercepcion), c_TipoPercepcion: 001 sueldos… */
+		type: string;
+		/** Clave del patrón (Clave). */
+		key: string;
+		/** Concepto (Concepto). */
+		concept: string;
+		/** Importe gravado (ImporteGravado). */
+		taxed: number;
+		/** Importe exento (ImporteExento). */
+		exempt: number;
+	}[];
+	/** Deducciones (Deduccion): ISR, cuotas IMSS y demás. */
+	deductions: {
+		/** Tipo de deducción (TipoDeduccion), c_TipoDeduccion: 001 IMSS, 002 ISR… */
+		type: string;
+		/** Clave del patrón (Clave). */
+		key: string;
+		/** Concepto (Concepto). */
+		concept: string;
+		/** Importe (Importe). */
+		amount: number;
+	}[];
+	/** Otros pagos (OtroPago): subsidio para el empleo. */
+	other_payments: {
+		/** Tipo de otro pago (TipoOtroPago), c_TipoOtroPago: 002 subsidio para el empleo. */
+		type: string;
+		/** Clave del patrón (Clave). */
+		key: string;
+		/** Concepto (Concepto). */
+		concept: string;
+		/** Importe pagado (Importe). */
+		amount: number;
+		/** Subsidio causado (SubsidioCausado). */
+		subsidy_caused?: number;
+		/** Del subsidio causado, el ISR que evitó (no va en el XML). */
+		subsidy_applied?: number;
+	}[];
+	/** El cálculo del ISR del periodo: base, tarifa, subsidio y resultado. */
+	isr: {
+		/** ISR según la tarifa del periodo. */
+		tariff: number;
+		/** Subsidio para el empleo causado. */
+		subsidy: number;
+		/** ISR retenido (tarifa menos subsidio, no menos de 0). */
+		withheld: number;
+		/** true si gana el salario mínimo: no se le retiene ISR. */
+		exempt_minimum: boolean;
+		/** El ajuste de fin de mes: subsidio revertido y el ISR que retiene. */
+		adjustment?: {
+			/** Subsidio causado antes en el mes que se revierte. */
+			reversed: number;
+			/** El cálculo del ISR del periodo: base, tarifa, subsidio y resultado. */
+			isr: number;
+		};
+	};
+	/** Totales: percepciones, deducciones, otros pagos y el neto a pagar. */
+	totals: {
+		/** Total de sueldos, salarios y asimilados (TotalSueldos). */
+		salaries: number;
+		/** Total gravado (TotalGravado). */
+		taxed: number;
+		/** Total exento (TotalExento). */
+		exempt: number;
+		/** Total de percepciones (TotalPercepciones). */
+		perceptions: number;
+		/** Otras deducciones (TotalOtrasDeducciones). */
+		other_deductions: number;
+		/** Impuestos retenidos (TotalImpuestosRetenidos). */
+		taxes_withheld: number;
+		/** Total de deducciones (TotalDeducciones). */
+		deductions: number;
+		/** Total de otros pagos (TotalOtrosPagos). */
+		other_payments: number;
+		/** Subtotal del comprobante: percepciones más otros pagos. */
+		subtotal: number;
+		/** Neto a pagar al empleado. */
+		net: number;
+	};
+}
+
+/** Un anticipo timbrado que aún no se aplica. */
+export interface Advance {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "advance";
+	/** Folio fiscal que asigna el SAT (UUID del Timbre Fiscal Digital), en mayúsculas. */
+	uuid: string;
+	/** Fecha de emisión (Fecha), hora de la Ciudad de México. */
+	date: string;
+	/** Serie (Serie), hasta 25 caracteres. Cada serie lleva sus propios folios. */
+	series: string | null;
+	/** Folio (Folio). Fiscalisto asigna el siguiente de la serie; mande uno solo si debe ser ese. */
+	folio: string | null;
+	/** Cliente (Receptor): el id de uno de su catálogo (cus_…) o sus datos en un objeto. */
+	customer: {
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string;
+		/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+		legal_name: string | null;
+	};
+	/** El anticipo antes de impuestos. */
+	amount: number;
+	/** Total en la moneda del comprobante (Total). */
+	total: number;
+	/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
+	iva: string;
+	/** Moneda, clave ISO 4217 de c_Moneda (MXN, USD, EUR…). Por omisión MXN. */
+	currency: string;
+}
+
+/** Un lote de hasta 1,000 facturas timbradas en segundo plano. */
+export interface InvoiceBatch {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "invoice_batch";
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Nombre del lote, para usted. */
+	name: string;
+	/** processing: timbrando. completed: ya no queda ninguna por timbrar. */
+	status: "processing" | "completed";
+	/** Cuántas facturas tiene el lote. */
+	total: number;
+	/** Cuántas se timbraron. */
+	stamped: number;
+	/** Cuántas no se timbraron (quedan con su motivo). */
+	failed: number;
+	/** Cuántas siguen en proceso. */
+	processing?: number;
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string | null;
+	/** Cuándo terminó. */
+	completed_at: string | null;
+	/** Cada factura del lote (no viene en listas ni en eventos). */
+	invoices?: {
+		/** Su posición en invoices, desde 0. */
+		index: number;
+		/** Su identificador de esta factura (su número de pedido), hasta 100 caracteres. */
+		reference: string | null;
+		/** processing, valid (timbrada) o failed (no se timbró; ver error). */
+		status: "processing" | "valid" | "failed";
+		/** La factura timbrada (inv_…). */
+		invoice: string | null;
+		/** Folio fiscal que asigna el SAT (UUID del Timbre Fiscal Digital), en mayúsculas. */
+		uuid: string | null;
+		/** Total en la moneda del comprobante (Total). */
+		total: number;
+		/** Por qué no se timbró. */
+		error: string | null;
+	}[];
+}
+
+/** Una clave de un catálogo del SAT. */
+export interface SatCatalogEntry {
+	/** La clave en el catálogo del SAT. */
+	code: string;
+	/** Su descripción en el catálogo. */
+	description: string;
+}
+
+/** Una dirección de su servidor que recibe eventos. */
+export interface WebhookEndpoint {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "webhook_endpoint";
+	/** Dirección https de su servidor que recibe los avisos. */
+	url: string;
+	/** Para qué es, para usted. */
+	description: string | null;
+	/** Eventos que quiere recibir, o ["*"] para todos (por omisión). Ver la lista en Webhooks. */
+	events: string[];
+	/** enabled: entregando. failing: sus entregas fallan (se apaga tras 5 días así). disabled: apagado. */
+	status: "enabled" | "failing" | "disabled";
+	/** Por qué se apagó (sus entregas fallaron 5 días seguidos, o usted lo apagó). */
+	disabled_reason?: string | null;
+	/** Desde cuándo fallan las entregas, o null. */
+	failing_since?: string | null;
+	/** Hasta cuándo el secreto anterior también firma (después de cambiarlo), o null. */
+	previous_secret_expires_at: string | null;
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string | null;
+	/** Secreto de firma (whsec_…). Solo viene al crearlo o al cambiarlo: guárdelo para verificar las firmas. */
+	secret?: string;
+}
+
+/** Lo que puede pasar: el tipo de cada evento. */
+export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed";
+
+/** Algo que pasó en su cuenta: el objeto completo como quedó. Se manda a sus webhooks firmado (Standard Webhooks). */
+export interface EventBase<T extends EventType = EventType, O = unknown> {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "event";
+	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, retention.stamped, retention.failed, retention.canceled o invoice_batch.completed. */
+	type: T;
+	/** Versión de la API con que se armó el objeto. */
+	api_version: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string;
+	/** Lo que cambió, en data.object: el comprobante (o el lote) completo, como lo contesta su GET. */
+	data: { object: O };
+}
+
+/** Un evento: según su type, data.object es la factura, la constancia o el lote. */
+export type Event =
+	| EventBase<"invoice.stamped", Invoice>
+	| EventBase<"invoice.failed", Invoice>
+	| EventBase<"invoice.canceled", Invoice>
+	| EventBase<"invoice.cancellation_pending", Invoice>
+	| EventBase<"invoice.cancellation_rejected", Invoice>
+	| EventBase<"retention.stamped", Retention>
+	| EventBase<"retention.failed", Retention>
+	| EventBase<"retention.canceled", Retention>
+	| EventBase<"invoice_batch.completed", InvoiceBatch>;
+
+/** Confirmación de que se borró. */
+export interface Deleted {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: string;
+	/** Siempre true. */
+	deleted: true;
+}
+
+/** Todos los errores tienen esta forma. */
+export interface ApiError {
+	/** Por qué el SAT o el PAC no lo aceptaron: mensaje, código del SAT y texto original. */
+	error: {
+		/** La familia del error: invalid_request_error, authentication_error, permission_error, not_found_error, idempotency_error, rate_limit_error, invoice_error, balance_error o api_error. */
+		type: "invalid_request_error" | "authentication_error" | "permission_error" | "not_found_error" | "idempotency_error" | "rate_limit_error" | "invoice_error" | "balance_error" | "api_error";
+		/** La razón precisa, estable (ver Errores). */
+		code: string;
+		/** Qué pasó y cómo corregirlo, para una persona. */
+		message: string;
+		/** El campo con el problema (items.0.unit_price). */
+		param?: string;
+		/** Código del SAT o del PAC (CFDI40xxx). */
+		sat_code?: string;
+		/** La explicación de este código en la documentación. */
+		doc_url: string;
+		/** El id de la solicitud (req_…). Inclúyalo si nos escribe. */
+		request_id: string;
+	};
+}
+
+export interface IssuerList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: Issuer[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface InvoiceList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: Invoice[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface AdvanceList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: Advance[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface RetentionList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: Retention[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface EmployeeList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: Employee[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface InvoiceBatchList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: InvoiceBatch[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface CustomerList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: Customer[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface ProductList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: Product[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface SatCatalogEntryList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: SatCatalogEntry[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface WebhookEndpointList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: WebhookEndpoint[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface EventList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: Event[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+/** Una factura (CFDI 4.0). Un campo que no existe se rechaza con parameter_unknown, nunca se ignora. */
+export interface InvoiceCreate {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** Cliente (Receptor): el id de uno de su catálogo (cus_…) o sus datos en un objeto. */
+	customer: string | {
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string;
+		/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+		legal_name: string;
+		/** Régimen fiscal (RegimenFiscal), clave de c_RegimenFiscal: 601, 612, 626… */
+		tax_system: string;
+		/** Código postal del domicilio fiscal del cliente (DomicilioFiscalReceptor), 5 dígitos. */
+		zip: string;
+		/** Correo a donde se envía (varios separados por comas). Solo se usa si se pide enviarlo. */
+		email?: string | null;
+		/** Si es extranjero: su país de residencia (ResidenciaFiscal, c_Pais) y su número de registro tributario (NumRegIdTrib), con el RFC genérico XEXX010101000. */
+		foreign?: {
+			/** País de residencia fiscal, clave de 3 letras de c_Pais (USA, CAN…). */
+			country: string;
+			/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
+			tax_id: string;
+		};
+		/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio. */
+		ieps_taxpayer?: boolean;
+	};
+	/** Conceptos (Conceptos), al menos uno. */
+	items: {
+		/** Un producto de su catálogo (prd_…): toma su clave, unidad, precio e impuestos. */
+		product?: string;
+		/** Descripción del concepto (Descripcion), hasta 1,000 caracteres. */
+		description?: string;
+		/** Clave del producto o servicio (ClaveProdServ), 8 dígitos de c_ClaveProdServ. Búsquela con GET /v1/sat_catalogs/product_keys?q=… */
+		product_key?: string;
+		/** Clave de unidad (ClaveUnidad) de c_ClaveUnidad: E48 unidad de servicio (por omisión), H87 pieza, ACT actividad… */
+		unit_key?: string;
+		/** Nombre de la unidad (Unidad), hasta 20 caracteres. */
+		unit_name?: string | null;
+		/** Número de identificación o SKU (NoIdentificacion). */
+		sku?: string | null;
+		/** Cantidad (Cantidad). Por omisión 1. */
+		quantity?: number;
+		/** Precio unitario antes de impuestos (ValorUnitario). */
+		unit_price?: number;
+		/** Descuento (Descuento). */
+		discount?: number;
+		/** Objeto de impuesto (ObjetoImp), c_ObjetoImp: 01 no objeto, 02 sí objeto (por omisión), 03 sin desglose, 04 no causa… */
+		taxability?: "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08";
+		/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
+		iva?: "0" | "0.16" | "0.08" | "exento";
+		/** IEPS trasladado: tasa (0.265…) o cuota en pesos por unidad, según ieps_factor. */
+		ieps?: number;
+		/** Tasa o Cuota (TipoFactor del IEPS). */
+		ieps_factor?: "Tasa" | "Cuota";
+		/** Unidades de IEPS a cuota (litros, cigarros…), si no son la cantidad. */
+		ieps_units?: number;
+		/** Tasa de IVA retenido (por ejemplo 0.106667, dos terceras partes del 16%). */
+		iva_retention?: number;
+		/** Tasa de ISR retenido (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
+		isr_retention?: number;
+		/** Números de cuenta predial (CuentaPredial) en arrendamiento. */
+		predial?: string[];
+		/** Números de pedimento (InformacionAduanera) de mercancía importada. */
+		pedimentos?: string[];
+		/** A cuenta de terceros (ACuentaTerceros): RFC, nombre, régimen y código postal. */
+		third_party?: {
+			/** RFC de a cuenta de quién (RfcACuentaTerceros). */
+			tax_id: string;
+			/** Nombre (NombreACuentaTerceros). */
+			name: string;
+			/** Régimen fiscal (RegimenFiscalACuentaTerceros), c_RegimenFiscal. */
+			tax_system: string;
+			/** Código postal de su domicilio fiscal (DomicilioFiscalACuentaTerceros). */
+			zip: string;
+		};
+		/** Complemento de instituciones educativas privadas (IEDU): alumno, CURP, nivel y RVOE. */
+		iedu?: {
+			/** Nombre del alumno (nombreAlumno). */
+			student_name: string;
+			/** CURP, 18 caracteres. */
+			curp: string;
+			/** Nivel educativo (nivelEducativo). */
+			level: "Preescolar" | "Primaria" | "Secundaria" | "Profesional técnico" | "Bachillerato o su equivalente";
+			/** Reconocimiento de validez oficial de estudios (autRVOE). */
+			rvoe: string;
+			/** RFC de quien paga, si no es el receptor (rfcPago). */
+			payer_tax_id?: string | null;
+		};
+		/** Complemento de vehículo usado. */
+		used_vehicle?: {
+			/** Monto de adquisición (montoAdquisicion). */
+			purchase_amount: number;
+			/** Monto de enajenación (montoEnajenacion). */
+			sale_amount: number;
+			/** Clave vehicular (claveVehicular). */
+			vehicle_key: string;
+			/** Marca (marca). */
+			make: string;
+			/** Tipo o versión (tipo). */
+			type: string;
+			/** Año del modelo (modelo), 4 dígitos. */
+			model: string;
+			/** Número de motor (numeroMotor). */
+			engine_number?: string;
+			/** Número de serie (numeroSerie). */
+			serial_number?: string;
+			/** Número de identificación vehicular (NIV). */
+			niv?: string;
+			/** Valor según la guía EBC o Libro Azul (valor). */
+			guide_value: number;
+			/** Información aduanera de la importación del vehículo (InformacionAduanera). */
+			customs?: {
+				/** Número del documento de importación (numero). */
+				number: string;
+				/** Fecha del documento (fecha), AAAA-MM-DD. */
+				date: string;
+				/** Aduana (aduana). */
+				office?: string;
+			}[];
+		};
+		/** Addenda del receptor (Walmart, Soriana…), con sus propios campos. */
+		addenda?: Record<string, string>;
+	}[];
+	/** I ingreso (por omisión; con global, factura global) o T traslado. Notas de crédito: POST /v1/credit_notes. Pagos: POST /v1/payments. */
+	type?: "I" | "T";
+	/** Complemento Carta Porte 3.1 (traslado de mercancías). */
+	carta_porte?: {
+		/** Cómo viajan las mercancías (c_CveTransporte): 01 autotransporte, 02 marítimo, 03 aéreo, 04 ferroviario; varios si es intermodal. Por omisión 01. */
+		modes?: ("01" | "02" | "03" | "04")[];
+		/** Transporte internacional (TranspInternac Sí): entrada o salida, país, vía y regímenes aduaneros. */
+		international?: {
+			/** EntradaSalidaMerc: Entrada o Salida. */
+			direction: "Entrada" | "Salida";
+			/** País de origen o destino (PaisOrigenDestino), c_Pais. */
+			country: string;
+			/** Vía de entrada o salida (ViaEntradaSalida), c_CveTransporte (05 ducto incluido). */
+			via: string;
+			/** Regímenes aduaneros (RegimenAduanero), c_RegimenAduanero. */
+			regimes: string[];
+		};
+		/** Corredor Interoceánico del Istmo de Tehuantepec: polos de origen y destino (c_RegistroISTMO). */
+		istmo?: {
+			/** Polo de origen (UbicacionPoloOrigen). */
+			origin: string;
+			/** Polo de destino (UbicacionPoloDestino). */
+			destination: string;
+		};
+		/** Autotransporte: true si es logística inversa, recolección o devolución. */
+		reverse_logistics?: boolean;
+		/** Ubicación de origen (Ubicacion TipoUbicacion Origen): remitente, fecha y hora de salida y domicilio. */
+		origin: {
+			/** RFC del remitente (RFCRemitenteDestinatario); XEXX010101000 si es extranjero. */
+			tax_id: string;
+			/** Nombre del remitente (NombreRemitenteDestinatario). */
+			name?: string;
+			/** Si es extranjero: su país de residencia (ResidenciaFiscal, c_Pais) y su número de registro tributario (NumRegIdTrib), con el RFC genérico XEXX010101000. */
+			foreign?: {
+				/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
+				tax_id: string;
+				/** País de residencia fiscal, clave de 3 letras de c_Pais (USA, CAN…). */
+				country: string;
+			};
+			/** Fecha y hora de salida (origen) o llegada (destino), AAAA-MM-DDTHH:MM, hora local. */
+			date_time: string;
+			/** Distancia recorrida desde la ubicación anterior, en km (DistanciaRecorrida). Autotransporte y ferroviario. */
+			distance_km?: number;
+			/** Estación, puerto o aeropuerto (TipoEstacion y NumEstacion de c_Estaciones). Solo sin autotransporte. */
+			station?: {
+				/** Tipo de estación (TipoEstacion): 01 origen, 02 intermedia, 03 destino final. */
+				type?: string;
+				/** Clave de la estación, puerto o aeropuerto (NumEstacion), c_Estaciones. */
+				number?: string;
+				/** Nombre de la estación (NombreEstacion). */
+				name?: string;
+				/** true si la estación está en el extranjero (va sin TipoEstacion). */
+				foreign?: boolean;
+			};
+			/** Marítimo: tipo de tráfico (NavegacionTrafico), Altura o Cabotaje. */
+			navigation?: "Altura" | "Cabotaje";
+			/** Domicilio (Domicilio). En México basta el código postal: estado, municipio y localidad se toman de c_CodigoPostal. */
+			address: {
+				/** Calle (Calle). */
+				street?: string;
+				/** Número exterior (NumeroExterior). */
+				exterior?: string;
+				/** Número interior (NumeroInterior). */
+				interior?: string;
+				/** Código postal (CodigoPostal). En México se deducen de él estado, municipio y localidad. */
+				zip: string;
+				/** País (Pais), c_Pais. Por omisión MEX. */
+				country?: string;
+				/** Estado (Estado): en el extranjero c_Estado para USA y CAN, o texto. */
+				state?: string;
+				/** Municipio (Municipio), en el extranjero como texto. */
+				municipality?: string;
+				/** Localidad (Localidad), en el extranjero como texto. */
+				locality?: string;
+				/** Colonia (Colonia), en el extranjero como texto. */
+				colony?: string;
+			};
+		};
+		/** Ubicaciones de destino (TipoUbicacion Destino), en orden: destinatario, llegada, distancia y domicilio. */
+		destinations: {
+			/** RFC del destinatario (RFCRemitenteDestinatario); XEXX010101000 si es extranjero. */
+			tax_id: string;
+			/** Nombre del destinatario (NombreRemitenteDestinatario). */
+			name?: string;
+			/** Si es extranjero: su país de residencia (ResidenciaFiscal, c_Pais) y su número de registro tributario (NumRegIdTrib), con el RFC genérico XEXX010101000. */
+			foreign?: {
+				/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
+				tax_id: string;
+				/** País de residencia fiscal, clave de 3 letras de c_Pais (USA, CAN…). */
+				country: string;
+			};
+			/** Fecha y hora de salida (origen) o llegada (destino), AAAA-MM-DDTHH:MM, hora local. */
+			date_time: string;
+			/** Distancia recorrida desde la ubicación anterior, en km (DistanciaRecorrida). Autotransporte y ferroviario. */
+			distance_km?: number;
+			/** Estación, puerto o aeropuerto (TipoEstacion y NumEstacion de c_Estaciones). Solo sin autotransporte. */
+			station?: {
+				/** Tipo de estación (TipoEstacion): 01 origen, 02 intermedia, 03 destino final. */
+				type?: string;
+				/** Clave de la estación, puerto o aeropuerto (NumEstacion), c_Estaciones. */
+				number?: string;
+				/** Nombre de la estación (NombreEstacion). */
+				name?: string;
+				/** true si la estación está en el extranjero (va sin TipoEstacion). */
+				foreign?: boolean;
+			};
+			/** Marítimo: tipo de tráfico (NavegacionTrafico), Altura o Cabotaje. */
+			navigation?: "Altura" | "Cabotaje";
+			/** Domicilio (Domicilio). En México basta el código postal: estado, municipio y localidad se toman de c_CodigoPostal. */
+			address: {
+				/** Calle (Calle). */
+				street?: string;
+				/** Número exterior (NumeroExterior). */
+				exterior?: string;
+				/** Número interior (NumeroInterior). */
+				interior?: string;
+				/** Código postal (CodigoPostal). En México se deducen de él estado, municipio y localidad. */
+				zip: string;
+				/** País (Pais), c_Pais. Por omisión MEX. */
+				country?: string;
+				/** Estado (Estado): en el extranjero c_Estado para USA y CAN, o texto. */
+				state?: string;
+				/** Municipio (Municipio), en el extranjero como texto. */
+				municipality?: string;
+				/** Localidad (Localidad), en el extranjero como texto. */
+				locality?: string;
+				/** Colonia (Colonia), en el extranjero como texto. */
+				colony?: string;
+			};
+		}[];
+		/** Mercancías (Mercancia) que se transportan. */
+		goods: {
+			/** Clave del bien transportado (BienesTransp), c_ClaveProdServCP. */
+			product_key: string;
+			/** Descripción de la mercancía (Descripcion). */
+			description: string;
+			/** Cantidad (Cantidad). */
+			quantity: number;
+			/** Clave de unidad (ClaveUnidad), c_ClaveUnidad. */
+			unit_key: string;
+			/** Peso en kilogramos (PesoEnKg). */
+			weight_kg: number;
+			/** Dimensiones (Dimensiones), como 30/40/30cm o en plg. */
+			dimensions?: string;
+			/** Material peligroso (MaterialPeligroso Sí): clave UN y embalaje. */
+			hazmat?: {
+				/** Clave del material peligroso (CveMaterialPeligroso), c_MaterialPeligroso (número UN). */
+				key: string;
+				/** Tipo de embalaje (Embalaje), c_TipoEmbalaje. */
+				packaging: string;
+				/** Descripción del embalaje (DescripEmbalaje). */
+				packaging_description?: string;
+			};
+			/** Datos COFEPRIS de la mercancía: sector y lo que pide cada uno (medicamentos, precursores, psicotrópicos, sustancias tóxicas, plaguicidas). */
+			cofepris?: {
+				/** Sector COFEPRIS (SectorCOFEPRIS): 01 medicamento, 02 precursores y químicos de uso dual, 03 psicotrópicos y estupefacientes, 04 sustancias tóxicas, 05 plaguicidas y fertilizantes. */
+				sector: string;
+				/** Nombre del ingrediente activo (NombreIngredienteActivo). */
+				active_ingredient?: string;
+				/** Nombre químico (NomQuimico). */
+				chemical_name?: string;
+				/** Denominación genérica del producto (DenominacionGenericaProd). */
+				generic_name?: string;
+				/** Denominación distintiva o marca (DenominacionDistintivaProd). */
+				brand_name?: string;
+				/** Fabricante (Fabricante). */
+				manufacturer?: string;
+				/** Fecha de caducidad (FechaCaducidad), AAAA-MM-DD. */
+				expiry?: string;
+				/** Lote del medicamento (LoteMedicamento). */
+				lot?: string;
+				/** Forma farmacéutica (FormaFarmaceutica), c_FormaFarmaceutica. */
+				form?: string;
+				/** Condiciones especiales de transporte (CondicionesEspTransp), c_CondicionesEspeciales. */
+				conditions?: string;
+				/** Registro sanitario o folio de autorización (RegistroSanitarioFolioAutorizacion). */
+				sanitary_registry?: string;
+				/** Permiso de importación (PermisoImportacion). */
+				import_permit?: string;
+				/** Folio de importación VUCEM (FolioImpoVUCEM). */
+				vucem_folio?: string;
+				/** Número CAS de la sustancia (NumCAS). */
+				cas?: string;
+				/** Razón social de la empresa importadora (RazonSocialEmpImp). */
+				importer?: string;
+				/** Registro sanitario de plaguicidas COFEPRIS (NumRegSanPlagCOFEPRIS). */
+				pesticide_registry?: string;
+				/** Datos del fabricante (DatosFabricante). */
+				manufacturer_data?: string;
+				/** Datos del formulador (DatosFormulador). */
+				formulator_data?: string;
+				/** Datos del maquilador (DatosMaquilador). */
+				maquilador_data?: string;
+				/** Uso autorizado (UsoAutorizado). */
+				authorized_use?: string;
+			};
+			/** Valor de la mercancía (ValorMercancia); obligatorio en transporte aéreo. */
+			value?: number;
+			/** Moneda del valor de la mercancía (Moneda), c_Moneda. */
+			currency?: string;
+			/** Fracción arancelaria (FraccionArancelaria), 10 dígitos. Transporte internacional. */
+			tariff?: string;
+			/** UUID del CFDI con complemento de comercio exterior (UUIDComercioExt). */
+			cce_uuid?: string;
+			/** Tipo de materia (TipoMateria, c_TipoMateria) y su descripción si es «otra». */
+			material?: {
+				/** Tipo de materia (TipoMateria), c_TipoMateria. */
+				type: string;
+				/** Descripción de la materia (DescripcionMateria), con el tipo 05 otra. */
+				description?: string;
+			};
+			/** Documentación aduanera (DocumentacionAduanera) de la mercancía en transporte internacional. */
+			customs_docs?: {
+				/** Tipo de documento (TipoDocumento), c_DocumentoAduanero: 01 pedimento… */
+				type: string;
+				/** Número de pedimento (NumPedimento), con el formato «NN  NN  NNNN  NNNNNNN». Solo con el tipo 01. */
+				pedimento?: string;
+				/** Identificador del documento aduanero (IdentDocAduanero), con un tipo distinto de 01. */
+				doc_id?: string;
+				/** RFC del importador (RFCImpo), con un pedimento. */
+				importer_tax_id?: string;
+			}[];
+			/** Paquetería: guías de los paquetes o tarimas (GuiasIdentificacion). */
+			guides?: {
+				/** Número de guía (NumeroGuiaIdentificacion). */
+				number: string;
+				/** Descripción del contenido (DescripGuiaIdentificacion). */
+				description: string;
+				/** Peso en kilogramos (PesoEnKg). */
+				weight_kg: number;
+			}[];
+			/** Cuánto va a cada destino (CantidadTransporta), por destino. */
+			quantities?: {
+				/** Cantidad que va a ese destino. */
+				quantity: number;
+				/** El destino, por su posición en destinations (desde 0). */
+				destination: number;
+				/** Medio en que va esa cantidad (CvesTransporte), c_CveTransporte. */
+				mode?: "01" | "02" | "03" | "04";
+			}[];
+			/** Marítimo: detalle de la mercancía (DetalleMercancia): kilos netos, tara y piezas. */
+			detail?: {
+				/** Peso neto en kg (PesoNeto). */
+				net_kg: number;
+				/** Tara en kg (PesoTara). */
+				tare_kg: number;
+				/** Número de piezas (NumPiezas). */
+				pieces?: number;
+			};
+			/** Ferroviario: clave STCC (ClaveSTCC). */
+			stcc?: string;
+		}[];
+		/** Autotransporte (Autotransporte): vehículo, permiso SCT, seguros y remolques. */
+		vehicle?: {
+			/** Configuración vehicular (ConfigVehicular), c_ConfigAutotransporte: C2, T3S2… */
+			config: string;
+			/** Placa (PlacaVM), sin guiones ni espacios. */
+			plate: string;
+			/** Año del modelo (AnioModeloVM). */
+			year: number;
+			/** Peso bruto vehicular en toneladas (PesoBrutoVehicular). */
+			gross_weight: number;
+			/** Tipo de permiso SCT (PermSCT), c_TipoPermiso. */
+			permit_type: string;
+			/** Número de permiso SCT (NumPermisoSCT). */
+			permit_number: string;
+			/** Aseguradora de responsabilidad civil (AseguraRespCivil). */
+			insurer: string;
+			/** Póliza de responsabilidad civil (PolizaRespCivil). */
+			policy: string;
+			/** Aseguradora de daños al medio ambiente (AseguraMedAmbiente); obligatoria con material peligroso. */
+			env_insurer?: string;
+			/** Póliza de daños al medio ambiente (PolizaMedAmbiente). */
+			env_policy?: string;
+			/** Aseguradora de la carga (AseguraCarga). */
+			cargo_insurer?: string;
+			/** Póliza de la carga (PolizaCarga). */
+			cargo_policy?: string;
+			/** Prima del seguro (PrimaSeguro). */
+			premium?: number;
+			/** Remolques o semirremolques (Remolque): tipo (c_SubTipoRem) y placa. */
+			trailers?: {
+				/** Subtipo de remolque (SubTipoRem), c_SubTipoRem. */
+				type: string;
+				/** Placa del remolque (Placa). */
+				plate: string;
+			}[];
+		};
+		/** Transporte marítimo (TransporteMaritimo): embarcación, naviero y contenedores. */
+		sea?: {
+			/** Tipo de permiso SCT (PermSCT), c_TipoPermiso. */
+			permit_type?: string;
+			/** Número de permiso SCT (NumPermisoSCT). */
+			permit_number?: string;
+			/** Aseguradora de responsabilidad civil (AseguraRespCivil). */
+			insurer?: string;
+			/** Póliza de responsabilidad civil (PolizaRespCivil). */
+			policy?: string;
+			/** Tipo de embarcación (TipoEmbarcacion), c_ConfigMaritima. */
+			vessel_type: string;
+			/** Matrícula (Matricula). */
+			registration: string;
+			/** Número IMO (NumeroOMI): IMO y 7 dígitos. */
+			imo: string;
+			/** Año de la embarcación (AnioEmbarcacion). */
+			year?: number;
+			/** Nombre de la embarcación (NombreEmbarc). */
+			vessel_name?: string;
+			/** Nacionalidad de la embarcación (NacionalidadEmbarc), c_Pais. */
+			flag: string;
+			/** Unidades de arqueo bruto (UnidadesDeArqBruto). */
+			gross_tonnage: number;
+			/** Tipo de carga (TipoCarga), c_ClaveTipoCarga. */
+			cargo_type: string;
+			/** Eslora en metros (Eslora). */
+			length?: number;
+			/** Manga en metros (Manga). */
+			beam?: number;
+			/** Calado en metros (Calado). */
+			draft?: number;
+			/** Puntal en metros (Puntal). */
+			depth?: number;
+			/** Línea naviera (LineaNaviera). */
+			line?: string;
+			/** Nombre del agente naviero consignatario (NombreAgenteNaviero). */
+			agent_name: string;
+			/** Autorización del agente naviero (NumAutorizacionNaviero), c_NumAutorizacionNaviero. */
+			agent_authorization: string;
+			/** Número de viaje (NumViaje). */
+			voyage?: string;
+			/** Número de conocimiento de embarque (NumConocEmbarc). */
+			bill_of_lading?: string;
+			/** Permiso temporal de navegación (PermisoTempNavegacion), para una embarcación extranjera. */
+			temp_permit?: string;
+			/** Contenedores (Contenedor). */
+			containers?: {
+				/** Tipo de contenedor (TipoContenedor), c_ContenedorMaritimo o c_Contenedor en ferroviario. */
+				type: string;
+				/** Matrícula (Matricula). */
+				registration?: string;
+				/** Número de precinto (NumPrecinto). */
+				seal?: string;
+				/** Ferri: el IdCCP de la Carta Porte del autotransporte a bordo (IdCCPRelacionado). */
+				related_id_ccp?: string;
+				/** Ferri: placa del vehículo a bordo (PlacaVMCCP). */
+				truck_plate?: string;
+				/** Ferri: fecha de certificación de la Carta Porte del vehículo (FechaCertificacionCCP). */
+				certified_at?: string;
+				/** Remolques o semirremolques (Remolque): tipo (c_SubTipoRem) y placa. */
+				trailers?: {
+					/** Subtipo de remolque (SubTipoRem), c_SubTipoRem. */
+					type: string;
+					/** Placa del remolque (Placa). */
+					plate: string;
+				}[];
+			}[];
+		};
+		/** Transporte aéreo (TransporteAereo): permiso, guía y transportista. */
+		air?: {
+			/** Tipo de permiso SCT (PermSCT), c_TipoPermiso. */
+			permit_type: string;
+			/** Número de permiso SCT (NumPermisoSCT). */
+			permit_number: string;
+			/** Matrícula de la aeronave (MatriculaAeronave). */
+			aircraft?: string;
+			/** Aseguradora de responsabilidad civil (AseguraRespCivil). */
+			insurer?: string;
+			/** Póliza de responsabilidad civil (PolizaRespCivil). */
+			policy?: string;
+			/** Número de guía aérea (NumeroGuia), de 12 a 15 caracteres. */
+			waybill: string;
+			/** Lugar del contrato (LugarContrato). */
+			contract_place?: string;
+			/** Código del transportista (CodigoTransportista), c_CodigoTransporteAereo. */
+			carrier: string;
+			/** Embarcador (RFCEmbarcador o NumRegIdTribEmbarc y ResidenciaFiscalEmbarc, NombreEmbarcador). */
+			shipper?: {
+				/** RFC del embarcador (RFCEmbarcador). */
+				tax_id?: string;
+				/** Si es extranjero: su país de residencia (ResidenciaFiscal, c_Pais) y su número de registro tributario (NumRegIdTrib), con el RFC genérico XEXX010101000. */
+				foreign?: {
+					/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
+					tax_id: string;
+					/** País de residencia fiscal, clave de 3 letras de c_Pais (USA, CAN…). */
+					country: string;
+				};
+				/** Nombre del embarcador (NombreEmbarcador). */
+				name?: string;
+			};
+			/** Cargo por tasación (CargoPorTasacion). */
+			rate_charge?: number;
+		};
+		/** Transporte ferroviario (TransporteFerroviario): servicio, tráfico, derechos de paso y carros. */
+		rail?: {
+			/** Tipo de servicio (TipoDeServicio), c_TipoDeServicio. */
+			service: string;
+			/** Tipo de tráfico (TipoDeTrafico), c_TipoDeTrafico. */
+			traffic: string;
+			/** Aseguradora de responsabilidad civil (AseguraRespCivil). */
+			insurer?: string;
+			/** Póliza de responsabilidad civil (PolizaRespCivil). */
+			policy?: string;
+			/** Derechos de paso (DerechosDePaso): tipo y kilómetros. */
+			rights?: {
+				/** Tipo de derecho de paso (TipoDerechoDePaso), c_DerechosDePaso. */
+				type: string;
+				/** Kilometraje pagado (KilometrajePagado). */
+				km: number;
+			}[];
+			/** Carros (Carro). */
+			cars: {
+				/** Tipo de carro (TipoCarro), c_TipoCarro. */
+				type: string;
+				/** Matrícula (Matricula). */
+				registration: string;
+				/** Guía del carro (GuiaCarro). */
+				guide: string;
+				/** Toneladas netas del carro (ToneladasNetasCarro). */
+				net_tons: number;
+				/** Contenedores (Contenedor). */
+				containers?: {
+					/** Tipo de contenedor (TipoContenedor), c_ContenedorMaritimo o c_Contenedor en ferroviario. */
+					type: string;
+					/** Peso del contenedor vacío en kg (PesoContenedorVacio). */
+					empty_kg: number;
+					/** Peso neto en kg (PesoNeto). */
+					net_kg: number;
+				}[];
+			}[];
+		};
+		/** Operadores (FiguraTransporte tipo 01): RFC, licencia y nombre. */
+		drivers: {
+			/** RFC del operador (RFCFigura); vacío si es extranjero (con foreign). */
+			tax_id: string | "";
+			/** Número de licencia (NumLicencia). */
+			license: string;
+			/** Nombre del operador (NombreFigura). */
+			name: string;
+			/** Si es extranjero: su país de residencia (ResidenciaFiscal, c_Pais) y su número de registro tributario (NumRegIdTrib), con el RFC genérico XEXX010101000. */
+			foreign?: {
+				/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
+				tax_id: string;
+				/** País de residencia fiscal, clave de 3 letras de c_Pais (USA, CAN…). */
+				country: string;
+			};
+		}[];
+		/** Otras figuras de transporte: 02 propietario, 03 arrendador, 04 notificado, 05 integrante de coordinados. */
+		figures?: {
+			/** Tipo de figura (TipoFigura): 02 propietario, 03 arrendador, 04 notificado, 05 integrante. */
+			type: "02" | "03" | "04" | "05";
+			/** RFC de la figura (RFCFigura). */
+			tax_id?: string;
+			/** Si es extranjero: su país de residencia (ResidenciaFiscal, c_Pais) y su número de registro tributario (NumRegIdTrib), con el RFC genérico XEXX010101000. */
+			foreign?: {
+				/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
+				tax_id: string;
+				/** País de residencia fiscal, clave de 3 letras de c_Pais (USA, CAN…). */
+				country: string;
+			};
+			/** Nombre de la figura (NombreFigura). */
+			name: string;
+			/** Partes del transporte que posee o arrienda (ParteTransporte), c_ParteTransporte. */
+			parts?: string[];
+			/** Domicilio (Domicilio). En México basta el código postal: estado, municipio y localidad se toman de c_CodigoPostal. */
+			address?: {
+				/** Calle (Calle). */
+				street?: string;
+				/** Número exterior (NumeroExterior). */
+				exterior?: string;
+				/** Número interior (NumeroInterior). */
+				interior?: string;
+				/** Código postal (CodigoPostal). En México se deducen de él estado, municipio y localidad. */
+				zip: string;
+				/** País (Pais), c_Pais. Por omisión MEX. */
+				country?: string;
+				/** Estado (Estado): en el extranjero c_Estado para USA y CAN, o texto. */
+				state?: string;
+				/** Municipio (Municipio), en el extranjero como texto. */
+				municipality?: string;
+				/** Localidad (Localidad), en el extranjero como texto. */
+				locality?: string;
+				/** Colonia (Colonia), en el extranjero como texto. */
+				colony?: string;
+			};
+		}[];
+	};
+	/** Complemento INE (procesos electorales). */
+	ine?: {
+		/** Tipo de proceso (TipoProceso): Ordinario, Precampaña o Campaña. */
+		process: "Ordinario" | "Precampaña" | "Campaña";
+		/** Tipo de comité (TipoComite), con el proceso Ordinario. */
+		committee?: "Ejecutivo Nacional" | "Ejecutivo Estatal" | "Directivo Estatal";
+		/** Clave de contabilidad (IdContabilidad), hasta 6 dígitos. */
+		accounting_id?: string;
+		/** Entidades (Entidad): clave del estado, ámbito y claves de contabilidad. */
+		entities?: {
+			/** Clave de la entidad (ClaveEntidad), 3 letras. */
+			key: string;
+			/** Ámbito (Ambito): Local o Federal. */
+			scope?: "Local" | "Federal";
+			/** Claves de contabilidad (IdContabilidad). */
+			accounting_ids?: string[];
+		}[];
+	};
+	/** Complemento de leyendas fiscales. */
+	leyendas?: {
+		/** Texto de la leyenda (textoLeyenda). */
+		text: string;
+		/** Disposición fiscal (disposicionFiscal), por ejemplo LISR. */
+		disposition?: string;
+		/** Norma o artículo (norma). */
+		norm?: string;
+	}[];
+	/** Complemento de donatarias. */
+	donation?: {
+		/** true si el donativo es en especie (va sin forma de pago en efectivo). */
+		in_kind?: boolean;
+		/** true si el donativo es deducible para quien lo da. */
+		deducted?: boolean;
+	};
+	/** Impuestos locales (complemento implocal): traslados y retenciones estatales. */
+	local_taxes?: {
+		/** true si es una retención local; false si es un traslado. */
+		retention: boolean;
+		/** Nombre del impuesto local (ImpLocTrasladado o ImpLocRetenido), como ISH. */
+		name: string;
+		/** Tasa en por ciento (TasadeTraslado o TasadeRetencion). */
+		rate: number;
+		/** Importe del impuesto local. */
+		amount: number;
+	}[];
+	/** Exportación (Exportacion), c_Exportacion: 01 no aplica (por omisión), 02 definitiva… */
+	export?: "01" | "02" | "03" | "04";
+	/** Complemento de comercio exterior 2.0. */
+	comercio_exterior?: {
+		/** Motivo de traslado (MotivoTraslado): 05 envío de mercancías propias. */
+		motive?: "05";
+		/** Propietarios de la mercancía si no es el emisor (Propietario), con motive 05. */
+		owners?: {
+			/** Número de registro tributario del propietario (NumRegIdTrib). */
+			tax_id: string;
+			/** País de residencia del propietario (ResidenciaFiscal), c_Pais. */
+			country: string;
+		}[];
+		/** Incoterm (Incoterm), c_INCOTERM: EXW, FOB, CIF, DAP, DDP… */
+		incoterm?: string;
+		/** Número de certificado de origen (NumCertificadoOrigen). */
+		certificate?: string;
+		/** Tipo de cambio a dólares (TipoCambioUSD). */
+		usd_rate: number;
+		/** CURP del emisor persona física (Emisor Curp). */
+		issuer_curp?: string;
+		/** Domicilio del emisor (Emisor Domicilio): calle y números; lo demás sale de su código postal. */
+		issuer_address?: {
+			/** Calle (Calle). */
+			street: string;
+			/** Número exterior (NumeroExterior). */
+			exterior?: string;
+			/** Número interior (NumeroInterior). */
+			interior?: string;
+			/** Código postal del emisor (CodigoPostal). */
+			zip?: string;
+		};
+		/** Domicilio del receptor en el extranjero (Receptor Domicilio). */
+		receiver_address?: {
+			/** Calle (Calle). */
+			street: string;
+			/** Número exterior (NumeroExterior). */
+			exterior?: string;
+			/** Número interior (NumeroInterior). */
+			interior?: string;
+			/** Colonia (Colonia), en el extranjero como texto. */
+			colony?: string;
+			/** Localidad (Localidad), en el extranjero como texto. */
+			locality?: string;
+			/** Municipio (Municipio), en el extranjero como texto. */
+			municipality?: string;
+			/** Estado (Estado), c_Estado para USA y CAN. */
+			state?: string;
+			/** País (Pais), c_Pais. */
+			country: string;
+			/** Código postal en su país (CodigoPostal). */
+			zip: string;
+		};
+		/** Destinatario, si no es el receptor (Destinatario). */
+		recipient?: {
+			/** Nombre del destinatario (Nombre). */
+			name?: string;
+			/** Número de registro tributario del destinatario (NumRegIdTrib). */
+			tax_id?: string;
+			/** Domicilio del destinatario (Domicilio). */
+			address: {
+				/** Calle (Calle). */
+				street: string;
+				/** Número exterior (NumeroExterior). */
+				exterior?: string;
+				/** Número interior (NumeroInterior). */
+				interior?: string;
+				/** Colonia (Colonia), en el extranjero como texto. */
+				colony?: string;
+				/** Localidad (Localidad), en el extranjero como texto. */
+				locality?: string;
+				/** Municipio (Municipio), en el extranjero como texto. */
+				municipality?: string;
+				/** Estado (Estado): en el extranjero c_Estado para USA y CAN, o texto. */
+				state?: string;
+				/** País (Pais), c_Pais. Por omisión MEX. */
+				country: string;
+				/** Código postal (CodigoPostal). En México se deducen de él estado, municipio y localidad. */
+				zip: string;
+			};
+		};
+		/** Mercancías (Mercancia), una por concepto exportado. */
+		goods: {
+			/** Número de identificación de la mercancía (NoIdentificacion): el sku de su concepto. */
+			id?: string;
+			/** Fracción arancelaria (FraccionArancelaria), 10 dígitos. Transporte internacional. */
+			tariff?: string;
+			/** Unidad aduana (UnidadAduana), c_UnidadAduana. */
+			unit: string;
+			/** Cantidad en la unidad aduana (CantidadAduana). */
+			quantity?: number;
+			/** Valor unitario en dólares (ValorUnitarioAduana). */
+			unit_value_usd?: number;
+		}[];
+		/** Observaciones del complemento (Observaciones). */
+		notes?: string;
+	};
+	/** Factura global a público en general (InformacionGlobal): periodicidad, meses y año. */
+	global?: {
+		/** Periodicidad (Periodicidad), c_Periodicidad: 01 diario, 02 semanal, 03 quincenal, 04 mensual, 05 bimestral. */
+		periodicity: string;
+		/** Meses (Meses), c_Meses: 01 a 12, o 13 a 18 bimestres. */
+		months: string;
+		/** Año (Año). */
+		year: number;
+	};
+	/** Uso del CFDI (UsoCFDI), clave de c_UsoCFDI. Por omisión G03, o S01 con régimen 616. */
+	use?: string;
+	/** Forma de pago (FormaPago), clave de c_FormaPago: 01 efectivo, 03 transferencia, 04 tarjeta de crédito, 28 débito, 99 por definir… Obligatoria con PUE; con PPD es 99. */
+	payment_form?: string;
+	/** Método de pago (MetodoPago): PUE (una sola exhibición, por omisión) o PPD (en parcialidades o diferido, se cobra con complementos de pago). */
+	payment_method?: "PUE" | "PPD";
+	/** Con PUE: true si aún no le pagan («Por cobrar» en la app) aunque se pagará este mes. */
+	paid_later?: boolean;
+	/** Moneda, clave ISO 4217 de c_Moneda (MXN, USD, EUR…). Por omisión MXN. */
+	currency?: string;
+	/** Serie (Serie), hasta 25 caracteres. Cada serie lleva sus propios folios. */
+	series?: string;
+	/** Observaciones que aparecen en el PDF (no van en el XML). */
+	notes?: string;
+	/** Idioma del PDF: es (por omisión) o en. */
+	pdf_language?: "es" | "en" | "bi";
+	/** Addenda del receptor (Walmart, Soriana…), con sus propios campos. */
+	addenda?: {
+		type: "walmart" | "soriana" | "liverpool" | "homedepot" | "chedraui" | "generic";
+		values: Record<string, string>;
+		customer?: Record<string, string>;
+	};
+	/** CFDI relacionados (CfdiRelacionados): tipo de relación de c_TipoRelacion y los UUID. */
+	related?: {
+		/** Tipo de relación (TipoRelacion): 01 nota de crédito, 03 devolución, 04 sustitución, 07 anticipo… */
+		relationship: string;
+		/** Folios fiscales relacionados. */
+		uuids: string[];
+	};
+	/** Tipo de cambio a pesos (TipoCambio). Obligatorio si la moneda no es MXN; use el del DOF del día anterior. */
+	exchange_rate?: number;
+	/** Folio (Folio). Fiscalisto asigna el siguiente de la serie; mande uno solo si debe ser ese. */
+	folio?: number;
+	/** Con un folio elegido: true para que los siguientes sigan desde ese número. */
+	continue_sequence?: boolean;
+	/** Fecha de emisión (Fecha) si no es ahora, AAAA-MM-DDTHH:MM:SS hora de la Ciudad de México: hasta 72 horas antes. */
+	date?: string;
+	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
+	send_email?: boolean;
+	/** Correos con copia, separados por comas. */
+	email_cc?: string | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
+}
+
+export interface CreateIssuerParams {
+	/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+	tax_id: string;
+	/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+	legal_name: string;
+	/** Régimen fiscal (RegimenFiscal), clave de c_RegimenFiscal: 601, 612, 626… */
+	tax_system: string;
+	/** Código postal del domicilio fiscal, 5 dígitos, como en la constancia de situación fiscal. El de un emisor es el lugar de expedición (LugarExpedicion) de sus comprobantes. */
+	zip: string;
+	/** Registro patronal ante el IMSS (RegistroPatronal), 11 caracteres. Necesario para timbrar nómina. */
+	employer_registration?: string | null;
+	/** CURP, 18 caracteres. */
+	curp?: string | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
+}
+
+/** Los parámetros de GET /v1/issuers. */
+export interface ListIssuersParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** Solo el de este RFC. */
+	tax_id?: string;
+	/** true para incluir los archivados. */
+	include_archived?: boolean;
+}
+
+export interface UpdateIssuerParams {
+	/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+	legal_name?: string;
+	/** Régimen fiscal (RegimenFiscal), clave de c_RegimenFiscal: 601, 612, 626… */
+	tax_system?: string;
+	/** Código postal del domicilio fiscal, 5 dígitos, como en la constancia de situación fiscal. El de un emisor es el lugar de expedición (LugarExpedicion) de sus comprobantes. */
+	zip?: string;
+	/** Registro patronal ante el IMSS (RegistroPatronal), 11 caracteres. Necesario para timbrar nómina. */
+	employer_registration?: string | null;
+	/** CURP, 18 caracteres. */
+	curp?: string | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string> | null;
+}
+
+export interface UploadCertificateParams {
+	/** El archivo .cer en base64 (puede traer el prefijo data:). */
+	cer: string;
+	/** El archivo .key en base64 (puede traer el prefijo data:). */
+	key: string;
+	/** La contraseña de la llave privada (.key). Se usa para abrirla y no se guarda en texto. */
+	password: string;
+}
+
+export interface SignEfirmaParams {
+	/** El archivo .cer en base64 (puede traer el prefijo data:). */
+	cer: string;
+	/** El archivo .key en base64 (puede traer el prefijo data:). */
+	key: string;
+	/** La contraseña de la llave privada (.key). Se usa para abrirla y no se guarda en texto. */
+	password: string;
+}
+
+/** Los parámetros de GET /v1/invoices. */
+export interface ListInvoicesParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** valid, pending, canceled, rejected o processing. */
+	status?: "valid" | "pending" | "canceled" | "rejected" | "processing";
+	/** I, E, P, T o N. */
+	type?: "I" | "E" | "P" | "T" | "N";
+	/** RFC del cliente. */
+	customer?: string;
+	/** Creadas desde, en ISO 8601. Un día solo (2026-10-01) cuenta desde su inicio en hora de la Ciudad de México. */
+	created_gte?: string;
+	/** Creadas hasta, en ISO 8601. Un día solo (2026-10-31) incluye el día completo en hora de la Ciudad de México. */
+	created_lte?: string;
+}
+
+/** Los parámetros de GET /v1/invoices/{id}. */
+export interface GetInvoiceParams {
+	/** Con un UUID en vez del id, el emisor (iss_…) si la cuenta tiene varios. */
+	issuer?: string;
+	/** true para preguntar su estado al SAT ahora (cancelaciones en espera). */
+	refresh?: boolean;
+}
+
+/** Los parámetros de GET /v1/invoices/{id}/pdf. */
+export interface GetInvoicePdfParams {
+	/** Con un UUID en vez del id, el emisor (iss_…) si la cuenta tiene varios. */
+	issuer?: string;
+}
+
+/** Los parámetros de GET /v1/invoices/{id}/xml. */
+export interface GetInvoiceXmlParams {
+	/** Con un UUID en vez del id, el emisor (iss_…) si la cuenta tiene varios. */
+	issuer?: string;
+}
+
+export interface SendInvoiceParams {
+	/** A quién (correos separados por comas). */
+	to?: string;
+	/** Con copia (correos separados por comas). */
+	cc?: string | null;
+}
+
+export interface CancelInvoiceParams {
+	/** Motivo de cancelación (c_MotivoCancelacion): 01 con errores con relación (lleva substitution), 02 con errores sin relación (por omisión), 03 no se llevó a cabo, 04 nominativa en una global. */
+	motive?: "01" | "02" | "03" | "04";
+	/** El comprobante que sustituye a este (su id o su UUID), con el motivo 01. */
+	substitution?: string;
+}
+
+export interface CreatePaymentParams {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** Fecha en que le pagaron (FechaPago), AAAA-MM-DD. Por omisión hoy. */
+	date?: string;
+	/** Forma de pago (FormaPago), clave de c_FormaPago: 01 efectivo, 03 transferencia, 04 tarjeta de crédito, 28 débito, 99 por definir… Obligatoria con PUE; con PPD es 99. */
+	payment_form: string;
+	/** Número de operación del pago (NumOperacion), como el rastreo SPEI. */
+	operation_number?: string | null;
+	/** Moneda, clave ISO 4217 de c_Moneda (MXN, USD, EUR…). Por omisión MXN. */
+	currency?: string;
+	/** Tipo de cambio a pesos (TipoCambio). Obligatorio si la moneda no es MXN; use el del DOF del día anterior. */
+	exchange_rate?: number | null;
+	/** Serie (Serie), hasta 25 caracteres. Cada serie lleva sus propios folios. */
+	series?: string;
+	/** Las facturas que paga (DoctoRelacionado). */
+	documents: {
+		/** La factura (inv_… o su UUID). */
+		invoice: string;
+		/** Lo que se paga de esa factura (ImpPagado), en la moneda de la factura. */
+		amount: number;
+		/** Solo si la factura es de otra moneda que el pago: lo que recibió por ella en la moneda del pago. Fiscalisto calcula la equivalencia (EquivalenciaDR). */
+		received?: number | null;
+	}[];
+	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
+	send_email?: boolean;
+	/** Correo a donde se envía (varios separados por comas). Solo se usa si se pide enviarlo. */
+	email?: string;
+	/** Correos con copia, separados por comas. */
+	email_cc?: string | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
+}
+
+export interface CreateCreditNoteParams {
+	/** La factura (inv_… o su UUID). */
+	invoice: string;
+	/** Importe de la nota antes de impuestos: Fiscalisto agrega el IVA y las retenciones de la factura en la misma proporción. */
+	amount: number;
+	/** Descripción del concepto de la nota (Descripcion), como «Descuento por pronto pago». */
+	description?: string;
+	/** Forma de pago (FormaPago), clave de c_FormaPago: 01 efectivo, 03 transferencia, 04 tarjeta de crédito, 28 débito, 99 por definir… Obligatoria con PUE; con PPD es 99. */
+	payment_form: string;
+	/** Tipo de relación (TipoRelacion): 01 nota de crédito, 03 devolución, 04 sustitución, 07 anticipo… */
+	relationship?: "01" | "03";
+	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
+	send_email?: boolean;
+	/** Correo a donde se envía (varios separados por comas). Solo se usa si se pide enviarlo. */
+	email?: string;
+	/** Correos con copia, separados por comas. */
+	email_cc?: string | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
+}
+
+export interface CreateAdvanceParams {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** Cliente (Receptor): el id de uno de su catálogo (cus_…) o sus datos en un objeto. */
+	customer: unknown;
+	/** Uso del CFDI (UsoCFDI), clave de c_UsoCFDI. Por omisión G03, o S01 con régimen 616. */
+	use?: string;
+	/** Lo que pagó el cliente, con IVA incluido. */
+	amount: number;
+	/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
+	iva?: "0" | "0.16" | "0.08" | "exento";
+	/** Forma de pago (FormaPago), clave de c_FormaPago: 01 efectivo, 03 transferencia, 04 tarjeta de crédito, 28 débito, 99 por definir… Obligatoria con PUE; con PPD es 99. */
+	payment_form: string;
+	/** Moneda, clave ISO 4217 de c_Moneda (MXN, USD, EUR…). Por omisión MXN. */
+	currency?: string;
+	/** Tipo de cambio a pesos (TipoCambio). Obligatorio si la moneda no es MXN; use el del DOF del día anterior. */
+	exchange_rate?: number;
+	/** Serie (Serie), hasta 25 caracteres. Cada serie lleva sus propios folios. */
+	series?: string;
+	/** Observaciones que aparecen en el PDF (no van en el XML). */
+	notes?: string;
+	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
+	send_email?: boolean;
+	/** Correos con copia, separados por comas. */
+	email_cc?: unknown;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: unknown;
+}
+
+/** Los parámetros de GET /v1/advances. */
+export interface ListAdvancesParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** RFC del cliente. */
+	customer?: string;
+}
+
+/** El cuerpo de POST /v1/invoices (la factura de lo vendido) con method y remainder. */
+export type ApplyAdvanceParams = {
+	/** egreso (la factura completa y después una nota de crédito por el anticipo, opción A) o remanente (la factura solo por lo que falta, opción B). */
+	method?: "egreso" | "remanente";
+	/** Cómo se paga lo que falta del anticipo: ahora con su forma de pago, o después (PPD). */
+	remainder?: {
+		/** true si lo que falta se paga ahora (PUE); false si después (PPD). */
+		paid_now: boolean;
+		/** Forma de pago (FormaPago), clave de c_FormaPago: 01 efectivo, 03 transferencia, 04 tarjeta de crédito, 28 débito, 99 por definir… Obligatoria con PUE; con PPD es 99. */
+		payment_form?: string;
+	};
+} & InvoiceCreate;
+
+export interface CreateRetentionParams {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** Clave de la retención (CveRetenc), c_CveRetenc: 01 servicios profesionales, 05 arrendamiento, 14 dividendos, 16 intereses, 18 pagos al extranjero… */
+	code: string;
+	/** Descripción de la retención (DescRetenc); obligatoria con la clave 25 (otro tipo). */
+	description?: string | null;
+	/** Receptor de la constancia (Receptor): nacional con RFC y código postal, o extranjero. */
+	recipient: {
+		/** true si el receptor es extranjero (sin RFC). */
+		foreign?: boolean;
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id?: string | null;
+		/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+		legal_name: string;
+		/** Código postal del domicilio fiscal, 5 dígitos, como en la constancia de situación fiscal. El de un emisor es el lugar de expedición (LugarExpedicion) de sus comprobantes. */
+		zip?: string;
+		/** CURP, 18 caracteres. */
+		curp?: string | null;
+	};
+	/** Periodo (Periodo): mes inicial, mes final y año. */
+	period: {
+		/** Año (Ejercicio). */
+		year: number;
+		/** Un solo mes, del 1 al 12 (MesIni y MesFin iguales). */
+		month?: number;
+		/** Mes inicial (MesIni), 1 a 12. */
+		from_month?: number;
+		/** Mes final (MesFin), 1 a 12, del mismo año. */
+		to_month?: number;
+	};
+	/** Totales (Totales). */
+	totals: {
+		/** Monto total de la operación (MontoTotOperacion). */
+		operation: number;
+		/** Monto gravado (MontoTotGrav). Por omisión, operation menos exempt. */
+		taxed?: number;
+		/** Monto exento (MontoTotExent). Por omisión 0. */
+		exempt?: number;
+	};
+	/** Impuestos del comprobante, por tipo. */
+	taxes: {
+		/** Impuesto: isr, iva o ieps (ImpuestoRet 001, 002, 003). */
+		tax: string;
+		/** Base del impuesto retenido (BaseRet). */
+		base: number;
+		/** Monto retenido (MontoRet). */
+		amount: number;
+		/** Tipo de pago de la retención (TipoPagoRet): 01 definitivo IVA, 02 definitivo IEPS, 03 definitivo ISR, 04 provisional ISR. Por omisión el usual de cada impuesto. */
+		payment_type?: string;
+	}[];
+	/** Complemento de dividendos. */
+	dividends?: {
+		/** Tipo de dividendo o utilidad distribuida (CveTipDivOUtil), c_TipoDividendoOUtilidadDistribuida. */
+		type: "01" | "02" | "03" | "04" | "05" | "06";
+		/** ISR acreditable en México (MontISRAcredRetMexico). */
+		isr_mexico: number;
+		/** ISR acreditable en el extranjero (MontISRAcredRetExtranjero). */
+		isr_foreign: number;
+		/** Retención en el extranjero sobre dividendos (MontRetExtDivExt). */
+		foreign_retention?: number | null;
+		/** Tipo de sociedad que distribuye (TipoSocDistrDiv): nacional o extranjera. */
+		company: "nacional" | "extranjera";
+		/** ISR acreditable nacional (MontISRAcredNal). */
+		national_credit?: number | null;
+		/** Dividendo acumulable nacional (MontDivAcumNal). */
+		accumulated_national?: number | null;
+		/** Dividendo acumulable extranjero (MontDivAcumExt). */
+		accumulated_foreign?: number | null;
+	};
+	/** Complemento de intereses. */
+	interest?: {
+		/** true si los intereses vienen del sistema financiero (SistFinanciero). */
+		financial_system: boolean;
+		/** true si se retiraron los intereses en el periodo (RetiroAORESRetInt). */
+		retirement: boolean;
+		/** true si son operaciones financieras derivadas (OperFinancDerivad). */
+		derivatives: boolean;
+		/** Interés nominal (MontIntNominal). */
+		nominal: number;
+		/** Interés real (MontIntReal). */
+		real: number;
+		/** Pérdida (Perdida). */
+		loss: number;
+	};
+	/** Complemento de pagos a extranjeros. */
+	foreign_payment?: {
+		/** true si quien recibe es el beneficiario efectivo (EsBenefEfectDelCobro). */
+		beneficiary: boolean;
+		/** País de residencia del extranjero (PaisDeResidParaEfecFisc), 2 letras. */
+		country?: string | null;
+		/** Concepto del pago (ConceptoPago), c_TipoContribuyenteSujetoRetencion. */
+		concept: "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
+		/** Descripción del concepto (DescripcionConcepto). */
+		description: string;
+		/** RFC del beneficiario, si no es quien recibe (RFC). */
+		beneficiary_tax_id?: string | null;
+		/** CURP del beneficiario (CURP). */
+		beneficiary_curp?: string | null;
+		/** Nombre o razón social del beneficiario (NomDenRazSocB). */
+		beneficiary_name?: string | null;
+	};
+	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
+	send_email?: boolean;
+	/** Correo a donde se envía (varios separados por comas). Solo se usa si se pide enviarlo. */
+	email?: string;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
+}
+
+/** Los parámetros de GET /v1/retentions. */
+export interface ListRetentionsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** valid, canceled, rejected o processing. */
+	status?: "valid" | "canceled" | "rejected" | "processing";
+	/** RFC del receptor. */
+	recipient?: string;
+	/** Ejercicio, 4 dígitos. */
+	year?: string;
+}
+
+/** Los parámetros de GET /v1/retentions/{id}. */
+export interface GetRetentionParams {
+	/** Con un UUID en vez del id, el emisor (iss_…) si la cuenta tiene varios. */
+	issuer?: string;
+	/** true para preguntar su estado al SAT ahora (cancelaciones en espera). */
+	refresh?: boolean;
+}
+
+/** Los parámetros de GET /v1/retentions/{id}/pdf. */
+export interface GetRetentionPdfParams {
+	/** Con un UUID en vez del id, el emisor (iss_…) si la cuenta tiene varios. */
+	issuer?: string;
+}
+
+/** Los parámetros de GET /v1/retentions/{id}/xml. */
+export interface GetRetentionXmlParams {
+	/** Con un UUID en vez del id, el emisor (iss_…) si la cuenta tiene varios. */
+	issuer?: string;
+}
+
+export interface SendRetentionParams {
+	/** A quién (correos separados por comas). */
+	to?: string;
+}
+
+export interface CancelRetentionParams {
+	/** Motivo de cancelación (c_MotivoCancelacion): 01 con errores con relación (lleva substitution), 02 con errores sin relación (por omisión), 03 no se llevó a cabo, 04 nominativa en una global. */
+	motive?: "01" | "02" | "03" | "04";
+	/** El comprobante que sustituye a este (su id o su UUID), con el motivo 01. */
+	substitution?: string;
+}
+
+export interface CreateEmployeeParams {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** Número de empleado (NumEmpleado). */
+	number: string;
+	/** Nombre completo del empleado, como en su constancia de situación fiscal. */
+	name: string;
+	/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+	tax_id: string;
+	/** CURP, 18 caracteres. */
+	curp: string;
+	/** Número de seguridad social (NumSeguridadSocial), 11 dígitos. */
+	social_security_number: string;
+	/** Código postal del domicilio fiscal, 5 dígitos, como en la constancia de situación fiscal. El de un emisor es el lugar de expedición (LugarExpedicion) de sus comprobantes. */
+	zip: string;
+	/** Correo del empleado, a donde van sus recibos con send_email. */
+	email?: string | null;
+	/** Fecha de inicio de la relación laboral (FechaInicioRelLaboral), AAAA-MM-DD. */
+	start_date: string;
+	/** Último día trabajado si ya no trabaja ahí, AAAA-MM-DD. */
+	end_date?: string | null;
+	/** Salario diario. */
+	daily_salary: number;
+	/** Salario diario integrado (SalarioDiarioIntegrado): no menor al salario diario. */
+	integrated_daily_salary: number;
+	/** Tipo de contrato (TipoContrato), c_TipoContrato. Por omisión 01, por tiempo indeterminado. */
+	contract_type?: "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08";
+	/** Tipo de jornada (TipoJornada), c_TipoJornada. Por omisión 01, diurna. */
+	workday_type?: string;
+	/** Periodicidad del pago (PeriodicidadPago): 02 semanal, 03 catorcenal, 04 quincenal (por omisión), 05 mensual. */
+	periodicity?: string;
+	/** Clase de riesgo del puesto ante el IMSS (RiesgoPuesto), 1 a 5. Por omisión 1. */
+	risk_class?: string;
+	/** Entidad federativa donde trabaja (ClaveEntFed): JAL, CMX, NLE… */
+	state: string;
+	/** true si trabaja en la zona libre de la frontera norte (salario mínimo de frontera). */
+	border_zone?: boolean;
+	/** true si es sindicalizado (Sindicalizado). */
+	unionized?: boolean;
+	/** Departamento (Departamento). */
+	department?: string | null;
+	/** Puesto (Puesto). */
+	position?: string | null;
+}
+
+/** Los parámetros de GET /v1/employees. */
+export interface ListEmployeesParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface UpdateEmployeeParams {
+	/** Número de empleado (NumEmpleado). */
+	number?: string;
+	/** Nombre completo del empleado, como en su constancia de situación fiscal. */
+	name?: string;
+	/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+	tax_id?: string;
+	/** CURP, 18 caracteres. */
+	curp?: string;
+	/** Número de seguridad social (NumSeguridadSocial), 11 dígitos. */
+	social_security_number?: string;
+	/** Código postal del domicilio fiscal, 5 dígitos, como en la constancia de situación fiscal. El de un emisor es el lugar de expedición (LugarExpedicion) de sus comprobantes. */
+	zip?: string;
+	/** Correo del empleado, a donde van sus recibos con send_email. */
+	email?: string | null;
+	/** Fecha de inicio de la relación laboral (FechaInicioRelLaboral), AAAA-MM-DD. */
+	start_date?: string;
+	/** Último día trabajado si ya no trabaja ahí, AAAA-MM-DD. */
+	end_date?: string | null;
+	/** Salario diario. */
+	daily_salary?: number;
+	/** Salario diario integrado (SalarioDiarioIntegrado): no menor al salario diario. */
+	integrated_daily_salary?: number;
+	/** Tipo de contrato (TipoContrato), c_TipoContrato. Por omisión 01, por tiempo indeterminado. */
+	contract_type?: "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08";
+	/** Tipo de jornada (TipoJornada), c_TipoJornada. Por omisión 01, diurna. */
+	workday_type?: string;
+	/** Periodicidad del pago (PeriodicidadPago): 02 semanal, 03 catorcenal, 04 quincenal (por omisión), 05 mensual. */
+	periodicity?: string;
+	/** Clase de riesgo del puesto ante el IMSS (RiesgoPuesto), 1 a 5. Por omisión 1. */
+	risk_class?: string;
+	/** Entidad federativa donde trabaja (ClaveEntFed): JAL, CMX, NLE… */
+	state?: string;
+	/** true si trabaja en la zona libre de la frontera norte (salario mínimo de frontera). */
+	border_zone?: boolean;
+	/** true si es sindicalizado (Sindicalizado). */
+	unionized?: boolean;
+	/** Departamento (Departamento). */
+	department?: string | null;
+	/** Puesto (Puesto). */
+	position?: string | null;
+}
+
+export interface CreatePayrollReceiptParams {
+	/** El empleado (emp_…). */
+	employee: string;
+	/** Periodo (Periodo): mes inicial, mes final y año. */
+	period: {
+		/** Primer día del periodo (FechaInicialPago), AAAA-MM-DD. */
+		start: string;
+		/** Último día del periodo (FechaFinalPago), AAAA-MM-DD. */
+		end: string;
+		/** Fecha de pago (FechaPago), AAAA-MM-DD. Por omisión el último día del periodo. */
+		payment_date?: string;
+	};
+	/** Días pagados (NumDiasPagados). Por omisión, todos los del periodo que le tocan. */
+	days?: number;
+	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
+	send_email?: boolean;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
+}
+
+export interface PreviewPayrollReceiptParams {
+	/** El empleado (emp_…). */
+	employee: string;
+	/** Periodo (Periodo): mes inicial, mes final y año. */
+	period: {
+		/** Primer día del periodo (FechaInicialPago), AAAA-MM-DD. */
+		start: string;
+		/** Último día del periodo (FechaFinalPago), AAAA-MM-DD. */
+		end: string;
+		/** Fecha de pago (FechaPago), AAAA-MM-DD. Por omisión el último día del periodo. */
+		payment_date?: string;
+	};
+	/** Días pagados (NumDiasPagados). Por omisión, todos los del periodo que le tocan. */
+	days?: number;
+	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
+	send_email?: boolean;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
+}
+
+export interface CreateInvoiceBatchParams {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** Nombre del lote, para usted. */
+	name?: string;
+	/** Las facturas, como el cuerpo de POST /v1/invoices, con reference opcional. */
+	invoices: (InvoiceCreate & {
+		/** Su identificador de esta factura (su número de pedido), hasta 100 caracteres. */
+		reference?: string;
+	})[];
+}
+
+/** Los parámetros de GET /v1/invoice_batches. */
+export interface ListInvoiceBatchesParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface CreateCustomerParams {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+	tax_id: string;
+	/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+	legal_name: string;
+	/** Régimen fiscal (RegimenFiscal), clave de c_RegimenFiscal: 601, 612, 626… */
+	tax_system: string;
+	/** Código postal del domicilio fiscal, 5 dígitos, como en la constancia de situación fiscal. El de un emisor es el lugar de expedición (LugarExpedicion) de sus comprobantes. */
+	zip: string;
+	/** Correo del cliente (varios separados por comas), a donde van sus facturas con send_email. */
+	email?: string | null;
+	/** Uso del CFDI (UsoCFDI), clave de c_UsoCFDI. Por omisión G03, o S01 con régimen 616. */
+	use?: string;
+	/** Si es extranjero: su país de residencia (ResidenciaFiscal, c_Pais) y su número de registro tributario (NumRegIdTrib), con el RFC genérico XEXX010101000. */
+	foreign?: {
+		/** País de residencia fiscal, clave de 3 letras de c_Pais (USA, CAN…). */
+		country: string;
+		/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
+		tax_id: string;
+	} | null;
+	/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio. */
+	ieps_taxpayer?: boolean;
+}
+
+/** Los parámetros de GET /v1/customers. */
+export interface ListCustomersParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Solo el de este RFC. */
+	tax_id?: string;
+}
+
+export interface UpdateCustomerParams {
+	/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+	tax_id?: string;
+	/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+	legal_name?: string;
+	/** Régimen fiscal (RegimenFiscal), clave de c_RegimenFiscal: 601, 612, 626… */
+	tax_system?: string;
+	/** Código postal del domicilio fiscal, 5 dígitos, como en la constancia de situación fiscal. El de un emisor es el lugar de expedición (LugarExpedicion) de sus comprobantes. */
+	zip?: string;
+	/** Correo del cliente (varios separados por comas), a donde van sus facturas con send_email. */
+	email?: string | null;
+	/** Uso del CFDI (UsoCFDI), clave de c_UsoCFDI. Por omisión G03, o S01 con régimen 616. */
+	use?: string;
+	/** Si es extranjero: su país de residencia (ResidenciaFiscal, c_Pais) y su número de registro tributario (NumRegIdTrib), con el RFC genérico XEXX010101000. */
+	foreign?: {
+		/** País de residencia fiscal, clave de 3 letras de c_Pais (USA, CAN…). */
+		country: string;
+		/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
+		tax_id: string;
+	} | null;
+	/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio. */
+	ieps_taxpayer?: boolean;
+}
+
+export interface CreateProductParams {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** Nombre corto para encontrarlo, solo para usted; en el CFDI va description. */
+	name?: string | null;
+	/** Descripción. */
+	description: string;
+	/** Clave del producto o servicio (ClaveProdServ), 8 dígitos de c_ClaveProdServ. Búsquela con GET /v1/sat_catalogs/product_keys?q=… */
+	product_key: string;
+	/** Clave de unidad (ClaveUnidad) de c_ClaveUnidad: E48 unidad de servicio (por omisión), H87 pieza, ACT actividad… */
+	unit_key?: string;
+	/** Nombre de la unidad (Unidad), hasta 20 caracteres. */
+	unit_name?: string | null;
+	/** Número de identificación o SKU (NoIdentificacion). */
+	sku?: string | null;
+	/** Precio unitario antes de impuestos (ValorUnitario). */
+	unit_price: number;
+	/** Objeto de impuesto (ObjetoImp), c_ObjetoImp: 01 no objeto, 02 sí objeto (por omisión), 03 sin desglose, 04 no causa… */
+	taxability?: "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08";
+	/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
+	iva?: "0" | "0.16" | "0.08" | "exento";
+	/** IEPS trasladado: tasa (0.265…) o cuota en pesos por unidad, según ieps_factor. */
+	ieps?: number | null;
+	/** Tasa o Cuota (TipoFactor del IEPS). */
+	ieps_factor?: "Tasa" | "Cuota";
+	/** Tasa de IVA retenido (por ejemplo 0.106667, dos terceras partes del 16%). */
+	iva_retention?: number;
+	/** Tasa de ISR retenido (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
+	isr_retention?: number;
+}
+
+/** Los parámetros de GET /v1/products. */
+export interface ListProductsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Solo el de este SKU. */
+	sku?: string;
+	/** Solo los de esta clave del SAT. */
+	product_key?: string;
+}
+
+export interface UpdateProductParams {
+	/** Nombre corto para encontrarlo, solo para usted; en el CFDI va description. */
+	name?: string | null;
+	/** Descripción. */
+	description?: string;
+	/** Clave del producto o servicio (ClaveProdServ), 8 dígitos de c_ClaveProdServ. Búsquela con GET /v1/sat_catalogs/product_keys?q=… */
+	product_key?: string;
+	/** Clave de unidad (ClaveUnidad) de c_ClaveUnidad: E48 unidad de servicio (por omisión), H87 pieza, ACT actividad… */
+	unit_key?: string;
+	/** Nombre de la unidad (Unidad), hasta 20 caracteres. */
+	unit_name?: string | null;
+	/** Número de identificación o SKU (NoIdentificacion). */
+	sku?: string | null;
+	/** Precio unitario antes de impuestos (ValorUnitario). */
+	unit_price?: number;
+	/** Objeto de impuesto (ObjetoImp), c_ObjetoImp: 01 no objeto, 02 sí objeto (por omisión), 03 sin desglose, 04 no causa… */
+	taxability?: "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08";
+	/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
+	iva?: "0" | "0.16" | "0.08" | "exento";
+	/** IEPS trasladado: tasa (0.265…) o cuota en pesos por unidad, según ieps_factor. */
+	ieps?: number | null;
+	/** Tasa o Cuota (TipoFactor del IEPS). */
+	ieps_factor?: "Tasa" | "Cuota";
+	/** Tasa de IVA retenido (por ejemplo 0.106667, dos terceras partes del 16%). */
+	iva_retention?: number;
+	/** Tasa de ISR retenido (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
+	isr_retention?: number;
+}
+
+/** Los parámetros de GET /v1/sat_catalogs/{name}. */
+export interface GetSatCatalogParams {
+	/** Qué buscar: palabras («consultoría») o una clave. */
+	q?: string;
+	/** Hasta cuántos, de 1 a 100 (búsquedas). Por omisión 20. */
+	limit?: number;
+}
+
+export interface CreateWebhookEndpointParams {
+	/** Dirección https de su servidor que recibe los avisos. */
+	url: string;
+	/** Eventos que quiere recibir, o ["*"] para todos (por omisión). Ver la lista en Webhooks. */
+	events?: string[] | null;
+	/** Para qué es, para usted (no se manda en los eventos). */
+	description?: string | null;
+}
+
+/** Los parámetros de GET /v1/webhook_endpoints. */
+export interface ListWebhookEndpointsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+}
+
+export interface UpdateWebhookEndpointParams {
+	/** Dirección https de su servidor que recibe los avisos. */
+	url?: string;
+	/** Eventos que quiere recibir, o ["*"] para todos (por omisión). Ver la lista en Webhooks. */
+	events?: string[] | null;
+	/** Para qué es, para usted (no se manda en los eventos). */
+	description?: string | null;
+	/** true para apagarlo sin borrarlo. */
+	disabled?: boolean;
+}
+
+export interface RollWebhookSecretParams {
+	/** Segundos que el secreto anterior sigue firmando, de 0 (deja de firmar ya: úselo si se filtró) a 86400. Por omisión 86400 (24 horas). */
+	previous_secret_expires_in?: number;
+}
+
+/** Los parámetros de GET /v1/events. */
+export interface ListEventsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** Solo de este tipo. */
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed";
+	/** Solo los de este objeto (inv_…, ret_…, bat_…). */
+	object?: string;
+}
+
+/** Cuenta: fiscalisto.account. */
+export class AccountResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ver la cuenta
+	 *
+	 * La cuenta API y la llave con que se hizo la solicitud. Útil para probar la llave.
+	 *
+	 * GET /v1/account
+	 * @see https://fiscalisto.com/docs/api/referencia/cuenta/get-account
+	 */
+	get(options?: RequestOptions): Promise<Account> {
+		return this.#client.request({ method: "GET", path: "/v1/account" }, options);
+	}
+}
+
+/** Cuenta: fiscalisto.balance. */
+export class BalanceResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ver los timbres
+	 *
+	 * Los timbres de producción que le quedan, por paquete. En pruebas se timbra gratis.
+	 *
+	 * GET /v1/balance
+	 * @see https://fiscalisto.com/docs/api/referencia/cuenta/get-balance
+	 */
+	get(options?: RequestOptions): Promise<Balance> {
+		return this.#client.request({ method: "GET", path: "/v1/balance" }, options);
+	}
+}
+
+/** Emisores: fiscalisto.issuers. */
+export class IssuersResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Crear un emisor
+	 *
+	 * Agrega un RFC que va a timbrar. Después suba su CSD (POST /v1/issuers/{id}/certificates) y, solo en producción, firme una vez el contrato con el PAC con su e.firma (POST /v1/issuers/{id}/efirma).
+	 *
+	 * POST /v1/issuers
+	 * @see https://fiscalisto.com/docs/api/referencia/emisores/create-issuer
+	 */
+	create(params: CreateIssuerParams, options?: RequestOptions): Promise<Issuer> {
+		return this.#client.request({ method: "POST", path: "/v1/issuers", body: params }, options);
+	}
+
+	/**
+	 * Listar emisores
+	 *
+	 * GET /v1/issuers
+	 * @see https://fiscalisto.com/docs/api/referencia/emisores/list-issuers
+	 */
+	list(params?: ListIssuersParams, options?: RequestOptions): List<Issuer> {
+		return this.#client.list({ path: "/v1/issuers", query: params }, options);
+	}
+
+	/**
+	 * Ver un emisor
+	 *
+	 * GET /v1/issuers/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/emisores/get-issuer
+	 */
+	get(id: string, options?: RequestOptions): Promise<Issuer> {
+		return this.#client.request({ method: "GET", path: `/v1/issuers/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Actualizar un emisor
+	 *
+	 * Solo cambia lo que mande. El RFC no cambia: cree otro emisor.
+	 *
+	 * POST /v1/issuers/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/emisores/update-issuer
+	 */
+	update(id: string, params?: UpdateIssuerParams, options?: RequestOptions): Promise<Issuer> {
+		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}`, body: params }, options);
+	}
+
+	/**
+	 * Archivar un emisor
+	 *
+	 * Deja de timbrar; sus comprobantes se quedan.
+	 *
+	 * DELETE /v1/issuers/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/emisores/archive-issuer
+	 */
+	archive(id: string, options?: RequestOptions): Promise<Issuer> {
+		return this.#client.request({ method: "DELETE", path: `/v1/issuers/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Subir el CSD
+	 *
+	 * El certificado de sello digital (.cer y .key en base64) y la contraseña de la llave. Se guarda cifrado y solo se usa para sellar. En pruebas se revisa pero se timbra con el CSD de pruebas del SAT.
+	 *
+	 * POST /v1/issuers/{id}/certificates
+	 * @see https://fiscalisto.com/docs/api/referencia/emisores/upload-certificate
+	 */
+	uploadCertificate(id: string, params: UploadCertificateParams, options?: RequestOptions): Promise<Issuer> {
+		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}/certificates`, body: params }, options);
+	}
+
+	/**
+	 * Firmar el contrato con el PAC
+	 *
+	 * Una sola vez por RFC antes de timbrar en producción: firma el contrato de servicio del PAC (Finkok) con la e.firma del emisor. La e.firma se usa en memoria para esa firma y nunca se guarda.
+	 *
+	 * POST /v1/issuers/{id}/efirma
+	 * @see https://fiscalisto.com/docs/api/referencia/emisores/sign-efirma
+	 */
+	signEfirma(id: string, params: SignEfirmaParams, options?: RequestOptions): Promise<Issuer> {
+		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}/efirma`, body: params }, options);
+	}
+}
+
+/** Facturas: fiscalisto.invoices. */
+export class InvoicesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Timbrar una factura
+	 *
+	 * Revisa la factura con las reglas del SAT, la sella y la timbra en una sola llamada. Responde con la factura timbrada (status valid) o, si el PAC tarda, en processing (escuche invoice.stamped). Lo que puede omitir tiene el valor usual: PUE, MXN, uso G03 (S01 con régimen 616), objeto de impuesto 02, IVA 16%, cantidad 1, unidad E48.
+	 *
+	 * POST /v1/invoices
+	 * @see https://fiscalisto.com/docs/api/referencia/facturas/create-invoice
+	 */
+	create(params: InvoiceCreate, options?: RequestOptions): Promise<Invoice> {
+		return this.#client.request({ method: "POST", path: "/v1/invoices", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar facturas
+	 *
+	 * Las más recientes primero.
+	 *
+	 * GET /v1/invoices
+	 * @see https://fiscalisto.com/docs/api/referencia/facturas/list-invoices
+	 */
+	list(params?: ListInvoicesParams, options?: RequestOptions): List<Invoice> {
+		return this.#client.list({ path: "/v1/invoices", query: params }, options);
+	}
+
+	/**
+	 * Ver una factura
+	 *
+	 * Por su id (inv_…) o por su folio fiscal (UUID).
+	 *
+	 * GET /v1/invoices/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/facturas/get-invoice
+	 */
+	get(id: string, params?: GetInvoiceParams, options?: RequestOptions): Promise<Invoice> {
+		return this.#client.request({ method: "GET", path: `/v1/invoices/${encodeURIComponent(id)}`, query: params }, options);
+	}
+
+	/**
+	 * Descargar el PDF
+	 *
+	 * GET /v1/invoices/{id}/pdf
+	 * @see https://fiscalisto.com/docs/api/referencia/facturas/get-invoice-pdf
+	 */
+	pdf(id: string, params?: GetInvoicePdfParams, options?: RequestOptions): Promise<Uint8Array> {
+		return this.#client.request({ method: "GET", path: `/v1/invoices/${encodeURIComponent(id)}/pdf`, query: params, as: "bytes" }, options);
+	}
+
+	/**
+	 * Descargar el XML
+	 *
+	 * El CFDI timbrado, tal como lo tiene el SAT.
+	 *
+	 * GET /v1/invoices/{id}/xml
+	 * @see https://fiscalisto.com/docs/api/referencia/facturas/get-invoice-xml
+	 */
+	xml(id: string, params?: GetInvoiceXmlParams, options?: RequestOptions): Promise<string> {
+		return this.#client.request({ method: "GET", path: `/v1/invoices/${encodeURIComponent(id)}/xml`, query: params, as: "text" }, options);
+	}
+
+	/**
+	 * Enviar por correo
+	 *
+	 * Manda el PDF y el XML con el diseño de Fiscalisto. Sin `to`, al correo del cliente. Con la misma Idempotency-Key no se manda dos veces.
+	 *
+	 * POST /v1/invoices/{id}/send
+	 * @see https://fiscalisto.com/docs/api/referencia/facturas/send-invoice
+	 */
+	send(id: string, params?: SendInvoiceParams, options?: RequestOptions): Promise<Invoice> {
+		return this.#client.request({ method: "POST", path: `/v1/invoices/${encodeURIComponent(id)}/send`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Cancelar una factura
+	 *
+	 * Pide la cancelación al SAT. Si el cliente debe aceptarla queda en pending (escuche invoice.canceled o invoice.cancellation_rejected). Usa un timbre la primera vez que el SAT acepta la solicitud; repetirla, o pedirla otra vez después de un rechazo, no. Nunca se niega por falta de timbres.
+	 *
+	 * POST /v1/invoices/{id}/cancel
+	 * @see https://fiscalisto.com/docs/api/referencia/facturas/cancel-invoice
+	 */
+	cancel(id: string, params?: CancelInvoiceParams, options?: RequestOptions): Promise<Invoice> {
+		return this.#client.request({ method: "POST", path: `/v1/invoices/${encodeURIComponent(id)}/cancel`, body: params }, options);
+	}
+
+	/**
+	 * Sustituir una factura
+	 *
+	 * Timbra la factura corregida (el mismo cuerpo que POST /v1/invoices, relacionada 04) y cancela la anterior con motivo 01.
+	 *
+	 * POST /v1/invoices/{id}/substitute
+	 * @see https://fiscalisto.com/docs/api/referencia/facturas/substitute-invoice
+	 */
+	substitute(id: string, params: InvoiceCreate, options?: RequestOptions): Promise<Invoice> {
+		return this.#client.request({ method: "POST", path: `/v1/invoices/${encodeURIComponent(id)}/substitute`, body: params, idempotent: true }, options);
+	}
+}
+
+/** Pagos y notas de crédito: fiscalisto.payments. */
+export class PaymentsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Timbrar un complemento de pago
+	 *
+	 * El recibo de pago (CFDI tipo P, Pagos 2.0) de facturas PPD: parcialidad, saldo anterior e insoluto e impuestos de cada una los calcula Fiscalisto.
+	 *
+	 * POST /v1/payments
+	 * @see https://fiscalisto.com/docs/api/referencia/pagos-y-notas-de-credito/create-payment
+	 */
+	create(params: CreatePaymentParams, options?: RequestOptions): Promise<Invoice> {
+		return this.#client.request({ method: "POST", path: "/v1/payments", body: params, idempotent: true }, options);
+	}
+}
+
+/** Pagos y notas de crédito: fiscalisto.creditNotes. */
+export class CreditNotesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Timbrar una nota de crédito
+	 *
+	 * Un egreso (tipo E) relacionado 01 (o 03, devolución) a una factura, con su IVA y retenciones en la misma proporción. amount es antes de impuestos.
+	 *
+	 * POST /v1/credit_notes
+	 * @see https://fiscalisto.com/docs/api/referencia/pagos-y-notas-de-credito/create-credit-note
+	 */
+	create(params: CreateCreditNoteParams, options?: RequestOptions): Promise<Invoice> {
+		return this.#client.request({ method: "POST", path: "/v1/credit_notes", body: params, idempotent: true }, options);
+	}
+}
+
+/** Anticipos: fiscalisto.advances. */
+export class AdvancesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Timbrar un anticipo
+	 *
+	 * La factura del anticipo: un concepto «Anticipo del bien o servicio» (84111506, ACT). amount es lo que pagó el cliente con IVA.
+	 *
+	 * POST /v1/advances
+	 * @see https://fiscalisto.com/docs/api/referencia/anticipos/create-advance
+	 */
+	create(params: CreateAdvanceParams, options?: RequestOptions): Promise<Invoice> {
+		return this.#client.request({ method: "POST", path: "/v1/advances", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar anticipos sin aplicar
+	 *
+	 * GET /v1/advances
+	 * @see https://fiscalisto.com/docs/api/referencia/anticipos/list-advances
+	 */
+	list(params?: ListAdvancesParams, options?: RequestOptions): Promise<AdvanceList> {
+		return this.#client.request({ method: "GET", path: "/v1/advances", query: params }, options);
+	}
+
+	/**
+	 * Aplicar un anticipo
+	 *
+	 * Timbra la factura de lo vendido (el cuerpo de POST /v1/invoices) relacionada 07 al anticipo. Con method egreso, también la nota de aplicación. La misma Idempotency-Key continúa donde se quedó.
+	 *
+	 * POST /v1/advances/{id}/apply
+	 * @see https://fiscalisto.com/docs/api/referencia/anticipos/apply-advance
+	 */
+	apply(id: string, params: ApplyAdvanceParams, options?: RequestOptions): Promise<Invoice> {
+		return this.#client.request({ method: "POST", path: `/v1/advances/${encodeURIComponent(id)}/apply`, body: params, idempotent: true }, options);
+	}
+}
+
+/** Retenciones: fiscalisto.retentions. */
+export class RetentionsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Timbrar una constancia de retenciones
+	 *
+	 * POST /v1/retentions
+	 * @see https://fiscalisto.com/docs/api/referencia/retenciones/create-retention
+	 */
+	create(params: CreateRetentionParams, options?: RequestOptions): Promise<Retention> {
+		return this.#client.request({ method: "POST", path: "/v1/retentions", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar constancias
+	 *
+	 * GET /v1/retentions
+	 * @see https://fiscalisto.com/docs/api/referencia/retenciones/list-retentions
+	 */
+	list(params?: ListRetentionsParams, options?: RequestOptions): List<Retention> {
+		return this.#client.list({ path: "/v1/retentions", query: params }, options);
+	}
+
+	/**
+	 * Ver una constancia
+	 *
+	 * GET /v1/retentions/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/retenciones/get-retention
+	 */
+	get(id: string, params?: GetRetentionParams, options?: RequestOptions): Promise<Retention> {
+		return this.#client.request({ method: "GET", path: `/v1/retentions/${encodeURIComponent(id)}`, query: params }, options);
+	}
+
+	/**
+	 * Descargar el PDF
+	 *
+	 * GET /v1/retentions/{id}/pdf
+	 * @see https://fiscalisto.com/docs/api/referencia/retenciones/get-retention-pdf
+	 */
+	pdf(id: string, params?: GetRetentionPdfParams, options?: RequestOptions): Promise<Uint8Array> {
+		return this.#client.request({ method: "GET", path: `/v1/retentions/${encodeURIComponent(id)}/pdf`, query: params, as: "bytes" }, options);
+	}
+
+	/**
+	 * Descargar el XML
+	 *
+	 * GET /v1/retentions/{id}/xml
+	 * @see https://fiscalisto.com/docs/api/referencia/retenciones/get-retention-xml
+	 */
+	xml(id: string, params?: GetRetentionXmlParams, options?: RequestOptions): Promise<string> {
+		return this.#client.request({ method: "GET", path: `/v1/retentions/${encodeURIComponent(id)}/xml`, query: params, as: "text" }, options);
+	}
+
+	/**
+	 * Enviar por correo
+	 *
+	 * POST /v1/retentions/{id}/send
+	 * @see https://fiscalisto.com/docs/api/referencia/retenciones/send-retention
+	 */
+	send(id: string, params?: SendRetentionParams, options?: RequestOptions): Promise<Retention> {
+		return this.#client.request({ method: "POST", path: `/v1/retentions/${encodeURIComponent(id)}/send`, body: params }, options);
+	}
+
+	/**
+	 * Cancelar una constancia
+	 *
+	 * Se cancela en el momento (no espera aceptación). Usa un timbre.
+	 *
+	 * POST /v1/retentions/{id}/cancel
+	 * @see https://fiscalisto.com/docs/api/referencia/retenciones/cancel-retention
+	 */
+	cancel(id: string, params?: CancelRetentionParams, options?: RequestOptions): Promise<Retention> {
+		return this.#client.request({ method: "POST", path: `/v1/retentions/${encodeURIComponent(id)}/cancel`, body: params }, options);
+	}
+}
+
+/** Nómina: fiscalisto.employees. */
+export class EmployeesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Crear un empleado
+	 *
+	 * POST /v1/employees
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-employee
+	 */
+	create(params: CreateEmployeeParams, options?: RequestOptions): Promise<Employee> {
+		return this.#client.request({ method: "POST", path: "/v1/employees", body: params }, options);
+	}
+
+	/**
+	 * Listar empleados
+	 *
+	 * GET /v1/employees
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/list-employees
+	 */
+	list(params?: ListEmployeesParams, options?: RequestOptions): List<Employee> {
+		return this.#client.list({ path: "/v1/employees", query: params }, options);
+	}
+
+	/**
+	 * Ver un empleado
+	 *
+	 * GET /v1/employees/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-employee
+	 */
+	get(id: string, options?: RequestOptions): Promise<Employee> {
+		return this.#client.request({ method: "GET", path: `/v1/employees/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Actualizar un empleado
+	 *
+	 * POST /v1/employees/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-employee
+	 */
+	update(id: string, params?: UpdateEmployeeParams, options?: RequestOptions): Promise<Employee> {
+		return this.#client.request({ method: "POST", path: `/v1/employees/${encodeURIComponent(id)}`, body: params }, options);
+	}
+
+	/**
+	 * Borrar un empleado
+	 *
+	 * Sus recibos timbrados se quedan.
+	 *
+	 * DELETE /v1/employees/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/delete-employee
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/employees/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Nómina: fiscalisto.payrollReceipts. */
+export class PayrollReceiptsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Timbrar un recibo de nómina
+	 *
+	 * Nómina ordinaria (Nómina 1.2): Fiscalisto calcula sueldo, ISR con subsidio al empleo e IMSS del empleado y el periodo, como la app. Queda como factura tipo N (GET /v1/invoices/{id}). El emisor necesita employer_registration.
+	 *
+	 * POST /v1/payroll_receipts
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-payroll-receipt
+	 */
+	create(params: CreatePayrollReceiptParams, options?: RequestOptions): Promise<Invoice> {
+		return this.#client.request({ method: "POST", path: "/v1/payroll_receipts", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Calcular un recibo sin timbrar
+	 *
+	 * POST /v1/payroll_receipts/preview
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/preview-payroll-receipt
+	 */
+	preview(params: PreviewPayrollReceiptParams, options?: RequestOptions): Promise<PayrollReceiptPreview> {
+		return this.#client.request({ method: "POST", path: "/v1/payroll_receipts/preview", body: params }, options);
+	}
+}
+
+/** Lotes: fiscalisto.invoiceBatches. */
+export class InvoiceBatchesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Timbrar un lote de facturas
+	 *
+	 * Hasta 1,000 facturas de ingreso de un emisor, timbradas en segundo plano. Se revisan todas antes de empezar: si una no pasa, no se timbra ninguna. Responde 202; escuche invoice_batch.completed o consulte el lote.
+	 *
+	 * POST /v1/invoice_batches
+	 * @see https://fiscalisto.com/docs/api/referencia/lotes/create-invoice-batch
+	 */
+	create(params: CreateInvoiceBatchParams, options?: RequestOptions): Promise<InvoiceBatch> {
+		return this.#client.request({ method: "POST", path: "/v1/invoice_batches", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar lotes
+	 *
+	 * GET /v1/invoice_batches
+	 * @see https://fiscalisto.com/docs/api/referencia/lotes/list-invoice-batches
+	 */
+	list(params?: ListInvoiceBatchesParams, options?: RequestOptions): List<InvoiceBatch> {
+		return this.#client.list({ path: "/v1/invoice_batches", query: params }, options);
+	}
+
+	/**
+	 * Ver un lote
+	 *
+	 * Con cada factura: su estado, su id y su error.
+	 *
+	 * GET /v1/invoice_batches/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/lotes/get-invoice-batch
+	 */
+	get(id: string, options?: RequestOptions): Promise<InvoiceBatch> {
+		return this.#client.request({ method: "GET", path: `/v1/invoice_batches/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Clientes: fiscalisto.customers. */
+export class CustomersResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Crear un cliente
+	 *
+	 * POST /v1/customers
+	 * @see https://fiscalisto.com/docs/api/referencia/clientes/create-customer
+	 */
+	create(params: CreateCustomerParams, options?: RequestOptions): Promise<Customer> {
+		return this.#client.request({ method: "POST", path: "/v1/customers", body: params }, options);
+	}
+
+	/**
+	 * Listar clientes
+	 *
+	 * GET /v1/customers
+	 * @see https://fiscalisto.com/docs/api/referencia/clientes/list-customers
+	 */
+	list(params?: ListCustomersParams, options?: RequestOptions): List<Customer> {
+		return this.#client.list({ path: "/v1/customers", query: params }, options);
+	}
+
+	/**
+	 * Ver un cliente
+	 *
+	 * GET /v1/customers/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/clientes/get-customer
+	 */
+	get(id: string, options?: RequestOptions): Promise<Customer> {
+		return this.#client.request({ method: "GET", path: `/v1/customers/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Actualizar un cliente
+	 *
+	 * POST /v1/customers/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/clientes/update-customer
+	 */
+	update(id: string, params?: UpdateCustomerParams, options?: RequestOptions): Promise<Customer> {
+		return this.#client.request({ method: "POST", path: `/v1/customers/${encodeURIComponent(id)}`, body: params }, options);
+	}
+
+	/**
+	 * Borrar un cliente
+	 *
+	 * DELETE /v1/customers/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/clientes/delete-customer
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/customers/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Productos: fiscalisto.products. */
+export class ProductsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Crear un producto
+	 *
+	 * POST /v1/products
+	 * @see https://fiscalisto.com/docs/api/referencia/productos/create-product
+	 */
+	create(params: CreateProductParams, options?: RequestOptions): Promise<Product> {
+		return this.#client.request({ method: "POST", path: "/v1/products", body: params }, options);
+	}
+
+	/**
+	 * Listar productos
+	 *
+	 * GET /v1/products
+	 * @see https://fiscalisto.com/docs/api/referencia/productos/list-products
+	 */
+	list(params?: ListProductsParams, options?: RequestOptions): List<Product> {
+		return this.#client.list({ path: "/v1/products", query: params }, options);
+	}
+
+	/**
+	 * Ver un producto
+	 *
+	 * GET /v1/products/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/productos/get-product
+	 */
+	get(id: string, options?: RequestOptions): Promise<Product> {
+		return this.#client.request({ method: "GET", path: `/v1/products/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Actualizar un producto
+	 *
+	 * POST /v1/products/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/productos/update-product
+	 */
+	update(id: string, params?: UpdateProductParams, options?: RequestOptions): Promise<Product> {
+		return this.#client.request({ method: "POST", path: `/v1/products/${encodeURIComponent(id)}`, body: params }, options);
+	}
+
+	/**
+	 * Borrar un producto
+	 *
+	 * DELETE /v1/products/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/productos/delete-product
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/products/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Catálogos del SAT: fiscalisto.satCatalogs. */
+export class SatCatalogsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Consultar un catálogo del SAT
+	 *
+	 * product_keys y unit_keys se buscan con q (texto o clave). Los demás vienen completos: tax_systems, cfdi_uses, payment_forms, payment_methods, relationship_types, cancellation_motives, export_types, tax_objects, retention_codes.
+	 *
+	 * GET /v1/sat_catalogs/{name}
+	 * @see https://fiscalisto.com/docs/api/referencia/catalogos-del-sat/get-sat-catalog
+	 */
+	get(name: string, params?: GetSatCatalogParams, options?: RequestOptions): Promise<SatCatalogEntryList> {
+		return this.#client.request({ method: "GET", path: `/v1/sat_catalogs/${encodeURIComponent(name)}`, query: params }, options);
+	}
+}
+
+/** Webhooks: fiscalisto.webhookEndpoints. */
+export class WebhookEndpointsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Crear un webhook
+	 *
+	 * La respuesta trae el secreto de firma (secret) una sola vez.
+	 *
+	 * POST /v1/webhook_endpoints
+	 * @see https://fiscalisto.com/docs/api/referencia/webhooks/create-webhook-endpoint
+	 */
+	create(params: CreateWebhookEndpointParams, options?: RequestOptions): Promise<WebhookEndpoint> {
+		return this.#client.request({ method: "POST", path: "/v1/webhook_endpoints", body: params }, options);
+	}
+
+	/**
+	 * Listar webhooks
+	 *
+	 * GET /v1/webhook_endpoints
+	 * @see https://fiscalisto.com/docs/api/referencia/webhooks/list-webhook-endpoints
+	 */
+	list(params?: ListWebhookEndpointsParams, options?: RequestOptions): List<WebhookEndpoint> {
+		return this.#client.list({ path: "/v1/webhook_endpoints", query: params }, options);
+	}
+
+	/**
+	 * Ver un webhook
+	 *
+	 * GET /v1/webhook_endpoints/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/webhooks/get-webhook-endpoint
+	 */
+	get(id: string, options?: RequestOptions): Promise<WebhookEndpoint> {
+		return this.#client.request({ method: "GET", path: `/v1/webhook_endpoints/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Actualizar un webhook
+	 *
+	 * POST /v1/webhook_endpoints/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/webhooks/update-webhook-endpoint
+	 */
+	update(id: string, params?: UpdateWebhookEndpointParams, options?: RequestOptions): Promise<WebhookEndpoint> {
+		return this.#client.request({ method: "POST", path: `/v1/webhook_endpoints/${encodeURIComponent(id)}`, body: params }, options);
+	}
+
+	/**
+	 * Borrar un webhook
+	 *
+	 * DELETE /v1/webhook_endpoints/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/webhooks/delete-webhook-endpoint
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/webhook_endpoints/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Cambiar el secreto
+	 *
+	 * Un secreto nuevo, que la respuesta trae una sola vez. El anterior sigue firmando (una segunda firma en webhook-signature) el tiempo que elija, 24 horas por omisión, para que cambie su servidor sin rechazar eventos. Si se filtró, mande previous_secret_expires_in: 0.
+	 *
+	 * POST /v1/webhook_endpoints/{id}/roll_secret
+	 * @see https://fiscalisto.com/docs/api/referencia/webhooks/roll-webhook-secret
+	 */
+	rollSecret(id: string, params?: RollWebhookSecretParams, options?: RequestOptions): Promise<WebhookEndpoint> {
+		return this.#client.request({ method: "POST", path: `/v1/webhook_endpoints/${encodeURIComponent(id)}/roll_secret`, body: params }, options);
+	}
+}
+
+/** Eventos: fiscalisto.events. */
+export class EventsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar eventos
+	 *
+	 * Los de los últimos 30 días, los más recientes primero.
+	 *
+	 * GET /v1/events
+	 * @see https://fiscalisto.com/docs/api/referencia/eventos/list-events
+	 */
+	list(params?: ListEventsParams, options?: RequestOptions): List<Event> {
+		return this.#client.list({ path: "/v1/events", query: params }, options);
+	}
+
+	/**
+	 * Ver un evento
+	 *
+	 * GET /v1/events/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/eventos/get-event
+	 */
+	get(id: string, options?: RequestOptions): Promise<Event> {
+		return this.#client.request({ method: "GET", path: `/v1/events/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Cada recurso de la API. Úselo por medio de Fiscalisto (index.ts). */
+export class FiscalistoApi extends Core {
+	readonly account = new AccountResource(this);
+	readonly balance = new BalanceResource(this);
+	readonly issuers = new IssuersResource(this);
+	readonly invoices = new InvoicesResource(this);
+	readonly payments = new PaymentsResource(this);
+	readonly creditNotes = new CreditNotesResource(this);
+	readonly advances = new AdvancesResource(this);
+	readonly retentions = new RetentionsResource(this);
+	readonly employees = new EmployeesResource(this);
+	readonly payrollReceipts = new PayrollReceiptsResource(this);
+	readonly invoiceBatches = new InvoiceBatchesResource(this);
+	readonly customers = new CustomersResource(this);
+	readonly products = new ProductsResource(this);
+	readonly satCatalogs = new SatCatalogsResource(this);
+	readonly webhookEndpoints = new WebhookEndpointsResource(this);
+	readonly events = new EventsResource(this);
+}
