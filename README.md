@@ -30,6 +30,10 @@ const invoice = await fiscalisto.invoices.create(
 console.log(invoice.uuid, invoice.total);
 ```
 
+## CLI
+
+El mismo paquete trae el CLI: `npx fiscalisto login` inicia sesión por el navegador, `npx fiscalisto init` deja el SDK y su llave en su proyecto, y `npx fiscalisto listen --forward-to http://localhost:3000/webhooks` le manda los webhooks de pruebas a su computadora. Con `--json`, para agentes y scripts. Vea [fiscalisto.com/docs/api/cli](https://fiscalisto.com/docs/api/cli).
+
 La guía completa está en [fiscalisto.com/docs/api/sdk](https://fiscalisto.com/docs/api/sdk) y cada página de la [referencia](https://fiscalisto.com/docs/api) trae su ejemplo con el SDK.
 
 ## Desarrollo

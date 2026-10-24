@@ -838,6 +838,27 @@ export interface WebhookEndpoint {
 	secret?: string;
 }
 
+/** Un evento de prueba que se mandó a su webhook, y lo que respondió su servidor. */
+export interface WebhookTest {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "webhook_test";
+	/** El evento que se mandó, como lo recibió su servidor. */
+	event: Event;
+	/** Cómo le fue: ok si contestó 2xx, el código, el error y el inicio de su respuesta. */
+	delivery: {
+		/** true si su servidor contestó 2xx. */
+		ok: boolean;
+		/** El código HTTP que contestó; null si no se pudo conectar. */
+		status: number | null;
+		/** Qué falló (sin respuesta, no se pudo conectar, otro código), o null. */
+		error: string | null;
+		/** El inicio de lo que contestó su servidor (hasta 2,000 caracteres). */
+		response_body: string | null;
+		/** Cuánto tardó su servidor, en milisegundos. */
+		duration_ms: number;
+	};
+}
+
 /** Lo que puede pasar: el tipo de cada evento. */
 export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed";
 
@@ -2560,6 +2581,11 @@ export interface RollWebhookSecretParams {
 	previous_secret_expires_in?: number;
 }
 
+export interface TestWebhookEndpointParams {
+	/** El evento a mandar. Por omisión invoice.stamped. */
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed";
+}
+
 /** Los parámetros de GET /v1/events. */
 export interface ListEventsParams {
 	/** Cuántos por página, de 1 a 100. Por omisión 10. */
@@ -3333,6 +3359,18 @@ export class WebhookEndpointsResource {
 	 */
 	rollSecret(id: string, params?: RollWebhookSecretParams, options?: RequestOptions): Promise<WebhookEndpoint> {
 		return this.#client.request({ method: "POST", path: `/v1/webhook_endpoints/${encodeURIComponent(id)}/roll_secret`, body: params }, options);
+	}
+
+	/**
+	 * Mandar un evento de prueba
+	 *
+	 * Manda ahora, una sola vez y sin reintentos, un evento del tipo que elija con un objeto de ejemplo (sus id no existen), firmado como los reales, aunque el webhook no escuche ese tipo. La respuesta trae lo que contestó su servidor. El evento no sale en GET /v1/events, pero sí en las entregas del webhook.
+	 *
+	 * POST /v1/webhook_endpoints/{id}/test
+	 * @see https://fiscalisto.com/docs/api/referencia/webhooks/test-webhook-endpoint
+	 */
+	test(id: string, params?: TestWebhookEndpointParams, options?: RequestOptions): Promise<WebhookTest> {
+		return this.#client.request({ method: "POST", path: `/v1/webhook_endpoints/${encodeURIComponent(id)}/test`, body: params }, options);
 	}
 }
 
