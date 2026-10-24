@@ -906,6 +906,24 @@ export interface CustomerDataRequest {
 	} | null;
 }
 
+/** Una liga para que el dueño de un emisor suba su CSD y firme con su e.firma. */
+export interface IssuerOnboardingLink {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "issuer_onboarding_link";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor que se da de alta. */
+	issuer: string;
+	/** La página para el dueño del emisor, en fiscalisto.com. Ábrala en el navegador de su cliente; no la incruste en un iframe. */
+	url: string;
+	/** A dónde regresa al terminar. */
+	return_url: string | null;
+	/** Cuándo deja de servir la liga. Pida otra cuando quiera. */
+	expires_at: string | null;
+	/** Cuándo se creó. */
+	created_at: string | null;
+}
+
 /** Una dirección de su servidor que recibe eventos. */
 export interface WebhookEndpoint {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
@@ -956,7 +974,7 @@ export interface WebhookTest {
 }
 
 /** Lo que puede pasar: el tipo de cada evento. */
-export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed";
+export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "issuer.ready";
 
 /** Algo que pasó en su cuenta: el objeto completo como quedó. Se manda a sus webhooks firmado (Standard Webhooks). */
 export interface EventBase<T extends EventType = EventType, O = unknown> {
@@ -964,7 +982,7 @@ export interface EventBase<T extends EventType = EventType, O = unknown> {
 	id: string;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "event";
-	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed o customer_data_request.completed. */
+	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, customer_data_request.completed o issuer.ready. */
 	type: T;
 	/** Versión de la API con que se armó el objeto. */
 	api_version: string;
@@ -987,7 +1005,8 @@ export type Event =
 	| EventBase<"retention.failed", Retention>
 	| EventBase<"retention.canceled", Retention>
 	| EventBase<"invoice_batch.completed", InvoiceBatch>
-	| EventBase<"customer_data_request.completed", CustomerDataRequest>;
+	| EventBase<"customer_data_request.completed", CustomerDataRequest>
+	| EventBase<"issuer.ready", Issuer>;
 
 /** Confirmación de que se borró. */
 export interface Deleted {
@@ -2030,6 +2049,13 @@ export interface SignEfirmaParams {
 	password: string;
 }
 
+export interface CreateIssuerOnboardingLinkParams {
+	/** A dónde regresa el botón al terminar, por ejemplo la página de su plataforma donde su cliente sigue. Sin ella, la página solo dice que ya terminó. */
+	return_url?: string;
+	/** Horas que la liga sirve, de 1 a 168 (7 días). Por omisión 24. */
+	expires_in_hours?: number;
+}
+
 /** Los parámetros de GET /v1/invoices. */
 export interface ListInvoicesParams {
 	/** Cuántos por página, de 1 a 100. Por omisión 10. */
@@ -2727,7 +2753,7 @@ export interface RollWebhookSecretParams {
 
 export interface TestWebhookEndpointParams {
 	/** El evento a mandar. Por omisión invoice.stamped. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "issuer.ready";
 }
 
 /** Los parámetros de GET /v1/events. */
@@ -2737,7 +2763,7 @@ export interface ListEventsParams {
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
 	/** Solo de este tipo. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "issuer.ready";
 	/** Solo los de este objeto (inv_…, ret_…, bat_…). */
 	object?: string;
 }
@@ -2867,6 +2893,18 @@ export class IssuersResource {
 	 */
 	signEfirma(id: string, params: SignEfirmaParams, options?: RequestOptions): Promise<Issuer> {
 		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}/efirma`, body: params }, options);
+	}
+
+	/**
+	 * Crear una liga de alta
+	 *
+	 * Una página en fiscalisto.com donde el dueño del emisor sube su CSD y firma el contrato con el PAC con su e.firma, sin que esos archivos ni sus contraseñas pasen por su plataforma. Mande a su cliente a url; al terminar vuelve a return_url y llega issuer.ready. Cada liga sirve para un emisor, hasta que vence.
+	 *
+	 * POST /v1/issuers/{id}/onboarding_links
+	 * @see https://fiscalisto.com/docs/api/referencia/emisores/create-issuer-onboarding-link
+	 */
+	createOnboardingLink(id: string, params?: CreateIssuerOnboardingLinkParams, options?: RequestOptions): Promise<IssuerOnboardingLink> {
+		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}/onboarding_links`, body: params }, options);
 	}
 }
 
