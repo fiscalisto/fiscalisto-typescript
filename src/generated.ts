@@ -88,6 +88,13 @@ export interface Issuer {
 		/** Cuándo vence. */
 		expires_at: string | null;
 	} | null;
+	/** Si puede pedirle al SAT sus facturas (POST /v1/sat_downloads): available es true en pruebas, y en producción mientras su e.firma guardada esté vigente (efirma_expires_at). */
+	sat_downloads: {
+		/** true si puede pedir descargas al SAT ahora: siempre en pruebas; en producción con su e.firma guardada y vigente. */
+		available: boolean;
+		/** Cuándo vence la e.firma guardada para las descargas, o null si no hay una. */
+		efirma_expires_at: string | null;
+	};
 	/** Registro patronal ante el IMSS (RegistroPatronal), 11 caracteres. Necesario para timbrar nómina. */
 	employer_registration: string | null;
 	/** CURP, 18 caracteres. */
@@ -921,6 +928,115 @@ export interface CustomerDataRequest {
 	} | null;
 }
 
+/** Una solicitud al SAT de las facturas emitidas o recibidas de un emisor en un periodo. */
+export interface SatDownload {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "sat_download";
+	/** El emisor cuyas facturas se piden. */
+	issuer: string;
+	/** received (las que le hicieron) o issued (las que emitió). */
+	direction: "received" | "issued";
+	/** Desde qué día (incluido). */
+	from: string | null;
+	/** Hasta qué día (incluido). */
+	to: string | null;
+	/** El tipo de comprobante pedido, o null si todos. */
+	type: "I" | "E" | "P" | "T" | "N" | null;
+	/** El RFC de la contraparte pedido, o null. */
+	counterparty_tax_id: string | null;
+	/** El folio fiscal pedido, o null. */
+	uuid: string | null;
+	/** processing (el SAT la está preparando: de minutos a horas), completed (las facturas ya están en GET /v1/sat_invoices) o failed (el motivo en error). */
+	status: "processing" | "completed" | "failed";
+	/** Cuántas facturas nuevas trajo (las que ya tenía no cuentan). null mientras no termine. */
+	new_invoices: number | null;
+	/** Por qué falló, como lo dijo el SAT. null si no falló. */
+	error: string | null;
+	/** Cuándo se pidió. */
+	created_at: string | null;
+	/** Cuándo terminó, o null. */
+	completed_at: string | null;
+}
+
+/** Una factura que el SAT tiene del emisor, emitida o recibida, traída con una descarga. */
+export interface SatInvoice {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "sat_invoice";
+	/** El emisor de su cuenta (iss_…) a quien pertenece esta factura. */
+	issuer: string;
+	/** El folio fiscal (UUID del timbre). */
+	uuid: string;
+	/** received (se la hicieron al emisor) o issued (la emitió). */
+	direction: "received" | "issued";
+	/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
+	type: "I" | "E" | "P" | "T" | "N" | null;
+	/** La fecha del comprobante (Fecha), en la hora local con que se emitió. */
+	date: string;
+	/** Serie (Serie), o null. */
+	series: string | null;
+	/** Folio (Folio), o null. */
+	folio: string | null;
+	/** Quien la emitió (Emisor). */
+	issued_by: {
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string;
+		/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+		legal_name: string | null;
+	};
+	/** A quien se la emitieron (Receptor). */
+	issued_to: {
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string;
+		/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+		legal_name: string | null;
+	};
+	/** Moneda (Moneda): MXN, USD… */
+	currency: string | null;
+	/** Tipo de cambio (TipoCambio), o null en pesos. */
+	exchange_rate: number | null;
+	/** Método de pago (MetodoPago): PUE o PPD. */
+	payment_method: string | null;
+	/** Forma de pago (FormaPago), clave de c_FormaPago. */
+	payment_form: string | null;
+	/** Uso del CFDI (UsoCFDI). */
+	use: string | null;
+	/** Subtotal (SubTotal). */
+	subtotal: number | null;
+	/** Total (Total). */
+	total: number | null;
+	/** Impuestos del comprobante: trasladados (iva, ieps), retenidos (iva_withheld, isr_withheld, ieps_withheld) y locales. */
+	taxes: {
+		/** IVA trasladado. */
+		iva: number;
+		/** IEPS trasladado. */
+		ieps: number;
+		/** IVA retenido. */
+		iva_withheld: number;
+		/** ISR retenido. */
+		isr_withheld: number;
+		/** IEPS retenido. */
+		ieps_withheld: number;
+		/** Impuestos locales trasladados (ISH y similares). */
+		local_transferred: number;
+		/** Impuestos locales retenidos. */
+		local_withheld: number;
+	};
+	/** Su estado en el SAT cuando se revisó: active (vigente) o canceled. null si aún no se revisa. */
+	sat_status: "active" | "canceled" | null;
+	/** La descarga (sdl_…) que la trajo, o null. */
+	sat_download: string | null;
+	/** Cuándo llegó. */
+	downloaded_at: string | null;
+}
+
 /** Una liga para que el dueño de un emisor suba su CSD y firme con su e.firma. */
 export interface IssuerOnboardingLink {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -989,7 +1105,7 @@ export interface WebhookTest {
 }
 
 /** Lo que puede pasar: el tipo de cada evento. */
-export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "issuer.ready" | "balance.low";
+export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "issuer.ready" | "balance.low";
 
 /** Algo que pasó en su cuenta: el objeto completo como quedó. Se manda a sus webhooks firmado (Standard Webhooks). */
 export interface EventBase<T extends EventType = EventType, O = unknown> {
@@ -997,7 +1113,7 @@ export interface EventBase<T extends EventType = EventType, O = unknown> {
 	id: string;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "event";
-	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, customer_data_request.completed, issuer.ready o balance.low. */
+	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, issuer.ready o balance.low. */
 	type: T;
 	/** Versión de la API con que se armó el objeto. */
 	api_version: string;
@@ -1021,6 +1137,8 @@ export type Event =
 	| EventBase<"retention.canceled", Retention>
 	| EventBase<"invoice_batch.completed", InvoiceBatch>
 	| EventBase<"customer_data_request.completed", CustomerDataRequest>
+	| EventBase<"sat_download.completed", SatDownload>
+	| EventBase<"sat_download.failed", SatDownload>
 	| EventBase<"issuer.ready", Issuer>
 	| EventBase<"balance.low", Balance>;
 
@@ -1170,6 +1288,28 @@ export interface SatListCheckList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: SatListCheck[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface SatDownloadList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: SatDownload[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface SatInvoiceList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: SatInvoice[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -2063,6 +2203,8 @@ export interface SignEfirmaParams {
 	key: string;
 	/** La contraseña de la llave privada (.key). Se usa para abrirla y no se guarda en texto. */
 	password: string;
+	/** true para guardarla (cifrada) y poder pedir al SAT las facturas del emisor con POST /v1/sat_downloads. Sin esto solo firma el contrato con el PAC y no se guarda. */
+	keep_for_downloads?: boolean;
 }
 
 export interface CreateIssuerOnboardingLinkParams {
@@ -2754,6 +2896,53 @@ export interface CheckSatListsParams {
 	tax_ids: string[];
 }
 
+export interface CreateSatDownloadParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** received (las facturas que le hicieron al emisor, por omisión) o issued (las que emitió, aunque no haya sido con Fiscalisto). */
+	direction?: "received" | "issued";
+	/** Desde qué día (incluido), en hora de la Ciudad de México. */
+	from: string;
+	/** Hasta qué día (incluido). A lo más un año después de from, y no después de hoy. */
+	to: string;
+	/** Solo un tipo de comprobante: I, E, P, T o N. Por omisión, todos. */
+	type?: "I" | "E" | "P" | "T" | "N";
+	/** Solo las de un RFC: el emisor de las recibidas, o el receptor de las emitidas. */
+	counterparty_tax_id?: string;
+	/** Una sola factura, por su folio fiscal (UUID). */
+	uuid?: string;
+}
+
+/** Los parámetros de GET /v1/sat_downloads. */
+export interface ListSatDownloadsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+/** Los parámetros de GET /v1/sat_invoices. */
+export interface ListSatInvoicesParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** received (por omisión) o issued. */
+	direction?: "received" | "issued";
+	/** I, E, P, T o N. */
+	type?: "I" | "E" | "P" | "T" | "N";
+	/** El RFC de quien la emitió (recibidas) o de quien la recibió (emitidas). */
+	counterparty_tax_id?: string;
+	/** Con fecha desde este día (AAAA-MM-DD). */
+	date_gte?: string;
+	/** Con fecha hasta este día (AAAA-MM-DD), incluido. */
+	date_lte?: string;
+}
+
 export interface CreateWebhookEndpointParams {
 	/** Dirección https de su servidor que recibe los avisos. */
 	url: string;
@@ -2789,7 +2978,7 @@ export interface RollWebhookSecretParams {
 
 export interface TestWebhookEndpointParams {
 	/** El evento a mandar. Por omisión invoice.stamped. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "issuer.ready" | "balance.low";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "issuer.ready" | "balance.low";
 }
 
 /** Los parámetros de GET /v1/events. */
@@ -2799,7 +2988,7 @@ export interface ListEventsParams {
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
 	/** Solo de este tipo. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "issuer.ready" | "balance.low";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "issuer.ready" | "balance.low";
 	/** Solo los de este objeto (inv_…, ret_…, bat_…). */
 	object?: string;
 }
@@ -2922,13 +3111,25 @@ export class IssuersResource {
 	/**
 	 * Firmar el contrato con el PAC
 	 *
-	 * Una sola vez por RFC antes de timbrar en producción: firma el contrato de servicio del PAC (Finkok) con la e.firma del emisor. La e.firma se usa en memoria para esa firma y nunca se guarda.
+	 * Una sola vez por RFC antes de timbrar en producción: firma el contrato de servicio del PAC (Finkok) con la e.firma del emisor. La e.firma se usa en memoria para esa firma y no se guarda, salvo que mande keep_for_downloads: true para pedirle al SAT las facturas del emisor (POST /v1/sat_downloads); entonces se guarda cifrada y puede borrarla con DELETE.
 	 *
 	 * POST /v1/issuers/{id}/efirma
 	 * @see https://fiscalisto.com/docs/api/referencia/emisores/sign-efirma
 	 */
 	signEfirma(id: string, params: SignEfirmaParams, options?: RequestOptions): Promise<Issuer> {
 		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}/efirma`, body: params }, options);
+	}
+
+	/**
+	 * Borrar la e.firma guardada
+	 *
+	 * Borra la e.firma que guardó con keep_for_downloads. El emisor sigue timbrando; ya no puede pedir descargas al SAT hasta que la mande de nuevo.
+	 *
+	 * DELETE /v1/issuers/{id}/efirma
+	 * @see https://fiscalisto.com/docs/api/referencia/emisores/delete-efirma
+	 */
+	deleteEfirma(id: string, options?: RequestOptions): Promise<Issuer> {
+		return this.#client.request({ method: "DELETE", path: `/v1/issuers/${encodeURIComponent(id)}/efirma` }, options);
 	}
 
 	/**
@@ -3580,6 +3781,88 @@ export class SatListsResource {
 	}
 }
 
+/** Descargas del SAT: fiscalisto.satDownloads. */
+export class SatDownloadsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Pedirle al SAT las facturas de un emisor
+	 *
+	 * La descarga masiva del SAT: las facturas que el emisor recibió (o emitió) en un periodo de hasta un año, con su XML. Contesta 202 de inmediato; el SAT tarda de minutos a horas y al terminar llega sat_download.completed (o sat_download.failed) y las facturas quedan en GET /v1/sat_invoices. En producción necesita la e.firma guardada del emisor; en pruebas no se le pregunta al SAT: la descarga trae facturas de ejemplo al instante. No usa timbres.
+	 *
+	 * POST /v1/sat_downloads
+	 * @see https://fiscalisto.com/docs/api/referencia/descargas-del-sat/create-sat-download
+	 */
+	create(params: CreateSatDownloadParams, options?: RequestOptions): Promise<SatDownload> {
+		return this.#client.request({ method: "POST", path: "/v1/sat_downloads", body: params }, options);
+	}
+
+	/**
+	 * Listar descargas del SAT
+	 *
+	 * GET /v1/sat_downloads
+	 * @see https://fiscalisto.com/docs/api/referencia/descargas-del-sat/list-sat-downloads
+	 */
+	list(params?: ListSatDownloadsParams, options?: RequestOptions): List<SatDownload> {
+		return this.#client.list({ path: "/v1/sat_downloads", query: params }, options);
+	}
+
+	/**
+	 * Ver una descarga del SAT
+	 *
+	 * GET /v1/sat_downloads/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/descargas-del-sat/get-sat-download
+	 */
+	get(id: string, options?: RequestOptions): Promise<SatDownload> {
+		return this.#client.request({ method: "GET", path: `/v1/sat_downloads/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Descargas del SAT: fiscalisto.satInvoices. */
+export class SatInvoicesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar facturas del SAT
+	 *
+	 * Las facturas que trajeron sus descargas (y las demás que Fiscalisto tenga del emisor), de la más reciente a la más antigua por fecha.
+	 *
+	 * GET /v1/sat_invoices
+	 * @see https://fiscalisto.com/docs/api/referencia/descargas-del-sat/list-sat-invoices
+	 */
+	list(params?: ListSatInvoicesParams, options?: RequestOptions): List<SatInvoice> {
+		return this.#client.list({ path: "/v1/sat_invoices", query: params }, options);
+	}
+
+	/**
+	 * Ver una factura del SAT
+	 *
+	 * GET /v1/sat_invoices/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/descargas-del-sat/get-sat-invoice
+	 */
+	get(id: string, options?: RequestOptions): Promise<SatInvoice> {
+		return this.#client.request({ method: "GET", path: `/v1/sat_invoices/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Descargar el XML de una factura del SAT
+	 *
+	 * El CFDI tal como lo entregó el SAT.
+	 *
+	 * GET /v1/sat_invoices/{id}/xml
+	 * @see https://fiscalisto.com/docs/api/referencia/descargas-del-sat/get-sat-invoice-xml
+	 */
+	xml(id: string, options?: RequestOptions): Promise<string> {
+		return this.#client.request({ method: "GET", path: `/v1/sat_invoices/${encodeURIComponent(id)}/xml`, as: "text" }, options);
+	}
+}
+
 /** Webhooks: fiscalisto.webhookEndpoints. */
 export class WebhookEndpointsResource {
 	readonly #client: Client;
@@ -3713,6 +3996,8 @@ export class FiscalistoApi extends Core {
 	readonly products = new ProductsResource(this);
 	readonly satCatalogs = new SatCatalogsResource(this);
 	readonly satLists = new SatListsResource(this);
+	readonly satDownloads = new SatDownloadsResource(this);
+	readonly satInvoices = new SatInvoicesResource(this);
 	readonly webhookEndpoints = new WebhookEndpointsResource(this);
 	readonly events = new EventsResource(this);
 }
