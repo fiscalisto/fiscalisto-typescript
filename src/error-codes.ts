@@ -37,7 +37,7 @@ export const ErrorCode = {
 	IdempotencyKeyMissing: "idempotency_key_missing",
 	/** Esa Idempotency-Key ya se usó con otro cuerpo. Use una nueva para un comprobante distinto. */
 	IdempotencyKeyReused: "idempotency_key_reused",
-	/** La cuenta no tiene timbres de producción. Compre un paquete en Desarrolladores › Timbres. En pruebas nunca pasa. */
+	/** La cuenta no tiene timbres de producción. Compre un paquete en Desarrolladores › Timbres. En pruebas nunca pasa. Para enterarse antes, escuche balance.low o active la recarga automática. */
 	InsufficientBalance: "insufficient_balance",
 	/** Algo falló de nuestro lado. Repita la solicitud con la misma Idempotency-Key: nunca se timbra dos veces. Si sigue, escríbanos con el request_id. */
 	InternalError: "internal_error",

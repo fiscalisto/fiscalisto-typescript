@@ -33,6 +33,17 @@ export interface Balance {
 	available: number;
 	/** true si la cuenta timbra sin usar timbres. */
 	unlimited: boolean;
+	/** Con esta cantidad o menos llega balance.low (y otra vez al acabarse). Se elige en Desarrolladores › Timbres. */
+	low_balance_at: number;
+	/** La recarga automática con la tarjeta guardada, o null si está apagada. */
+	auto_recharge: {
+		/** Timbres del paquete que se compra. */
+		timbres: number;
+		/** Se compra con esta cantidad o menos. */
+		at: number;
+		/** Como máximo tantas compras al mes. */
+		max_per_month: number;
+	} | null;
 	/** Los paquetes con timbres, el que vence antes primero (en ese orden se usan). */
 	packs: {
 		/** Timbres del paquete. */
@@ -974,7 +985,7 @@ export interface WebhookTest {
 }
 
 /** Lo que puede pasar: el tipo de cada evento. */
-export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "issuer.ready";
+export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "issuer.ready" | "balance.low";
 
 /** Algo que pasó en su cuenta: el objeto completo como quedó. Se manda a sus webhooks firmado (Standard Webhooks). */
 export interface EventBase<T extends EventType = EventType, O = unknown> {
@@ -982,7 +993,7 @@ export interface EventBase<T extends EventType = EventType, O = unknown> {
 	id: string;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "event";
-	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, customer_data_request.completed o issuer.ready. */
+	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, customer_data_request.completed, issuer.ready o balance.low. */
 	type: T;
 	/** Versión de la API con que se armó el objeto. */
 	api_version: string;
@@ -1006,7 +1017,8 @@ export type Event =
 	| EventBase<"retention.canceled", Retention>
 	| EventBase<"invoice_batch.completed", InvoiceBatch>
 	| EventBase<"customer_data_request.completed", CustomerDataRequest>
-	| EventBase<"issuer.ready", Issuer>;
+	| EventBase<"issuer.ready", Issuer>
+	| EventBase<"balance.low", Balance>;
 
 /** Confirmación de que se borró. */
 export interface Deleted {
@@ -2773,7 +2785,7 @@ export interface RollWebhookSecretParams {
 
 export interface TestWebhookEndpointParams {
 	/** El evento a mandar. Por omisión invoice.stamped. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "issuer.ready";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "issuer.ready" | "balance.low";
 }
 
 /** Los parámetros de GET /v1/events. */
@@ -2783,7 +2795,7 @@ export interface ListEventsParams {
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
 	/** Solo de este tipo. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "issuer.ready";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "issuer.ready" | "balance.low";
 	/** Solo los de este objeto (inv_…, ret_…, bat_…). */
 	object?: string;
 }
