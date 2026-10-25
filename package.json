@@ -40,7 +40,7 @@
 		"prepublishOnly": "npm run build"
 	},
 	"bin": {
-		"fiscalisto": "./dist/cli.js"
+		"fiscalisto": "dist/cli.js"
 	},
 	"devDependencies": {
 		"@types/node": "^22.0.0"
