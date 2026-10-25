@@ -342,6 +342,8 @@ export interface Invoice {
 		/** El texto original del PAC. */
 		raw: string;
 	} | null;
+	/** La factura recurrente (rin_…) que la timbró sola, o null si se timbró con una llamada. */
+	recurring_invoice: string | null;
 	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
 	created_at: string | null;
 	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
@@ -1120,6 +1122,76 @@ export interface SelfInvoicing {
 	global_periodicity: "01" | "02" | "03" | "04";
 }
 
+/** Una factura que el emisor timbra solo, cada mes, semana o día. */
+export interface RecurringInvoice {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "recurring_invoice";
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Para reconocerla. */
+	name: string;
+	/** active (timbra en cada fecha) o paused. */
+	status: "active" | "paused";
+	/** Cada cuánto: frequency (monthly, weekly o daily), interval, day_of_month (con monthly; "last" es el último del mes), y la hora (hour, en time_zone) en que se timbra. */
+	schedule: {
+		/** monthly: cada interval meses en day_of_month. weekly o daily: cada interval semanas o días. */
+		frequency: "monthly" | "weekly" | "daily";
+		/** Cada cuántos meses, semanas o días. */
+		interval: number;
+		/** Con monthly: el día del mes, del 1 al 28, o "last" (el último). null con weekly o daily. */
+		day_of_month: number | "last" | null;
+		/** La hora (0 a 23) en que se timbra, en time_zone. */
+		hour: number;
+		/** La zona de esa hora (America/Mexico_City, America/Cancun…). */
+		time_zone: string;
+	};
+	/** La fecha (AAAA-MM-DD) de la siguiente factura. */
+	next_invoice_on: string;
+	/** La fecha del último periodo que timbró, o null si aún no timbra ninguna. */
+	last_invoiced_on: string | null;
+	/** La última factura (inv_…) que timbró, o null. */
+	last_invoice: string | null;
+	/** Por qué no se pudo timbrar la última vez (sin timbres, el cliente borrado, el SAT la rechazó…), o null. Se vuelve a intentar a la siguiente hora del día siguiente; también llega recurring_invoice.failed. */
+	last_error: {
+		/** Qué pasó y cómo corregirlo, para una persona. */
+		message: string | null;
+	} | null;
+	/** Si cada factura se manda al correo del cliente. */
+	send_email: boolean;
+	/** Si quedaron periodos sin timbrar: all los timbra todos, latest solo el más reciente. */
+	catch_up: "all" | "latest";
+	/** A quién se factura. */
+	customer: {
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string;
+		/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+		legal_name: string | null;
+	};
+	/** La moneda de la factura. */
+	currency: string;
+	/** Los conceptos, con description tal como se guardó ({mes}, {año}… se llenan en cada factura). */
+	items: {
+		/** Descripción del concepto (Descripcion), hasta 1,000 caracteres. */
+		description: string;
+		/** Clave del producto o servicio (ClaveProdServ), 8 dígitos de c_ClaveProdServ. Búsquela con GET /v1/sat_catalogs/product_keys?q=… */
+		product_key: string;
+		/** Cantidad (Cantidad). Por omisión 1. */
+		quantity?: number;
+		/** Clave de unidad (ClaveUnidad) de c_ClaveUnidad: E48 unidad de servicio (por omisión), H87 pieza, ACT actividad… */
+		unit_key?: string;
+		/** Precio unitario antes de impuestos (ValorUnitario). */
+		unit_price: number;
+	}[];
+	/** El total de cada factura con los precios de hoy. */
+	total: number | null;
+	/** Cuándo se creó. */
+	created_at: string | null;
+}
+
 /** Una liga para que el dueño de un emisor suba su CSD y firme con su e.firma. */
 export interface IssuerOnboardingLink {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -1188,7 +1260,7 @@ export interface WebhookTest {
 }
 
 /** Lo que puede pasar: el tipo de cada evento. */
-export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "issuer.ready" | "balance.low";
+export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "issuer.ready" | "balance.low";
 
 /** Algo que pasó en su cuenta: el objeto completo como quedó. Se manda a sus webhooks firmado (Standard Webhooks). */
 export interface EventBase<T extends EventType = EventType, O = unknown> {
@@ -1196,7 +1268,7 @@ export interface EventBase<T extends EventType = EventType, O = unknown> {
 	id: string;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "event";
-	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, ticket.invoiced, ticket.included_in_global, issuer.ready o balance.low. */
+	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, issuer.ready o balance.low. */
 	type: T;
 	/** Versión de la API con que se armó el objeto. */
 	api_version: string;
@@ -1224,6 +1296,7 @@ export type Event =
 	| EventBase<"sat_download.failed", SatDownload>
 	| EventBase<"ticket.invoiced", Ticket>
 	| EventBase<"ticket.included_in_global", Ticket>
+	| EventBase<"recurring_invoice.failed", RecurringInvoice>
 	| EventBase<"issuer.ready", Issuer>
 	| EventBase<"balance.low", Balance>;
 
@@ -1406,6 +1479,17 @@ export interface TicketList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: Ticket[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface RecurringInvoiceList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: RecurringInvoice[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -3094,6 +3178,74 @@ export interface UpdateSelfInvoicingParams {
 	global_periodicity?: "01" | "02" | "03" | "04";
 }
 
+export interface CreateRecurringInvoiceParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Para reconocerla: «Renta oficina 3», «Plan Pro de ACME». */
+	name: string;
+	/** Cada cuánto y a qué hora se timbra. */
+	schedule: {
+		/** monthly: cada interval meses en day_of_month. weekly o daily: cada interval semanas o días desde start_date. */
+		frequency: "monthly" | "weekly" | "daily";
+		/** Cada cuántos meses, semanas o días. Por omisión 1. Hasta 24 meses, 52 semanas o 365 días. */
+		interval?: number;
+		/** Con monthly: el día, del 1 al 28, o "last" (el último del mes). Por omisión el día de start_date, o el de hoy. */
+		day_of_month?: number | "last";
+		/** La primera factura, AAAA-MM-DD (hoy o después). Por omisión: con monthly, el próximo day_of_month; con weekly o daily, hoy. */
+		start_date?: string;
+		/** La hora (0 a 23) en que se timbra, en time_zone. Por omisión 7. */
+		hour?: number;
+		/** La zona de esa hora. Por omisión America/Mexico_City. */
+		time_zone?: "America/Mexico_City" | "America/Cancun" | "America/Mazatlan" | "America/Hermosillo" | "America/Tijuana" | "America/Ciudad_Juarez";
+	};
+	/** La factura que se repite: el cuerpo de POST /v1/invoices, sin issuer, folio, date, global ni metadata. En description puede usar {mes}, {mes anterior}, {mes siguiente}, {año}, {año anterior}, {año siguiente} y {periodo}: cada factura los llena con su fecha. */
+	invoice: InvoiceCreate;
+	/** Mandar cada factura al correo del cliente (customer.email o el del catálogo). Por omisión true. */
+	send_email?: boolean;
+	/** Si quedaron periodos sin timbrar (sin timbres, en pausa con su fecha pasada): all los timbra todos, cada uno con su mes; latest solo el más reciente. Por omisión all. */
+	catch_up?: "all" | "latest";
+}
+
+/** Los parámetros de GET /v1/recurring_invoices. */
+export interface ListRecurringInvoicesParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** active o paused. */
+	status?: "active" | "paused";
+}
+
+export interface UpdateRecurringInvoiceParams {
+	/** Nombre. */
+	name?: string;
+	/** Cada cuánto y a qué hora se timbra. */
+	schedule?: {
+		/** monthly: cada interval meses en day_of_month. weekly o daily: cada interval semanas o días desde start_date. */
+		frequency?: "monthly" | "weekly" | "daily";
+		/** Cada cuántos meses, semanas o días. Por omisión 1. Hasta 24 meses, 52 semanas o 365 días. */
+		interval?: number;
+		/** Con monthly: el día, del 1 al 28, o "last" (el último del mes). Por omisión el día de start_date, o el de hoy. */
+		day_of_month?: number | "last";
+		/** La primera factura, AAAA-MM-DD (hoy o después). Por omisión: con monthly, el próximo day_of_month; con weekly o daily, hoy. */
+		start_date?: string;
+		/** La hora (0 a 23) en que se timbra, en time_zone. Por omisión 7. */
+		hour?: number;
+		/** La zona de esa hora. Por omisión America/Mexico_City. */
+		time_zone?: "America/Mexico_City" | "America/Cancun" | "America/Mazatlan" | "America/Hermosillo" | "America/Tijuana" | "America/Ciudad_Juarez";
+	};
+	/** La factura completa que se repite desde la siguiente vez (reemplaza la anterior). */
+	invoice?: InvoiceCreate;
+	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
+	send_email?: boolean;
+	/** Si quedaron periodos sin timbrar: all los timbra todos, cada uno con su mes; latest solo el más reciente. */
+	catch_up?: "all" | "latest";
+	/** false la pausa; true la reanuda desde hoy, sin timbrar las fechas que pasaron en pausa. */
+	active?: boolean;
+}
+
 export interface CreateWebhookEndpointParams {
 	/** Dirección https de su servidor que recibe los avisos. */
 	url: string;
@@ -3129,7 +3281,7 @@ export interface RollWebhookSecretParams {
 
 export interface TestWebhookEndpointParams {
 	/** El evento a mandar. Por omisión invoice.stamped. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "issuer.ready" | "balance.low";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "issuer.ready" | "balance.low";
 }
 
 /** Los parámetros de GET /v1/events. */
@@ -3139,7 +3291,7 @@ export interface ListEventsParams {
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
 	/** Solo de este tipo. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "issuer.ready" | "balance.low";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "issuer.ready" | "balance.low";
 	/** Solo los de este objeto (inv_…, ret_…, bat_…). */
 	object?: string;
 }
@@ -4110,6 +4262,96 @@ export class TicketsResource {
 	}
 }
 
+/** Facturas recurrentes: fiscalisto.recurringInvoices. */
+export class RecurringInvoicesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Crear una factura recurrente
+	 *
+	 * Una factura que el emisor timbra solo en cada fecha (cada interval meses en day_of_month, o cada interval semanas o días), a la hora que elija, con los timbres de su cuenta, y la manda al cliente si send_email. Cada una es una factura normal (invoice.stamped, con recurring_invoice) y nunca se timbra dos veces el mismo periodo. invoice es el cuerpo de POST /v1/invoices: se revisa ahora, con las mismas reglas.
+	 *
+	 * POST /v1/recurring_invoices
+	 * @see https://fiscalisto.com/docs/api/referencia/facturas-recurrentes/create-recurring-invoice
+	 */
+	create(params: CreateRecurringInvoiceParams, options?: RequestOptions): Promise<RecurringInvoice> {
+		return this.#client.request({ method: "POST", path: "/v1/recurring_invoices", body: params }, options);
+	}
+
+	/**
+	 * Listar facturas recurrentes
+	 *
+	 * Las más recientes primero.
+	 *
+	 * GET /v1/recurring_invoices
+	 * @see https://fiscalisto.com/docs/api/referencia/facturas-recurrentes/list-recurring-invoices
+	 */
+	list(params?: ListRecurringInvoicesParams, options?: RequestOptions): List<RecurringInvoice> {
+		return this.#client.list({ path: "/v1/recurring_invoices", query: params }, options);
+	}
+
+	/**
+	 * Ver una factura recurrente
+	 *
+	 * GET /v1/recurring_invoices/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/facturas-recurrentes/get-recurring-invoice
+	 */
+	get(id: string, options?: RequestOptions): Promise<RecurringInvoice> {
+		return this.#client.request({ method: "GET", path: `/v1/recurring_invoices/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Cambiar o pausar una factura recurrente
+	 *
+	 * Solo lo que mande cambia. invoice reemplaza la factura completa desde la siguiente vez. active: false la pausa; active: true la reanuda desde hoy, sin timbrar las fechas que pasaron en pausa. schedule.start_date mueve la siguiente fecha.
+	 *
+	 * POST /v1/recurring_invoices/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/facturas-recurrentes/update-recurring-invoice
+	 */
+	update(id: string, params?: UpdateRecurringInvoiceParams, options?: RequestOptions): Promise<RecurringInvoice> {
+		return this.#client.request({ method: "POST", path: `/v1/recurring_invoices/${encodeURIComponent(id)}`, body: params }, options);
+	}
+
+	/**
+	 * Borrar una factura recurrente
+	 *
+	 * Ya no timbra más; las facturas que timbró se quedan.
+	 *
+	 * DELETE /v1/recurring_invoices/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/facturas-recurrentes/delete-recurring-invoice
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/recurring_invoices/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Saltar la siguiente factura
+	 *
+	 * La siguiente fecha pasa a la que sigue, sin timbrar nada.
+	 *
+	 * POST /v1/recurring_invoices/{id}/skip
+	 * @see https://fiscalisto.com/docs/api/referencia/facturas-recurrentes/skip-recurring-invoice
+	 */
+	skip(id: string, options?: RequestOptions): Promise<RecurringInvoice> {
+		return this.#client.request({ method: "POST", path: `/v1/recurring_invoices/${encodeURIComponent(id)}/skip` }, options);
+	}
+
+	/**
+	 * Timbrar ahora la que toca
+	 *
+	 * Timbra el periodo que ya toca (next_invoice_on es hoy o antes) sin esperar su hora. Si no toca aún, 409 recurring_not_due. Si la hora llega mientras tanto, no se timbra dos veces: es el mismo periodo.
+	 *
+	 * POST /v1/recurring_invoices/{id}/run
+	 * @see https://fiscalisto.com/docs/api/referencia/facturas-recurrentes/run-recurring-invoice
+	 */
+	run(id: string, options?: RequestOptions): Promise<Invoice> {
+		return this.#client.request({ method: "POST", path: `/v1/recurring_invoices/${encodeURIComponent(id)}/run` }, options);
+	}
+}
+
 /** Webhooks: fiscalisto.webhookEndpoints. */
 export class WebhookEndpointsResource {
 	readonly #client: Client;
@@ -4247,6 +4489,7 @@ export class FiscalistoApi extends Core {
 	readonly satDownloads = new SatDownloadsResource(this);
 	readonly satInvoices = new SatInvoicesResource(this);
 	readonly tickets = new TicketsResource(this);
+	readonly recurringInvoices = new RecurringInvoicesResource(this);
 	readonly webhookEndpoints = new WebhookEndpointsResource(this);
 	readonly events = new EventsResource(this);
 }
