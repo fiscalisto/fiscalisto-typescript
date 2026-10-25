@@ -1807,6 +1807,8 @@ export interface ApiError {
 		param?: string;
 		/** Código del SAT o del PAC (CFDI40xxx). */
 		sat_code?: string;
+		/** Con Accept-Language: en, el mensaje original en español cuando message solo dice en inglés qué significa el código. */
+		message_es?: string;
 		/** La explicación de este código en la documentación. */
 		doc_url: string;
 		/** El id de la solicitud (req_…). Inclúyalo si nos escribe. */

@@ -31,6 +31,8 @@ export interface FiscalistoOptions {
 	 * ninguna, así se usa la de su cuenta.
 	 */
 	apiVersion?: string | null;
+	/** "en": los mensajes de error en inglés (Accept-Language). Por omisión en español. */
+	language?: "es" | "en";
 }
 
 export interface RequestOptions {
@@ -184,6 +186,7 @@ export class Core implements Client {
 	readonly #timeout: number;
 	readonly #fetch: Fetch;
 	readonly #apiVersion: string | null;
+	readonly #language: string | undefined;
 
 	constructor(apiKey?: string, options: FiscalistoOptions = {}) {
 		const env = (globalThis as { process?: { env?: Record<string, string | undefined> } })
@@ -203,6 +206,7 @@ export class Core implements Client {
 		this.#timeout = options.timeout ?? 80_000;
 		this.#fetch = options.fetch ?? ((url, init) => fetch(url, init));
 		this.#apiVersion = options.apiVersion === undefined ? API_VERSION : options.apiVersion;
+		this.#language = options.language;
 	}
 
 	/** true con una llave fk_live_ (producción), false con fk_test_ (pruebas). */
@@ -220,6 +224,7 @@ export class Core implements Client {
 			"user-agent": `fiscalisto-node/${VERSION}`,
 		};
 		if (this.#apiVersion) headers["fiscalisto-version"] = this.#apiVersion;
+		if (this.#language) headers["accept-language"] = this.#language;
 		const idempotencyKey = spec.idempotent
 			? (options.idempotencyKey ?? crypto.randomUUID())
 			: undefined;
