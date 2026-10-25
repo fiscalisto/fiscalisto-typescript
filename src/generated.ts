@@ -1163,7 +1163,7 @@ export interface RecurringInvoice {
 	last_invoice: string | null;
 	/** Por qué no se pudo timbrar la última vez (sin timbres, el cliente borrado, el SAT la rechazó…), o null. Se vuelve a intentar a la siguiente hora del día siguiente; también llega recurring_invoice.failed. */
 	last_error: {
-		/** Qué pasó y cómo corregirlo, para una persona. */
+		/** Qué pasó. */
 		message: string | null;
 	} | null;
 	/** Si cada factura se manda al correo del cliente. */
@@ -1196,6 +1196,237 @@ export interface RecurringInvoice {
 	total: number | null;
 	/** Cuándo se creó. */
 	created_at: string | null;
+}
+
+/** La póliza de diario de un CFDI: sus cargos y abonos, que siempre cuadran. */
+export interface JournalEntry {
+	/** El número de la póliza: D-AAAAMM-NNNNN, en orden de fecha dentro del mes. */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "journal_entry";
+	/** El emisor. */
+	issuer: string;
+	/** La fecha del CFDI. */
+	date: string;
+	/** Factura o nota de crédito, su folio y la contraparte. */
+	description: string;
+	/** La factura (inv_…) si la timbró este emisor; null si la recibió. */
+	invoice: string | null;
+	/** El folio fiscal del CFDI. */
+	uuid: string;
+	/** El RFC de la contraparte (cliente o proveedor). */
+	tax_id: string;
+	/** El total del CFDI, en su moneda. */
+	total: number;
+	/** La moneda del CFDI. */
+	currency: string;
+	/** El tipo de cambio, si no es en pesos; null si es en pesos. */
+	exchange_rate: number | null;
+	/** Los movimientos, en pesos: el cargo (debit) o abono (credit) a cada cuenta. */
+	lines: {
+		/** El número de cuenta. */
+		account: string;
+		/** El nombre de la cuenta. */
+		account_name: string;
+		/** Su código agrupador del SAT. */
+		grouping_code: string;
+		/** El cargo, en pesos. */
+		debit: number;
+		/** El abono, en pesos. */
+		credit: number;
+	}[];
+}
+
+/** Una cuenta del catálogo, con su código agrupador del SAT. */
+export interface LedgerAccount {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "ledger_account";
+	/** El número de cuenta (NumCta). */
+	number: string;
+	/** Su nombre. */
+	name: string;
+	/** El código agrupador del SAT (Anexo 24). */
+	grouping_code: string;
+	/** debit (deudora) o credit (acreedora). */
+	nature: "debit" | "credit";
+}
+
+/** La balanza de comprobación de un mes. */
+export interface TrialBalance {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "trial_balance";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** Cuántas pólizas tuvo el mes. */
+	journal_entries: number;
+	/** Cada cuenta con movimiento o saldo: saldo inicial, cargos, abonos y saldo final. */
+	accounts: {
+		/** Qué tipo de objeto es («invoice», «customer»…). */
+		object: "ledger_account";
+		/** Número de empleado (NumEmpleado). */
+		number: string;
+		/** Nombre. */
+		name: string;
+		/** El código agrupador del SAT. */
+		grouping_code: string;
+		/** debit (deudora) o credit (acreedora). */
+		nature: "debit" | "credit";
+		/** El saldo al empezar el mes. */
+		opening_balance: number;
+		/** Los cargos del mes. */
+		debit: number;
+		/** Los abonos del mes. */
+		credit: number;
+		/** El saldo al terminar el mes. */
+		closing_balance: number;
+	}[];
+	/** Cargos y abonos del mes: siempre iguales. */
+	totals: {
+		/** Todos los cargos del mes. */
+		debit: number;
+		/** Todos los abonos del mes. */
+		credit: number;
+	};
+}
+
+/** La DIOT de un mes: lo pagado a cada proveedor, por tipo de operación. */
+export interface Diot {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "diot";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** La proporción de IVA acreditable del mes para gastos comunes (1 si no la aplica). */
+	proportion: number;
+	/** Una línea por proveedor y tipo de operación, con lo pagado en el mes. */
+	lines: {
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string;
+		/** Nombre. */
+		name: string | null;
+		/** Tipo de tercero: 04 nacional, 05 extranjero, 15 global. */
+		third_party_type: "15" | "04" | "05";
+		/** Tipo de operación: 02 enajenación de bienes, 03 servicios profesionales, 06 uso o goce temporal, 07 importación, 85 otros, 87 operaciones globales. */
+		operation_type: "85" | "87" | "02" | "03" | "06" | "07";
+		/** Lo pagado en el mes por tasa, en pesos, con su IVA. */
+		paid: {
+			/** Valor de los actos al 16 %. */
+			base_16: number;
+			/** Valor de los actos al 8 % (región fronteriza). */
+			base_8: number;
+			/** Valor de los actos al 0 %. */
+			base_0: number;
+			/** Valor de los actos exentos. */
+			exempt: number;
+			/** Valor de los actos no objeto de IVA. */
+			not_taxable: number;
+			/** El IVA de esos actos. */
+			vat: number;
+		};
+		/** Las devoluciones (notas de crédito) del mes, por tasa. */
+		returns: {
+			/** Valor de los actos al 16 %. */
+			base_16: number;
+			/** Valor de los actos al 8 % (región fronteriza). */
+			base_8: number;
+			/** Valor de los actos al 0 %. */
+			base_0: number;
+			/** Valor de las devoluciones exentas. */
+			exempt: number;
+			/** Valor de los actos no objeto de IVA. */
+			not_taxable: number;
+			/** El IVA de esos actos. */
+			vat: number;
+		};
+		/** El proveedor está en la lista 69-B definitiva: revise si deduce sus CFDI. */
+		blacklisted: boolean;
+	}[];
+	/** Lo que conviene revisar antes de presentarla. */
+	warnings: string[];
+}
+
+/** Una tienda de Shopify o Mercado Libre cuyos pedidos pagados se vuelven tickets de autofactura del emisor. */
+export interface StoreConnection {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "store_connection";
+	/** El emisor dueño de la tienda. */
+	issuer: string;
+	/** shopify o mercadolibre. */
+	platform: "shopify" | "mercadolibre";
+	/** El dominio de la tienda de Shopify, o el id del vendedor en Mercado Libre (al autorizar). */
+	shop: string | null;
+	/** pending (Mercado Libre espera que el vendedor autorice en authorize_url), active o disconnected. */
+	status: "pending" | "active" | "disconnected";
+	/** Si está pending: la página de Mercado Libre donde el vendedor autoriza (vale un día; cada consulta da una nueva). Si no, null. */
+	authorize_url: string | null;
+	/** Cómo se vuelve ticket cada pedido. */
+	settings: {
+		/** c_ClaveProdServ de lo que vende, o null. */
+		product_key: string | null;
+		/** c_ClaveUnidad, o null (la de la clave del producto). */
+		unit_key: string | null;
+		/** Tasa de IVA incluida en los precios. */
+		iva: "0" | "0.16" | "0.08" | "exento";
+		/** El concepto fijo de cada ticket, o null (el pedido y sus artículos). */
+		description: string | null;
+		/** Lo que va antes del número del pedido en el folio. */
+		folio_prefix: string;
+		/** c_FormaPago cuando la del pedido no está en payment_forms, o null. */
+		payment_form: string | null;
+		/** c_FormaPago por pasarela o tipo de pago. */
+		payment_forms: Record<string, string>;
+		/** Mercado Libre: si se timbra al momento con los datos fiscales del comprador; null en Shopify. */
+		auto_invoice: boolean | null;
+	};
+	/** Cuántos pedidos se han vuelto tickets. */
+	orders_count: number;
+	/** Cuándo llegó el último, o null. */
+	last_order_at: string | null;
+	/** El último problema (un pedido en dólares, un ticket que ya se facturó cuando se canceló el pedido…), o null. */
+	last_error: {
+		/** Qué pasó. */
+		message: string;
+		/** Cuándo. */
+		at: string | null;
+	} | null;
+	/** Cuándo se conectó. */
+	created_at: string | null;
+}
+
+/** Los pedidos pagados que se trajeron. */
+export interface StoreImport {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "store_import";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** La conexión (stc_…). */
+	store_connection: string;
+	/** Desde qué día se buscaron pedidos. */
+	since: string;
+	/** Pedidos que son tickets (los que ya lo eran cuentan otra vez). */
+	tickets: number;
+	/** De ellos, los que se facturaron al momento con los datos del comprador. */
+	invoiced: number;
+	/** Los que no se volvieron ticket, con el motivo. */
+	skipped: {
+		/** El pedido. */
+		order: string;
+		/** Por qué no se volvió ticket. */
+		reason: string;
+	}[];
 }
 
 /** Una cotización: su cliente la ve en una liga, la acepta, pide cambios o la rechaza, y se factura. */
@@ -1675,6 +1906,39 @@ export interface TicketList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: Ticket[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface JournalEntryList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: JournalEntry[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface LedgerAccountList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: LedgerAccount[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface StoreConnectionList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: StoreConnection[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -3445,6 +3709,141 @@ export interface UpdateSelfInvoicingParams {
 	global_periodicity?: "01" | "02" | "03" | "04";
 }
 
+/** Los parámetros de GET /v1/accounting/journal_entries. */
+export interface ListJournalEntriesParams {
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** Cuántas por página, de 1 a 1,000. Por omisión 100. */
+	limit?: number;
+	/** El id de la última póliza de la página anterior. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+/** Los parámetros de GET /v1/accounting/trial_balance. */
+export interface GetTrialBalanceParams {
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+/** Los parámetros de GET /v1/accounting/accounts. */
+export interface ListLedgerAccountsParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+/** Los parámetros de GET /v1/accounting/electronic_accounting. */
+export interface GetElectronicAccountingParams {
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** normal (BN, por omisión) o complementary (BC, con modified_on). */
+	type?: "normal" | "complementary";
+	/** complementary: el día en que se modificó (AAAA-MM-DD). */
+	modified_on?: string;
+	/** Para incluir las pólizas: AF acto de fiscalización, FC fiscalización compulsa (con order_number), DE devolución o CO compensación (con procedure_number). */
+	journal_request?: "AF" | "FC" | "DE" | "CO";
+	/** AF y FC: el número de orden (ABC1234567/26). */
+	order_number?: string;
+	/** DE y CO: el número de trámite (AB123456789012). */
+	procedure_number?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+/** Los parámetros de GET /v1/accounting/diot. */
+export interface GetDiotParams {
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+/** Los parámetros de GET /v1/accounting/diot/file. */
+export interface GetDiotFileParams {
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** true para agrupar proveedores de hasta $50,000 en el mes (regla 4.5.2). */
+	group_small_suppliers?: boolean;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface CreateStoreConnectionParams {
+	/** El emisor (iss_…) dueño de la tienda. Por omisión, su único emisor. */
+	issuer?: string;
+	/** shopify o mercadolibre. */
+	platform: "shopify" | "mercadolibre";
+	/** Shopify: el dominio de la tienda (mi-tienda.myshopify.com). */
+	shop?: string;
+	/** Shopify: el Client ID de la app de la tienda (Dev Dashboard). */
+	client_id?: string;
+	/** Shopify: el Client secret de esa app; con él se firman los webhooks. Se guarda cifrado y nunca se muestra. */
+	client_secret?: string;
+	/** Shopify, solo apps personalizadas antiguas: su token de la Admin API (shpat_…); client_secret es entonces su API secret key. */
+	access_token?: string;
+	/** Mercado Libre: a dónde volver después de autorizar (se agregan store_connection y status). */
+	return_url?: string;
+	/** Cómo se vuelve ticket cada pedido. */
+	settings?: {
+		/** c_ClaveProdServ de lo que vende (8 dígitos). */
+		product_key?: string;
+		/** c_ClaveUnidad. Por omisión, la de la clave del producto. */
+		unit_key?: string;
+		/** Tasa de IVA incluida en los precios. Por omisión 0.16. */
+		iva?: "0" | "0.16" | "0.08" | "exento";
+		/** El concepto de cada ticket. Por omisión, el pedido y sus artículos («Pedido 1001: Playera (2), Gorra»). */
+		description?: string;
+		/** Lo que va antes del número del pedido en el folio del ticket. Por omisión SHOP- o ML-. */
+		folio_prefix?: string;
+		/** c_FormaPago cuando la forma de pago del pedido no está en payment_forms. Por omisión 04 (Shopify) o 31 (Mercado Libre). */
+		payment_form?: string;
+		/** c_FormaPago por pasarela de Shopify (shopify_payments, paypal, manual…) o tipo de pago de Mercado Libre (credit_card, debit_card, account_money, ticket, bank_transfer). */
+		payment_forms?: Record<string, string>;
+		/** Mercado Libre: timbrar en cuanto se paga si el comprador dejó sus datos fiscales completos. Por omisión true. */
+		auto_invoice?: boolean;
+	};
+}
+
+/** Los parámetros de GET /v1/store_connections. */
+export interface ListStoreConnectionsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface UpdateStoreConnectionParams {
+	/** Lo que cambia; lo demás queda. */
+	settings: {
+		/** c_ClaveProdServ de lo que vende (8 dígitos). */
+		product_key?: string;
+		/** c_ClaveUnidad. Por omisión, la de la clave del producto. */
+		unit_key?: string;
+		/** Tasa de IVA incluida en los precios. Por omisión 0.16. */
+		iva?: "0" | "0.16" | "0.08" | "exento";
+		/** El concepto de cada ticket. Por omisión, el pedido y sus artículos («Pedido 1001: Playera (2), Gorra»). */
+		description?: string;
+		/** Lo que va antes del número del pedido en el folio del ticket. Por omisión SHOP- o ML-. */
+		folio_prefix?: string;
+		/** c_FormaPago cuando la forma de pago del pedido no está en payment_forms. Por omisión 04 (Shopify) o 31 (Mercado Libre). */
+		payment_form?: string;
+		/** c_FormaPago por pasarela de Shopify (shopify_payments, paypal, manual…) o tipo de pago de Mercado Libre (credit_card, debit_card, account_money, ticket, bank_transfer). */
+		payment_forms?: Record<string, string>;
+		/** Mercado Libre: timbrar en cuanto se paga si el comprador dejó sus datos fiscales completos. Por omisión true. */
+		auto_invoice?: boolean;
+	};
+}
+
+export interface ImportStoreOrdersParams {
+	/** Desde qué día (AAAA-MM-DD, hasta 31 días atrás). Por omisión, hace 7 días. */
+	since?: string;
+}
+
 export interface CreateRecurringInvoiceParams {
 	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
 	issuer?: string;
@@ -4964,6 +5363,164 @@ export class TicketsResource {
 	}
 }
 
+/** Contabilidad: fiscalisto.accounting. */
+export class AccountingResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar las pólizas de un mes
+	 *
+	 * Una póliza de diario por cada CFDI de ingreso o egreso vigente del mes, emitido o recibido (los recibidos con la categoría de su gasto), con sus cuentas y código agrupador del SAT. En pesos; un CFDI en otra moneda sin tipo de cambio no se registra. Es un punto de partida para su contador: no incluye bancos, nómina ni depreciaciones.
+	 *
+	 * GET /v1/accounting/journal_entries
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/list-journal-entries
+	 */
+	journalEntries(params: ListJournalEntriesParams, options?: RequestOptions): List<JournalEntry> {
+		return this.#client.list({ path: "/v1/accounting/journal_entries", query: params }, options);
+	}
+
+	/**
+	 * Ver la balanza de comprobación
+	 *
+	 * Saldo inicial, cargos, abonos y saldo final de cada cuenta en el mes. Los saldos iniciales se acumulan desde el primer CFDI (las de resultados, desde enero), y los resultados de cada año anterior se cierran a capital.
+	 *
+	 * GET /v1/accounting/trial_balance
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-trial-balance
+	 */
+	trialBalance(params: GetTrialBalanceParams, options?: RequestOptions): Promise<TrialBalance> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/trial_balance", query: params }, options);
+	}
+
+	/**
+	 * Ver el catálogo de cuentas
+	 *
+	 * Las cuentas que usan las pólizas, con su código agrupador del SAT.
+	 *
+	 * GET /v1/accounting/accounts
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/list-ledger-accounts
+	 */
+	accounts(params?: ListLedgerAccountsParams, options?: RequestOptions): Promise<LedgerAccountList> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/accounts", query: params }, options);
+	}
+
+	/**
+	 * Descargar la contabilidad electrónica
+	 *
+	 * El ZIP del mes para el Buzón Tributario: el catálogo (CT) y la balanza (BN, o BC si es complementaria), cada uno en su ZIP con el nombre que espera el SAT, en el formato 1.3 del Anexo 24. Con journal_request, también las pólizas (PL), que se entregan cuando el SAT las pide.
+	 *
+	 * GET /v1/accounting/electronic_accounting
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-electronic-accounting
+	 */
+	electronicAccounting(params: GetElectronicAccountingParams, options?: RequestOptions): Promise<string> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/electronic_accounting", query: params, as: "text" }, options);
+	}
+
+	/**
+	 * Ver la DIOT de un mes
+	 *
+	 * Lo efectivamente pagado a cada proveedor en el mes (facturas PUE y complementos de pago recibidos), con sus notas de crédito como devoluciones, por tipo de operación. Sale de las facturas recibidas que trajo de las descargas del SAT. Desde enero de 2025 (formato 2025).
+	 *
+	 * GET /v1/accounting/diot
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-diot
+	 */
+	diot(params: GetDiotParams, options?: RequestOptions): Promise<Diot> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/diot", query: params }, options);
+	}
+
+	/**
+	 * Descargar la DIOT para el SAT
+	 *
+	 * El TXT de carga masiva de la DIOT 2025: 54 campos separados por |, pesos enteros. Con group_small_suppliers=true junta en una línea global a los proveedores chicos (regla 4.5.2 RMF). Un mes sin pagos a proveedores responde diot_empty: esa se presenta sin operaciones en el portal del SAT.
+	 *
+	 * GET /v1/accounting/diot/file
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-diot-file
+	 */
+	diotFile(params: GetDiotFileParams, options?: RequestOptions): Promise<string> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/diot/file", query: params, as: "text" }, options);
+	}
+}
+
+/** Tiendas en línea: fiscalisto.storeConnections. */
+export class StoreConnectionsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Conectar una tienda
+	 *
+	 * Shopify: con el dominio y las llaves de la app de la tienda (Dev Dashboard, permisos read_orders y write_orders) registra los webhooks y queda active. Mercado Libre: queda pending hasta que el vendedor autorice en authorize_url. Desde entonces cada pedido pagado es un ticket (folio SHOP-1001 o ML-…), que su comprador factura en el portal o entra en la factura global; un pedido cancelado o reembolsado completo cancela su ticket.
+	 *
+	 * POST /v1/store_connections
+	 * @see https://fiscalisto.com/docs/api/referencia/tiendas-en-linea/create-store-connection
+	 */
+	create(params: CreateStoreConnectionParams, options?: RequestOptions): Promise<StoreConnection> {
+		return this.#client.request({ method: "POST", path: "/v1/store_connections", body: params }, options);
+	}
+
+	/**
+	 * Listar tiendas
+	 *
+	 * Las más recientes primero, también las desconectadas.
+	 *
+	 * GET /v1/store_connections
+	 * @see https://fiscalisto.com/docs/api/referencia/tiendas-en-linea/list-store-connections
+	 */
+	list(params?: ListStoreConnectionsParams, options?: RequestOptions): List<StoreConnection> {
+		return this.#client.list({ path: "/v1/store_connections", query: params }, options);
+	}
+
+	/**
+	 * Ver una tienda
+	 *
+	 * GET /v1/store_connections/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/tiendas-en-linea/get-store-connection
+	 */
+	get(id: string, options?: RequestOptions): Promise<StoreConnection> {
+		return this.#client.request({ method: "GET", path: `/v1/store_connections/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Cambiar cómo se vuelven tickets sus pedidos
+	 *
+	 * Cuenta para los pedidos que lleguen; los tickets ya hechos no cambian.
+	 *
+	 * POST /v1/store_connections/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/tiendas-en-linea/update-store-connection
+	 */
+	update(id: string, params: UpdateStoreConnectionParams, options?: RequestOptions): Promise<StoreConnection> {
+		return this.#client.request({ method: "POST", path: `/v1/store_connections/${encodeURIComponent(id)}`, body: params }, options);
+	}
+
+	/**
+	 * Desconectar una tienda
+	 *
+	 * Sus pedidos dejan de llegar y se borran sus llaves y webhooks. Los tickets que ya hizo siguen.
+	 *
+	 * DELETE /v1/store_connections/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/tiendas-en-linea/delete-store-connection
+	 */
+	delete(id: string, options?: RequestOptions): Promise<StoreConnection> {
+		return this.#client.request({ method: "DELETE", path: `/v1/store_connections/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Traer pedidos pagados
+	 *
+	 * Los pedidos pagados desde una fecha (hasta 31 días, 200 a la vez) que no llegaron por webhook: la tienda se conectó después o estuvo caída. Un pedido que ya es ticket no se repite.
+	 *
+	 * POST /v1/store_connections/{id}/import_orders
+	 * @see https://fiscalisto.com/docs/api/referencia/tiendas-en-linea/import-store-orders
+	 */
+	importOrders(id: string, params?: ImportStoreOrdersParams, options?: RequestOptions): Promise<StoreImport> {
+		return this.#client.request({ method: "POST", path: `/v1/store_connections/${encodeURIComponent(id)}/import_orders`, body: params }, options);
+	}
+}
+
 /** Facturas recurrentes: fiscalisto.recurringInvoices. */
 export class RecurringInvoicesResource {
 	readonly #client: Client;
@@ -5309,6 +5866,8 @@ export class FiscalistoApi extends Core {
 	readonly satDownloads = new SatDownloadsResource(this);
 	readonly satInvoices = new SatInvoicesResource(this);
 	readonly tickets = new TicketsResource(this);
+	readonly accounting = new AccountingResource(this);
+	readonly storeConnections = new StoreConnectionsResource(this);
 	readonly recurringInvoices = new RecurringInvoicesResource(this);
 	readonly quotes = new QuotesResource(this);
 	readonly webhookEndpoints = new WebhookEndpointsResource(this);

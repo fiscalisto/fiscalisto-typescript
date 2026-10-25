@@ -29,6 +29,8 @@ export const ErrorCode = {
 	DailyLimit: "daily_limit",
 	/** El cliente ya mandó sus datos con esa liga: una solicitud completada no se cancela. */
 	DataRequestCompleted: "data_request_completed",
+	/** El mes no tiene pagos a proveedores: esa DIOT se presenta sin operaciones desde el portal del SAT. */
+	DiotEmpty: "diot_empty",
 	/** La e.firma no sirve: no es una e.firma (es un CSD), es de otro RFC, está vencida o la contraseña no abre la llave. */
 	EfirmaInvalid: "efirma_invalid",
 	/** Para pedirle al SAT las facturas de un emisor en producción, guarde antes su e.firma: POST /v1/issuers/{id}/efirma con keep_for_downloads: true. También si la guardada venció. */
@@ -121,6 +123,16 @@ export const ErrorCode = {
 	SatRequestRejected: "sat_request_rejected",
 	/** Demasiados timbres seguidos del mismo emisor. Espere lo que dice Retry-After; para muchas facturas use POST /v1/invoice_batches. */
 	StampRateLimit: "stamp_rate_limit",
+	/** Esa tienda ya está conectada a este emisor. */
+	StoreAlreadyConnected: "store_already_connected",
+	/** La tienda no aceptó la conexión o no respondió como se esperaba (llaves equivocadas, permisos read_orders/write_orders que faltan, una tienda que no vende en pesos). El mensaje dice qué contestó. */
+	StoreConnectionFailed: "store_connection_failed",
+	/** La tienda se desconectó: conéctela otra vez con POST /v1/store_connections. */
+	StoreDisconnected: "store_disconnected",
+	/** El vendedor aún no autoriza la conexión en authorize_url. */
+	StoreNotAuthorized: "store_not_authorized",
+	/** Esa plataforma aún no está disponible en Fiscalisto. */
+	StorePlatformUnavailable: "store_platform_unavailable",
 	/** Los complementos de pago y las notas de crédito no se sustituyen: se cancelan y se emite otro. */
 	SubstitutionUnsupported: "substitution_unsupported",
 	/** Esto solo existe en pruebas (como reiniciar los datos de prueba): use su llave fk_test_. */
