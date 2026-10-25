@@ -105,6 +105,11 @@ export interface Issuer {
 	stamps_as: string;
 	/** El entorno de prueba (sbx_…) al que pertenece, o null si es de la cuenta. Vea /v1/sandboxes. */
 	sandbox: string | null;
+	/** Su reloj de prueba (solo emisores de prueba): la hora que es «hoy» para él, o null si va con la hora real. Vea POST /v1/issuers/{id}/test_clock. */
+	test_clock: {
+		/** La hora del reloj. */
+		frozen_time: string;
+	} | null;
 	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
 	created_at: string | null;
 	/** Cuándo se archivó (ya no timbra), o null. */
@@ -985,6 +990,39 @@ export interface Sandbox {
 	deleted?: boolean;
 }
 
+/** El reloj de prueba de un emisor de pruebas: su «hoy», que solo avanza cuando usted lo adelanta, haciendo día por día lo que toca. */
+export interface TestClock {
+	/** clk_ y la clave del emisor. */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "test_clock";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: false;
+	/** El emisor de pruebas que vive en esta hora. */
+	issuer: string;
+	/** La hora del reloj: el «hoy» del emisor para sus facturas recurrentes, cotizaciones, cuentas por cobrar y tickets. */
+	frozen_time: string;
+	/** advancing mientras una solicitud lo adelanta; ready en cualquier otro momento. */
+	status: "ready" | "advancing";
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string | null;
+	/** Al adelantarlo: lo que se hizo en el camino. */
+	advanced?: {
+		/** Facturas recurrentes timbradas en el camino. */
+		recurring_invoices: number;
+		/** Cotizaciones que vencieron en el camino. */
+		quotes_expired: number;
+		/** Facturas globales de tickets timbradas en el camino. */
+		global_invoices: number;
+	};
+	/** true si se detuvo antes de requested_time porque ya timbró 25 comprobantes en esta solicitud: adelántelo otra vez para seguir. */
+	stopped_early?: boolean;
+	/** A dónde se pidió adelantarlo (con stopped_early). */
+	requested_time?: string;
+	/** Siempre true. */
+	deleted?: boolean;
+}
+
 /** Una solicitud al SAT de las facturas emitidas o recibidas de un emisor en un periodo. */
 export interface SatDownload {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
@@ -1692,7 +1730,7 @@ export interface WebhookTest {
 }
 
 /** Lo que puede pasar: el tipo de cada evento. */
-export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low";
+export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready";
 
 /** Algo que pasó en su cuenta: el objeto completo como quedó. Se manda a sus webhooks firmado (Standard Webhooks). */
 export interface EventBase<T extends EventType = EventType, O = unknown> {
@@ -1700,7 +1738,7 @@ export interface EventBase<T extends EventType = EventType, O = unknown> {
 	id: string;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "event";
-	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, invoice.paid, invoice.partially_paid, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, issuer.ready o balance.low. */
+	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, invoice.paid, invoice.partially_paid, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, issuer.ready, balance.low o test_clock.ready. */
 	type: T;
 	/** Versión de la API con que se armó el objeto. */
 	api_version: string;
@@ -1736,7 +1774,8 @@ export type Event =
 	| EventBase<"quote.changes_requested", Quote>
 	| EventBase<"quote.rejected", Quote>
 	| EventBase<"issuer.ready", Issuer>
-	| EventBase<"balance.low", Balance>;
+	| EventBase<"balance.low", Balance>
+	| EventBase<"test_clock.ready", TestClock>;
 
 /** Confirmación de que se borró. */
 export interface Deleted {
@@ -2846,6 +2885,16 @@ export interface ResetTestDataParams {
 export interface CreateSandboxParams {
 	/** Para quién o para qué es, por ejemplo el nombre de quien lo usa. */
 	name: string;
+}
+
+export interface CreateTestClockParams {
+	/** Dónde empieza el reloj; si no la manda, ahora. */
+	frozen_time?: string;
+}
+
+export interface AdvanceTestClockParams {
+	/** A dónde adelantarlo: después de la hora actual del reloj. Lo que toca en el camino se hace día por día. */
+	frozen_time: string;
 }
 
 export interface CreateIssuerParams {
@@ -4309,7 +4358,7 @@ export interface RollWebhookSecretParams {
 
 export interface TestWebhookEndpointParams {
 	/** El evento a mandar. Por omisión invoice.stamped. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready";
 }
 
 /** Los parámetros de GET /v1/events. */
@@ -4319,7 +4368,7 @@ export interface ListEventsParams {
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
 	/** Solo de este tipo. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready";
 	/** Solo los de este objeto (inv_…, ret_…, bat_…). */
 	object?: string;
 }
@@ -4413,6 +4462,60 @@ export class SandboxesResource {
 	 */
 	delete(id: string, options?: RequestOptions): Promise<Deleted> {
 		return this.#client.request({ method: "DELETE", path: `/v1/sandboxes/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Entornos de prueba: fiscalisto.testClocks. */
+export class TestClocksResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Crear un reloj de prueba
+	 *
+	 * Le da a un emisor de pruebas su propia hora, congelada en frozen_time (ahora, si no la manda): sus facturas recurrentes, cotizaciones, cuentas por cobrar y tickets cuentan los días con ella, y nada de eso corre solo hasta que usted lo adelanta. Para ver en segundos lo que pasa en meses. Solo emisores de prueba; uno por emisor.
+	 *
+	 * POST /v1/issuers/{id}/test_clock
+	 * @see https://fiscalisto.com/docs/api/referencia/entornos-de-prueba/create-test-clock
+	 */
+	create(id: string, params?: CreateTestClockParams, options?: RequestOptions): Promise<TestClock> {
+		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}/test_clock`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Ver el reloj de prueba
+	 *
+	 * GET /v1/issuers/{id}/test_clock
+	 * @see https://fiscalisto.com/docs/api/referencia/entornos-de-prueba/get-test-clock
+	 */
+	get(id: string, options?: RequestOptions): Promise<TestClock> {
+		return this.#client.request({ method: "GET", path: `/v1/issuers/${encodeURIComponent(id)}/test_clock` }, options);
+	}
+
+	/**
+	 * Borrar el reloj de prueba
+	 *
+	 * El emisor vuelve a la hora real; lo que el reloj dejó pendiente lo hacen los procesos diarios.
+	 *
+	 * DELETE /v1/issuers/{id}/test_clock
+	 * @see https://fiscalisto.com/docs/api/referencia/entornos-de-prueba/delete-test-clock
+	 */
+	delete(id: string, options?: RequestOptions): Promise<TestClock> {
+		return this.#client.request({ method: "DELETE", path: `/v1/issuers/${encodeURIComponent(id)}/test_clock` }, options);
+	}
+
+	/**
+	 * Adelantar el reloj de prueba
+	 *
+	 * Mueve el reloj hasta frozen_time haciendo, día por día, lo que habría pasado: timbra las facturas recurrentes de cada periodo, vence las cotizaciones y hace las facturas globales de tickets, con sus eventos. Contesta cuando terminó, con lo que hizo en advanced, y llega test_clock.ready. Hasta 25 comprobantes por solicitud: si se detiene antes, stopped_early y otra llamada sigue. Los CFDI se timbran con la fecha real (el SAT solo acepta la de hoy); el periodo, los vencimientos y los eventos siguen al reloj.
+	 *
+	 * POST /v1/issuers/{id}/test_clock/advance
+	 * @see https://fiscalisto.com/docs/api/referencia/entornos-de-prueba/advance-test-clock
+	 */
+	advance(id: string, params: AdvanceTestClockParams, options?: RequestOptions): Promise<TestClock> {
+		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}/test_clock/advance`, body: params, idempotent: true }, options);
 	}
 }
 
@@ -5947,6 +6050,7 @@ export class FiscalistoApi extends Core {
 	readonly account = new AccountResource(this);
 	readonly testData = new TestDataResource(this);
 	readonly sandboxes = new SandboxesResource(this);
+	readonly testClocks = new TestClocksResource(this);
 	readonly balance = new BalanceResource(this);
 	readonly issuers = new IssuersResource(this);
 	readonly invoices = new InvoicesResource(this);
