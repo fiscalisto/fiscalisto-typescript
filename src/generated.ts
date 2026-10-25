@@ -180,6 +180,12 @@ export interface Invoice {
 	} | null;
 	/** Total en la moneda del comprobante (Total). */
 	total: number | null;
+	/** Si ya se cobró (Cuentas por cobrar): paid, partial (complementos de pago o notas de crédito por una parte) o unpaid. Una PUE está paid, salvo con paid_later hasta POST /v1/invoices/{id}/mark_paid. null si no es de ingreso o no está vigente. */
+	payment_status: "paid" | "partial" | "unpaid" | null;
+	/** Lo que falta por cobrar, en su moneda, o null. */
+	amount_due: number | null;
+	/** Lo cobrado: complementos de pago y notas de crédito vigentes, o todo si es PUE pagada. null si no aplica. */
+	amount_paid: number | null;
 	/** CFDI relacionados (CfdiRelacionados): tipo de relación de c_TipoRelacion y los UUID. */
 	related: Record<string, unknown> | null;
 	/** Solo en un complemento de pago (type P). */
@@ -1262,6 +1268,98 @@ export interface Quote {
 	created_at: string | null;
 }
 
+/** Lo que un cliente le debe a un emisor en una moneda, de sus facturas abiertas. */
+export interface Receivable {
+	/** El RFC y la moneda (RFC:MXN): para starting_after. */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "receivable";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El cliente que debe. */
+	customer: {
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string;
+		/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+		legal_name: string | null;
+	};
+	/** La moneda de esas facturas. */
+	currency: string;
+	/** Lo que debe en total, en esa moneda. */
+	amount_due: number;
+	/** Cuántas facturas tiene abiertas. */
+	open_invoices: number;
+	/** La fecha (AAAA-MM-DD) de su factura abierta más antigua. */
+	oldest_invoice_date: string;
+}
+
+/** Un depósito de la cuenta del emisor, y las facturas que pagó. */
+export interface BankTransaction {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "bank_transaction";
+	/** El emisor. */
+	issuer: string;
+	/** El día del depósito (AAAA-MM-DD). */
+	date: string;
+	/** Lo depositado, en pesos. */
+	amount: number;
+	/** El concepto del banco. */
+	description: string;
+	/** La referencia o clave de rastreo, o null. */
+	reference: string | null;
+	/** Los últimos 4 dígitos de la cuenta, o null. */
+	account: string | null;
+	/** El RFC de quien depositó, si se sabe. */
+	payer_tax_id: string | null;
+	/** open (sin conciliar), matched (pagó facturas) o classified (no es de una factura). */
+	status: "open" | "matched" | "classified";
+	/** classified: venta (aún sin facturar), prestamo, traspaso o devolucion; si no, null. */
+	classification: "venta" | "prestamo" | "traspaso" | "devolucion" | null;
+	/** Una nota al clasificarlo, o null. */
+	note: string | null;
+	/** Las facturas (inv_…) que pagó, si está conciliado. */
+	invoices: string[];
+	/** El complemento de pago (inv_…) timbrado con él, o null. */
+	payment: string | null;
+	/** Si está abierto, las facturas que parece pagar (por monto, RFC, folio en el concepto y fecha): invoices, lo que toca a cada una (amounts), method, confidence (high o medium) y por qué (reasons). null si ninguna encaja. */
+	suggested_match: {
+		/** Las facturas, como el cuerpo de POST /v1/invoices, con reference opcional. */
+		invoices: string[];
+		/** Lo que el depósito pagaría de cada factura (por inv_…). */
+		amounts: Record<string, number>;
+		/** egreso (la factura completa y después una nota de crédito por el anticipo, opción A) o remanente (la factura solo por lo que falta, opción B). */
+		method: "PPD" | "PUE";
+		/** high (el monto y además el RFC, el nombre o el folio coinciden) o medium (revíselo antes). */
+		confidence: "high" | "medium";
+		/** Por qué se sugiere, en palabras. */
+		reasons: string[];
+	} | null;
+	/** Cuándo se mandó. */
+	created_at: string | null;
+}
+
+/** Los depósitos que se agregaron. */
+export interface BankImport {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "bank_import";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** Cuántos depósitos se agregaron. */
+	added: number;
+	/** Cuántos ya estaban (se omitieron). */
+	duplicates: number;
+	/** Los depósitos agregados. */
+	data: BankTransaction[];
+}
+
 /** Una liga para que el dueño de un emisor suba su CSD y firme con su e.firma. */
 export interface IssuerOnboardingLink {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -1330,7 +1428,7 @@ export interface WebhookTest {
 }
 
 /** Lo que puede pasar: el tipo de cada evento. */
-export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low";
+export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low";
 
 /** Algo que pasó en su cuenta: el objeto completo como quedó. Se manda a sus webhooks firmado (Standard Webhooks). */
 export interface EventBase<T extends EventType = EventType, O = unknown> {
@@ -1338,7 +1436,7 @@ export interface EventBase<T extends EventType = EventType, O = unknown> {
 	id: string;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "event";
-	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, issuer.ready o balance.low. */
+	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, invoice.paid, invoice.partially_paid, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, issuer.ready o balance.low. */
 	type: T;
 	/** Versión de la API con que se armó el objeto. */
 	api_version: string;
@@ -1357,6 +1455,8 @@ export type Event =
 	| EventBase<"invoice.canceled", Invoice>
 	| EventBase<"invoice.cancellation_pending", Invoice>
 	| EventBase<"invoice.cancellation_rejected", Invoice>
+	| EventBase<"invoice.paid", Invoice>
+	| EventBase<"invoice.partially_paid", Invoice>
 	| EventBase<"retention.stamped", Retention>
 	| EventBase<"retention.failed", Retention>
 	| EventBase<"retention.canceled", Retention>
@@ -1421,6 +1521,28 @@ export interface InvoiceList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: Invoice[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface ReceivableList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: Receivable[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface BankTransactionList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: BankTransaction[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -2498,6 +2620,8 @@ export interface ListInvoicesParams {
 	type?: "I" | "E" | "P" | "T" | "N";
 	/** RFC del cliente. */
 	customer?: string;
+	/** Facturas de ingreso por lo que deben: unpaid, partial, open (unpaid o partial) o paid. */
+	payment_status?: "unpaid" | "partial" | "open" | "paid";
 	/** Creadas desde, en ISO 8601. Un día solo (2026-10-01) cuenta desde su inicio en hora de la Ciudad de México. */
 	created_gte?: string;
 	/** Creadas hasta, en ISO 8601. Un día solo (2026-10-31) incluye el día completo en hora de la Ciudad de México. */
@@ -2538,6 +2662,62 @@ export interface CancelInvoiceParams {
 	substitution?: string;
 }
 
+/** Los parámetros de GET /v1/receivables. */
+export interface ListReceivablesParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Solo este RFC. */
+	customer?: string;
+}
+
+export interface CreateBankTransactionsParams {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** La cuenta (CLABE o número; se guardan sus últimos 4 dígitos). */
+	account?: string;
+	/** Los depósitos, hasta 1,000 por solicitud. */
+	transactions: {
+		/** El día del depósito (AAAA-MM-DD). */
+		date: string;
+		/** Lo depositado, en pesos. Los retiros no se mandan. */
+		amount: number;
+		/** El concepto del banco, como viene (SPEI, nombre del ordenante…). */
+		description: string;
+		/** La referencia o clave de rastreo. */
+		reference?: string;
+		/** El RFC de quien depositó, si lo sabe (ayuda a sugerir la factura). */
+		payer_tax_id?: string;
+	}[];
+}
+
+/** Los parámetros de GET /v1/bank_transactions. */
+export interface ListBankTransactionsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** open (sin conciliar), matched o classified. */
+	status?: "open" | "matched" | "classified";
+}
+
+export interface MatchBankTransactionParams {
+	/** Las facturas (inv_… o UUID) que pagó este depósito, de un mismo cliente. Sin ellas, las de suggested_match. */
+	invoices?: string[];
+}
+
+export interface ClassifyBankTransactionParams {
+	/** venta (una venta que aún no se factura), prestamo, traspaso (entre cuentas propias) o devolucion. */
+	classification: "venta" | "prestamo" | "traspaso" | "devolucion";
+	/** Una nota para su equipo (de dónde vino, por qué). */
+	note?: string;
+}
+
 export interface CreatePaymentParams {
 	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
 	issuer?: string;
@@ -2570,6 +2750,8 @@ export interface CreatePaymentParams {
 	email_cc?: string | null;
 	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
 	metadata?: Record<string, string>;
+	/** El depósito (btx_…) con que le pagaron: queda conciliado con este complemento, y date es su día si no manda otra. */
+	bank_transaction?: string;
 }
 
 export interface CreateCreditNoteParams {
@@ -3679,7 +3861,7 @@ export interface RollWebhookSecretParams {
 
 export interface TestWebhookEndpointParams {
 	/** El evento a mandar. Por omisión invoice.stamped. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low";
 }
 
 /** Los parámetros de GET /v1/events. */
@@ -3689,7 +3871,7 @@ export interface ListEventsParams {
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
 	/** Solo de este tipo. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low";
 	/** Solo los de este objeto (inv_…, ret_…, bat_…). */
 	object?: string;
 }
@@ -3987,6 +4169,128 @@ export class InvoicesResource {
 	 */
 	substitute(id: string, params: InvoiceCreate, options?: RequestOptions): Promise<Invoice> {
 		return this.#client.request({ method: "POST", path: `/v1/invoices/${encodeURIComponent(id)}/substitute`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Marcar pagada
+	 *
+	 * Una factura PUE timbrada con paid_later (o marcada por cobrar) ya se pagó: queda paid y llega invoice.paid. Una PPD se paga con su complemento de pago (POST /v1/payments).
+	 *
+	 * POST /v1/invoices/{id}/mark_paid
+	 * @see https://fiscalisto.com/docs/api/referencia/cuentas-por-cobrar/mark-invoice-paid
+	 */
+	markPaid(id: string, options?: RequestOptions): Promise<Invoice> {
+		return this.#client.request({ method: "POST", path: `/v1/invoices/${encodeURIComponent(id)}/mark_paid` }, options);
+	}
+
+	/**
+	 * Marcar por cobrar
+	 *
+	 * Una factura PUE que el cliente aún no paga (le paga este mes): queda unpaid hasta POST /v1/invoices/{id}/mark_paid. Si el mes termina sin pago, la ley pide sustituirla por una PPD (regla 2.7.1.39 de la RMF).
+	 *
+	 * POST /v1/invoices/{id}/mark_unpaid
+	 * @see https://fiscalisto.com/docs/api/referencia/cuentas-por-cobrar/mark-invoice-unpaid
+	 */
+	markUnpaid(id: string, options?: RequestOptions): Promise<Invoice> {
+		return this.#client.request({ method: "POST", path: `/v1/invoices/${encodeURIComponent(id)}/mark_unpaid` }, options);
+	}
+}
+
+/** Cuentas por cobrar: fiscalisto.receivables. */
+export class ReceivablesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ver lo que le deben
+	 *
+	 * Lo que debe cada cliente, por moneda, de sus facturas abiertas (PPD con saldo y PUE por cobrar), ordenado por RFC. Las facturas de cada uno: GET /v1/invoices?customer=RFC&payment_status=open.
+	 *
+	 * GET /v1/receivables
+	 * @see https://fiscalisto.com/docs/api/referencia/cuentas-por-cobrar/list-receivables
+	 */
+	list(params?: ListReceivablesParams, options?: RequestOptions): List<Receivable> {
+		return this.#client.list({ path: "/v1/receivables", query: params }, options);
+	}
+}
+
+/** Conciliación bancaria: fiscalisto.bankTransactions. */
+export class BankTransactionsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Mandar depósitos
+	 *
+	 * Los depósitos de la cuenta del emisor (de la API de su banco o de un estado de cuenta), hasta 1,000 por solicitud. Uno que ya mandó (mismo día, monto, referencia y concepto) se omite, así que puede mandar periodos que se enciman. Cada uno trae suggested_match: las facturas que parece pagar.
+	 *
+	 * POST /v1/bank_transactions
+	 * @see https://fiscalisto.com/docs/api/referencia/conciliacion-bancaria/create-bank-transactions
+	 */
+	create(params: CreateBankTransactionsParams, options?: RequestOptions): Promise<BankImport> {
+		return this.#client.request({ method: "POST", path: "/v1/bank_transactions", body: params }, options);
+	}
+
+	/**
+	 * Listar depósitos
+	 *
+	 * Los más recientes primero; los abiertos con su suggested_match.
+	 *
+	 * GET /v1/bank_transactions
+	 * @see https://fiscalisto.com/docs/api/referencia/conciliacion-bancaria/list-bank-transactions
+	 */
+	list(params?: ListBankTransactionsParams, options?: RequestOptions): List<BankTransaction> {
+		return this.#client.list({ path: "/v1/bank_transactions", query: params }, options);
+	}
+
+	/**
+	 * Ver un depósito
+	 *
+	 * GET /v1/bank_transactions/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/conciliacion-bancaria/get-bank-transaction
+	 */
+	get(id: string, options?: RequestOptions): Promise<BankTransaction> {
+		return this.#client.request({ method: "GET", path: `/v1/bank_transactions/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Conciliar un depósito
+	 *
+	 * El depósito pagó estas facturas (de un mismo cliente), o sin invoices, las de suggested_match. Sus facturas PUE por cobrar quedan pagadas (invoice.paid). No timbra: para pagar una PPD con este depósito, POST /v1/payments con bank_transaction.
+	 *
+	 * POST /v1/bank_transactions/{id}/match
+	 * @see https://fiscalisto.com/docs/api/referencia/conciliacion-bancaria/match-bank-transaction
+	 */
+	match(id: string, params?: MatchBankTransactionParams, options?: RequestOptions): Promise<BankTransaction> {
+		return this.#client.request({ method: "POST", path: `/v1/bank_transactions/${encodeURIComponent(id)}/match`, body: params }, options);
+	}
+
+	/**
+	 * Explicar un depósito sin factura
+	 *
+	 * Un depósito que ninguna factura explica: venta (aún sin facturar), prestamo, traspaso o devolucion. El SAT puede presumir ingreso un depósito sin explicar (CFF art. 59 fr. III).
+	 *
+	 * POST /v1/bank_transactions/{id}/classify
+	 * @see https://fiscalisto.com/docs/api/referencia/conciliacion-bancaria/classify-bank-transaction
+	 */
+	classify(id: string, params: ClassifyBankTransactionParams, options?: RequestOptions): Promise<BankTransaction> {
+		return this.#client.request({ method: "POST", path: `/v1/bank_transactions/${encodeURIComponent(id)}/classify`, body: params }, options);
+	}
+
+	/**
+	 * Deshacer la conciliación
+	 *
+	 * Vuelve a open, y sus facturas vuelven a deber. Si se pagó con un complemento vigente, cancélelo antes.
+	 *
+	 * POST /v1/bank_transactions/{id}/reopen
+	 * @see https://fiscalisto.com/docs/api/referencia/conciliacion-bancaria/reopen-bank-transaction
+	 */
+	reopen(id: string, options?: RequestOptions): Promise<BankTransaction> {
+		return this.#client.request({ method: "POST", path: `/v1/bank_transactions/${encodeURIComponent(id)}/reopen` }, options);
 	}
 }
 
@@ -4987,6 +5291,8 @@ export class FiscalistoApi extends Core {
 	readonly balance = new BalanceResource(this);
 	readonly issuers = new IssuersResource(this);
 	readonly invoices = new InvoicesResource(this);
+	readonly receivables = new ReceivablesResource(this);
+	readonly bankTransactions = new BankTransactionsResource(this);
 	readonly payments = new PaymentsResource(this);
 	readonly creditNotes = new CreditNotesResource(this);
 	readonly advances = new AdvancesResource(this);

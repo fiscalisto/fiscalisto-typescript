@@ -5,6 +5,8 @@
  * `if (error.code === ErrorCode.InvoiceRejected)`. Vea https://fiscalisto.com/docs/api/errores.
  */
 export const ErrorCode = {
+	/** El depósito no se puede conciliar, clasificar o reabrir así (ya está conciliado, las facturas son de otro cliente o una está cancelada…). El mensaje dice por qué. */
+	BankTransactionInvalid: "bank_transaction_invalid",
 	/** Una factura del lote no pasa la revisión; param dice cuál (invoices.3.items.0.unit_price). Ninguna del lote se timbró. */
 	BatchInvalid: "batch_invalid",
 	/** El cuerpo pasa de 10 MB. Divida el trabajo en varios lotes. */
@@ -49,6 +51,8 @@ export const ErrorCode = {
 	InvalidJson: "invalid_json",
 	/** La factura no cumple una regla del SAT que Fiscalisto revisa antes de mandarla al PAC (uso contra régimen, totales, complementos…). No se usó ningún timbre. */
 	InvoiceInvalid: "invoice_invalid",
+	/** Solo una factura de ingreso PUE vigente se marca pagada o por cobrar; una PPD se paga con su complemento de pago (type P). */
+	InvoiceNotMarkable: "invoice_not_markable",
 	/** La acción es para facturas timbradas (enviar, cancelar, sustituir). */
 	InvoiceNotStamped: "invoice_not_stamped",
 	/** El PAC o el SAT no la aceptaron. sat_code trae su código (CFDI40xxx) y message qué corregir. La factura queda como rejected; no se usó ningún timbre. */
