@@ -41,6 +41,8 @@ export const ErrorCode = {
 	EmailFailed: "email_failed",
 	/** La cuenta llegó al máximo de webhooks en este modo. */
 	EndpointLimit: "endpoint_limit",
+	/** Un campo de expand[] no existe en la respuesta, no es el id de otro objeto, o se pidieron demasiados (hasta 10 campos, 4 niveles). Vea Expandir objetos. */
+	ExpandInvalid: "expand_invalid",
 	/** Idempotency-Key es de 1 a 255 caracteres ASCII, sin acentos ni ñ: el id de su pedido o un UUID. */
 	IdempotencyKeyInvalid: "idempotency_key_invalid",
 	/** Lo que timbra exige el encabezado Idempotency-Key (8 a 255 caracteres, uno nuevo por comprobante). Así un reintento nunca timbra dos veces. */

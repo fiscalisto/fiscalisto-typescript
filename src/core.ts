@@ -43,6 +43,11 @@ export interface RequestOptions {
 	timeout?: number;
 	maxRetries?: number;
 	signal?: AbortSignal;
+	/**
+	 * Campos con el id de otro objeto que llegan como ese objeto, en la misma respuesta:
+	 * `{ expand: ["issuer", "recurring_invoice.last_invoice"] }`. Ver /docs/api/expandir.
+	 */
+	expand?: string[];
 }
 
 export interface RequestSpec {
@@ -209,6 +214,7 @@ export class Core implements Client {
 		const url = new URL(spec.path, this.#baseUrl);
 		for (const [k, v] of Object.entries(spec.query ?? {}))
 			if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
+		for (const e of options.expand ?? []) url.searchParams.append("expand[]", e);
 		const headers: Record<string, string> = {
 			authorization: `Bearer ${this.#key}`,
 			"user-agent": `fiscalisto-node/${VERSION}`,
