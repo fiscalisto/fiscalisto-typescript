@@ -928,6 +928,24 @@ export interface CustomerDataRequest {
 	} | null;
 }
 
+/** Lo que se borró (y se creó) al reiniciar los datos de prueba. */
+export interface TestDataReset {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "test_data_reset";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: false;
+	/** Cuántos emisores de pruebas se vaciaron (archivados incluidos). */
+	issuers: number;
+	/** Cuántos registros se borraron: facturas, clientes, productos, lotes, ligas, descargas… */
+	deleted_rows: number;
+	/** Cuántos eventos de pruebas se borraron (con sus entregas). */
+	deleted_events: number;
+	/** Clientes de ejemplo creados (con seed). */
+	customers_created: number;
+	/** Productos de ejemplo creados (con seed). */
+	products_created: number;
+}
+
 /** Una solicitud al SAT de las facturas emitidas o recibidas de un emisor en un periodo. */
 export interface SatDownload {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
@@ -2143,6 +2161,11 @@ export interface InvoiceCreate {
 	metadata?: Record<string, string>;
 }
 
+export interface ResetTestDataParams {
+	/** true (por omisión) para dejarle a cada emisor de pruebas 3 clientes y 3 productos de ejemplo. false para dejarlo vacío. */
+	seed?: boolean;
+}
+
 export interface CreateIssuerParams {
 	/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
 	tax_id: string;
@@ -3010,6 +3033,26 @@ export class AccountResource {
 	 */
 	get(options?: RequestOptions): Promise<Account> {
 		return this.#client.request({ method: "GET", path: "/v1/account" }, options);
+	}
+}
+
+/** Cuenta: fiscalisto.testData. */
+export class TestDataResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Reiniciar los datos de prueba
+	 *
+	 * Deja el modo de pruebas como nuevo: cada emisor de pruebas conserva su RFC y su CSD de pruebas pero pierde sus facturas, clientes, productos, lotes, ligas y descargas, y se borran los eventos y el registro de solicitudes de pruebas. Las llaves y los webhooks se quedan. Con seed (por omisión) deja 3 clientes y 3 productos de ejemplo. Solo con una llave fk_test_; producción nunca se toca.
+	 *
+	 * POST /v1/test_data/reset
+	 * @see https://fiscalisto.com/docs/api/referencia/cuenta/reset-test-data
+	 */
+	reset(params?: ResetTestDataParams, options?: RequestOptions): Promise<TestDataReset> {
+		return this.#client.request({ method: "POST", path: "/v1/test_data/reset", body: params }, options);
 	}
 }
 
@@ -3980,6 +4023,7 @@ export class EventsResource {
 /** Cada recurso de la API. Úselo por medio de Fiscalisto (index.ts). */
 export class FiscalistoApi extends Core {
 	readonly account = new AccountResource(this);
+	readonly testData = new TestDataResource(this);
 	readonly balance = new BalanceResource(this);
 	readonly issuers = new IssuersResource(this);
 	readonly invoices = new InvoicesResource(this);
