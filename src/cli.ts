@@ -714,6 +714,7 @@ async function invoices(args: string[], g: Globals) {
 			await confirmLive(api, g, "Cancelar ante el SAT");
 			const invoice = await api.request<Invoice>({
 				method: "POST",
+				idempotent: true,
 				path: `/v1/invoices/${id}/cancel`,
 				body: {
 					motive: values.motive,
@@ -739,6 +740,7 @@ async function invoices(args: string[], g: Globals) {
 			const id = need(positionals[0], "fiscalisto invoices send inv_… [--to correo]");
 			const invoice = await api.request<Invoice>({
 				method: "POST",
+				idempotent: true,
 				path: `/v1/invoices/${id}/send`,
 				body: {
 					...(values.to ? { to: values.to } : {}),
@@ -858,6 +860,7 @@ async function webhooks(args: string[], g: Globals) {
 			});
 			const endpoint = await api.request<{ id: string; secret: string; url: string }>({
 				method: "POST",
+				idempotent: true,
 				path: "/v1/webhook_endpoints",
 				body: {
 					url: need(
@@ -905,6 +908,7 @@ async function webhooks(args: string[], g: Globals) {
 				};
 			}>({
 				method: "POST",
+				idempotent: true,
 				path: `/v1/webhook_endpoints/${id}/test`,
 				body: { type: values.type },
 			});
@@ -935,7 +939,7 @@ async function satLists(args: string[], g: Globals) {
 			risk: string;
 			lists: { source_name: string; situation: string | null }[];
 		}[];
-	}>({ method: "POST", path: "/v1/sat_lists/check", body: { tax_ids: rfcs } });
+	}>({ method: "POST", path: "/v1/sat_lists/check", body: { tax_ids: rfcs }, idempotent: true });
 	print(page, () => {
 		for (const r of page.data) {
 			const mark =
@@ -975,7 +979,8 @@ async function rawApi(args: string[], g: Globals) {
 			path: p as string,
 			query: Object.fromEntries(new URLSearchParams(q ?? "")),
 			body,
-			idempotent: stamps,
+			// Every POST: a lost answer repeated with the same key never does it twice.
+			idempotent: method === "POST",
 			as: /\/(pdf|xml)$/.test(p ?? "") ? "bytes" : "json",
 		},
 		{ idempotencyKey: values["idempotency-key"] },
@@ -1158,6 +1163,7 @@ async function trigger(args: string[], g: Globals) {
 			const inv = await stamp(EXAMPLE_INVOICE);
 			made = await api.request({
 				method: "POST",
+				idempotent: true,
 				path: `/v1/invoices/${inv.id}/cancel`,
 				body: { motive: "02" },
 			});

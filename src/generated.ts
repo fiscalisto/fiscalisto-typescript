@@ -4360,7 +4360,7 @@ export class TestDataResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/cuenta/reset-test-data
 	 */
 	reset(params?: ResetTestDataParams, options?: RequestOptions): Promise<TestDataReset> {
-		return this.#client.request({ method: "POST", path: "/v1/test_data/reset", body: params }, options);
+		return this.#client.request({ method: "POST", path: "/v1/test_data/reset", body: params, idempotent: true }, options);
 	}
 }
 
@@ -4380,7 +4380,7 @@ export class SandboxesResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/entornos-de-prueba/create-sandbox
 	 */
 	create(params: CreateSandboxParams, options?: RequestOptions): Promise<Sandbox> {
-		return this.#client.request({ method: "POST", path: "/v1/sandboxes", body: params }, options);
+		return this.#client.request({ method: "POST", path: "/v1/sandboxes", body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -4452,7 +4452,7 @@ export class IssuersResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/emisores/create-issuer
 	 */
 	create(params: CreateIssuerParams, options?: RequestOptions): Promise<Issuer> {
-		return this.#client.request({ method: "POST", path: "/v1/issuers", body: params }, options);
+		return this.#client.request({ method: "POST", path: "/v1/issuers", body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -4484,7 +4484,7 @@ export class IssuersResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/emisores/update-issuer
 	 */
 	update(id: string, params?: UpdateIssuerParams, options?: RequestOptions): Promise<Issuer> {
-		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}`, body: params }, options);
+		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -4508,7 +4508,7 @@ export class IssuersResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/emisores/upload-certificate
 	 */
 	uploadCertificate(id: string, params: UploadCertificateParams, options?: RequestOptions): Promise<Issuer> {
-		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}/certificates`, body: params }, options);
+		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}/certificates`, body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -4520,7 +4520,7 @@ export class IssuersResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/emisores/sign-efirma
 	 */
 	signEfirma(id: string, params: SignEfirmaParams, options?: RequestOptions): Promise<Issuer> {
-		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}/efirma`, body: params }, options);
+		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}/efirma`, body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -4544,7 +4544,7 @@ export class IssuersResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/emisores/create-issuer-onboarding-link
 	 */
 	createOnboardingLink(id: string, params?: CreateIssuerOnboardingLinkParams, options?: RequestOptions): Promise<IssuerOnboardingLink> {
-		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}/onboarding_links`, body: params }, options);
+		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}/onboarding_links`, body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -4566,7 +4566,7 @@ export class IssuersResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/autofactura/update-self-invoicing
 	 */
 	updateSelfInvoicing(id: string, params?: UpdateSelfInvoicingParams, options?: RequestOptions): Promise<SelfInvoicing> {
-		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}/self_invoicing`, body: params }, options);
+		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}/self_invoicing`, body: params, idempotent: true }, options);
 	}
 }
 
@@ -4656,7 +4656,7 @@ export class InvoicesResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/facturas/cancel-invoice
 	 */
 	cancel(id: string, params?: CancelInvoiceParams, options?: RequestOptions): Promise<Invoice> {
-		return this.#client.request({ method: "POST", path: `/v1/invoices/${encodeURIComponent(id)}/cancel`, body: params }, options);
+		return this.#client.request({ method: "POST", path: `/v1/invoices/${encodeURIComponent(id)}/cancel`, body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -4680,7 +4680,7 @@ export class InvoicesResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/cuentas-por-cobrar/mark-invoice-paid
 	 */
 	markPaid(id: string, options?: RequestOptions): Promise<Invoice> {
-		return this.#client.request({ method: "POST", path: `/v1/invoices/${encodeURIComponent(id)}/mark_paid` }, options);
+		return this.#client.request({ method: "POST", path: `/v1/invoices/${encodeURIComponent(id)}/mark_paid`, idempotent: true }, options);
 	}
 
 	/**
@@ -4692,7 +4692,7 @@ export class InvoicesResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/cuentas-por-cobrar/mark-invoice-unpaid
 	 */
 	markUnpaid(id: string, options?: RequestOptions): Promise<Invoice> {
-		return this.#client.request({ method: "POST", path: `/v1/invoices/${encodeURIComponent(id)}/mark_unpaid` }, options);
+		return this.#client.request({ method: "POST", path: `/v1/invoices/${encodeURIComponent(id)}/mark_unpaid`, idempotent: true }, options);
 	}
 }
 
@@ -4732,7 +4732,7 @@ export class BankTransactionsResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/conciliacion-bancaria/create-bank-transactions
 	 */
 	create(params: CreateBankTransactionsParams, options?: RequestOptions): Promise<BankImport> {
-		return this.#client.request({ method: "POST", path: "/v1/bank_transactions", body: params }, options);
+		return this.#client.request({ method: "POST", path: "/v1/bank_transactions", body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -4766,7 +4766,7 @@ export class BankTransactionsResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/conciliacion-bancaria/match-bank-transaction
 	 */
 	match(id: string, params?: MatchBankTransactionParams, options?: RequestOptions): Promise<BankTransaction> {
-		return this.#client.request({ method: "POST", path: `/v1/bank_transactions/${encodeURIComponent(id)}/match`, body: params }, options);
+		return this.#client.request({ method: "POST", path: `/v1/bank_transactions/${encodeURIComponent(id)}/match`, body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -4778,7 +4778,7 @@ export class BankTransactionsResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/conciliacion-bancaria/classify-bank-transaction
 	 */
 	classify(id: string, params: ClassifyBankTransactionParams, options?: RequestOptions): Promise<BankTransaction> {
-		return this.#client.request({ method: "POST", path: `/v1/bank_transactions/${encodeURIComponent(id)}/classify`, body: params }, options);
+		return this.#client.request({ method: "POST", path: `/v1/bank_transactions/${encodeURIComponent(id)}/classify`, body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -4790,7 +4790,7 @@ export class BankTransactionsResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/conciliacion-bancaria/reopen-bank-transaction
 	 */
 	reopen(id: string, options?: RequestOptions): Promise<BankTransaction> {
-		return this.#client.request({ method: "POST", path: `/v1/bank_transactions/${encodeURIComponent(id)}/reopen` }, options);
+		return this.#client.request({ method: "POST", path: `/v1/bank_transactions/${encodeURIComponent(id)}/reopen`, idempotent: true }, options);
 	}
 }
 
@@ -4940,7 +4940,7 @@ export class RetentionsResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/retenciones/send-retention
 	 */
 	send(id: string, params?: SendRetentionParams, options?: RequestOptions): Promise<Retention> {
-		return this.#client.request({ method: "POST", path: `/v1/retentions/${encodeURIComponent(id)}/send`, body: params }, options);
+		return this.#client.request({ method: "POST", path: `/v1/retentions/${encodeURIComponent(id)}/send`, body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -4952,7 +4952,7 @@ export class RetentionsResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/retenciones/cancel-retention
 	 */
 	cancel(id: string, params?: CancelRetentionParams, options?: RequestOptions): Promise<Retention> {
-		return this.#client.request({ method: "POST", path: `/v1/retentions/${encodeURIComponent(id)}/cancel`, body: params }, options);
+		return this.#client.request({ method: "POST", path: `/v1/retentions/${encodeURIComponent(id)}/cancel`, body: params, idempotent: true }, options);
 	}
 }
 
@@ -4970,7 +4970,7 @@ export class EmployeesResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-employee
 	 */
 	create(params: CreateEmployeeParams, options?: RequestOptions): Promise<Employee> {
-		return this.#client.request({ method: "POST", path: "/v1/employees", body: params }, options);
+		return this.#client.request({ method: "POST", path: "/v1/employees", body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -5000,7 +5000,7 @@ export class EmployeesResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-employee
 	 */
 	update(id: string, params?: UpdateEmployeeParams, options?: RequestOptions): Promise<Employee> {
-		return this.#client.request({ method: "POST", path: `/v1/employees/${encodeURIComponent(id)}`, body: params }, options);
+		return this.#client.request({ method: "POST", path: `/v1/employees/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -5042,7 +5042,7 @@ export class PayrollReceiptsResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/nomina/preview-payroll-receipt
 	 */
 	preview(params: PreviewPayrollReceiptParams, options?: RequestOptions): Promise<PayrollReceiptPreview> {
-		return this.#client.request({ method: "POST", path: "/v1/payroll_receipts/preview", body: params }, options);
+		return this.#client.request({ method: "POST", path: "/v1/payroll_receipts/preview", body: params, idempotent: true }, options);
 	}
 }
 
@@ -5104,7 +5104,7 @@ export class TaxIdsResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/clientes/validate-tax-id
 	 */
 	validate(params: ValidateTaxIdParams, options?: RequestOptions): Promise<TaxIdValidation> {
-		return this.#client.request({ method: "POST", path: "/v1/tax_ids/validate", body: params }, options);
+		return this.#client.request({ method: "POST", path: "/v1/tax_ids/validate", body: params, idempotent: true }, options);
 	}
 }
 
@@ -5122,7 +5122,7 @@ export class CustomersResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/clientes/create-customer
 	 */
 	create(params: CreateCustomerParams, options?: RequestOptions): Promise<Customer> {
-		return this.#client.request({ method: "POST", path: "/v1/customers", body: params }, options);
+		return this.#client.request({ method: "POST", path: "/v1/customers", body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -5152,7 +5152,7 @@ export class CustomersResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/clientes/update-customer
 	 */
 	update(id: string, params?: UpdateCustomerParams, options?: RequestOptions): Promise<Customer> {
-		return this.#client.request({ method: "POST", path: `/v1/customers/${encodeURIComponent(id)}`, body: params }, options);
+		return this.#client.request({ method: "POST", path: `/v1/customers/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -5182,7 +5182,7 @@ export class CustomerDataRequestsResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/clientes/create-customer-data-request
 	 */
 	create(params?: CreateCustomerDataRequestParams, options?: RequestOptions): Promise<CustomerDataRequest> {
-		return this.#client.request({ method: "POST", path: "/v1/customer_data_requests", body: params }, options);
+		return this.#client.request({ method: "POST", path: "/v1/customer_data_requests", body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -5232,7 +5232,7 @@ export class ProductsResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/productos/create-product
 	 */
 	create(params: CreateProductParams, options?: RequestOptions): Promise<Product> {
-		return this.#client.request({ method: "POST", path: "/v1/products", body: params }, options);
+		return this.#client.request({ method: "POST", path: "/v1/products", body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -5262,7 +5262,7 @@ export class ProductsResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/productos/update-product
 	 */
 	update(id: string, params?: UpdateProductParams, options?: RequestOptions): Promise<Product> {
-		return this.#client.request({ method: "POST", path: `/v1/products/${encodeURIComponent(id)}`, body: params }, options);
+		return this.#client.request({ method: "POST", path: `/v1/products/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -5324,7 +5324,7 @@ export class SatListsResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/listas-del-sat/check-sat-lists
 	 */
 	check(params: CheckSatListsParams, options?: RequestOptions): Promise<SatListCheckList> {
-		return this.#client.request({ method: "POST", path: "/v1/sat_lists/check", body: params }, options);
+		return this.#client.request({ method: "POST", path: "/v1/sat_lists/check", body: params, idempotent: true }, options);
 	}
 }
 
@@ -5344,7 +5344,7 @@ export class SatDownloadsResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/descargas-del-sat/create-sat-download
 	 */
 	create(params: CreateSatDownloadParams, options?: RequestOptions): Promise<SatDownload> {
-		return this.#client.request({ method: "POST", path: "/v1/sat_downloads", body: params }, options);
+		return this.#client.request({ method: "POST", path: "/v1/sat_downloads", body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -5426,7 +5426,7 @@ export class TicketsResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/autofactura/create-ticket
 	 */
 	create(params: CreateTicketParams, options?: RequestOptions): Promise<Ticket> {
-		return this.#client.request({ method: "POST", path: "/v1/tickets", body: params }, options);
+		return this.#client.request({ method: "POST", path: "/v1/tickets", body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -5560,7 +5560,7 @@ export class StoreConnectionsResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/tiendas-en-linea/create-store-connection
 	 */
 	create(params: CreateStoreConnectionParams, options?: RequestOptions): Promise<StoreConnection> {
-		return this.#client.request({ method: "POST", path: "/v1/store_connections", body: params }, options);
+		return this.#client.request({ method: "POST", path: "/v1/store_connections", body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -5594,7 +5594,7 @@ export class StoreConnectionsResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/tiendas-en-linea/update-store-connection
 	 */
 	update(id: string, params: UpdateStoreConnectionParams, options?: RequestOptions): Promise<StoreConnection> {
-		return this.#client.request({ method: "POST", path: `/v1/store_connections/${encodeURIComponent(id)}`, body: params }, options);
+		return this.#client.request({ method: "POST", path: `/v1/store_connections/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -5618,7 +5618,7 @@ export class StoreConnectionsResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/tiendas-en-linea/import-store-orders
 	 */
 	importOrders(id: string, params?: ImportStoreOrdersParams, options?: RequestOptions): Promise<StoreImport> {
-		return this.#client.request({ method: "POST", path: `/v1/store_connections/${encodeURIComponent(id)}/import_orders`, body: params }, options);
+		return this.#client.request({ method: "POST", path: `/v1/store_connections/${encodeURIComponent(id)}/import_orders`, body: params, idempotent: true }, options);
 	}
 }
 
@@ -5638,7 +5638,7 @@ export class RecurringInvoicesResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/facturas-recurrentes/create-recurring-invoice
 	 */
 	create(params: CreateRecurringInvoiceParams, options?: RequestOptions): Promise<RecurringInvoice> {
-		return this.#client.request({ method: "POST", path: "/v1/recurring_invoices", body: params }, options);
+		return this.#client.request({ method: "POST", path: "/v1/recurring_invoices", body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -5672,7 +5672,7 @@ export class RecurringInvoicesResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/facturas-recurrentes/update-recurring-invoice
 	 */
 	update(id: string, params?: UpdateRecurringInvoiceParams, options?: RequestOptions): Promise<RecurringInvoice> {
-		return this.#client.request({ method: "POST", path: `/v1/recurring_invoices/${encodeURIComponent(id)}`, body: params }, options);
+		return this.#client.request({ method: "POST", path: `/v1/recurring_invoices/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -5696,7 +5696,7 @@ export class RecurringInvoicesResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/facturas-recurrentes/skip-recurring-invoice
 	 */
 	skip(id: string, options?: RequestOptions): Promise<RecurringInvoice> {
-		return this.#client.request({ method: "POST", path: `/v1/recurring_invoices/${encodeURIComponent(id)}/skip` }, options);
+		return this.#client.request({ method: "POST", path: `/v1/recurring_invoices/${encodeURIComponent(id)}/skip`, idempotent: true }, options);
 	}
 
 	/**
@@ -5708,7 +5708,7 @@ export class RecurringInvoicesResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/facturas-recurrentes/run-recurring-invoice
 	 */
 	run(id: string, options?: RequestOptions): Promise<Invoice> {
-		return this.#client.request({ method: "POST", path: `/v1/recurring_invoices/${encodeURIComponent(id)}/run` }, options);
+		return this.#client.request({ method: "POST", path: `/v1/recurring_invoices/${encodeURIComponent(id)}/run`, idempotent: true }, options);
 	}
 }
 
@@ -5728,7 +5728,7 @@ export class QuotesResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/cotizaciones/create-quote
 	 */
 	create(params: CreateQuoteParams, options?: RequestOptions): Promise<Quote> {
-		return this.#client.request({ method: "POST", path: "/v1/quotes", body: params }, options);
+		return this.#client.request({ method: "POST", path: "/v1/quotes", body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -5764,7 +5764,7 @@ export class QuotesResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/cotizaciones/update-quote
 	 */
 	update(id: string, params?: UpdateQuoteParams, options?: RequestOptions): Promise<Quote> {
-		return this.#client.request({ method: "POST", path: `/v1/quotes/${encodeURIComponent(id)}`, body: params }, options);
+		return this.#client.request({ method: "POST", path: `/v1/quotes/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -5788,7 +5788,7 @@ export class QuotesResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/cotizaciones/send-quote
 	 */
 	send(id: string, params?: SendQuoteParams, options?: RequestOptions): Promise<Quote> {
-		return this.#client.request({ method: "POST", path: `/v1/quotes/${encodeURIComponent(id)}/send`, body: params }, options);
+		return this.#client.request({ method: "POST", path: `/v1/quotes/${encodeURIComponent(id)}/send`, body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -5800,7 +5800,7 @@ export class QuotesResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/cotizaciones/accept-quote
 	 */
 	accept(id: string, options?: RequestOptions): Promise<Quote> {
-		return this.#client.request({ method: "POST", path: `/v1/quotes/${encodeURIComponent(id)}/accept` }, options);
+		return this.#client.request({ method: "POST", path: `/v1/quotes/${encodeURIComponent(id)}/accept`, idempotent: true }, options);
 	}
 
 	/**
@@ -5844,7 +5844,7 @@ export class WebhookEndpointsResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/webhooks/create-webhook-endpoint
 	 */
 	create(params: CreateWebhookEndpointParams, options?: RequestOptions): Promise<WebhookEndpoint> {
-		return this.#client.request({ method: "POST", path: "/v1/webhook_endpoints", body: params }, options);
+		return this.#client.request({ method: "POST", path: "/v1/webhook_endpoints", body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -5874,7 +5874,7 @@ export class WebhookEndpointsResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/webhooks/update-webhook-endpoint
 	 */
 	update(id: string, params?: UpdateWebhookEndpointParams, options?: RequestOptions): Promise<WebhookEndpoint> {
-		return this.#client.request({ method: "POST", path: `/v1/webhook_endpoints/${encodeURIComponent(id)}`, body: params }, options);
+		return this.#client.request({ method: "POST", path: `/v1/webhook_endpoints/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -5896,7 +5896,7 @@ export class WebhookEndpointsResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/webhooks/roll-webhook-secret
 	 */
 	rollSecret(id: string, params?: RollWebhookSecretParams, options?: RequestOptions): Promise<WebhookEndpoint> {
-		return this.#client.request({ method: "POST", path: `/v1/webhook_endpoints/${encodeURIComponent(id)}/roll_secret`, body: params }, options);
+		return this.#client.request({ method: "POST", path: `/v1/webhook_endpoints/${encodeURIComponent(id)}/roll_secret`, body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -5908,7 +5908,7 @@ export class WebhookEndpointsResource {
 	 * @see https://fiscalisto.com/docs/api/referencia/webhooks/test-webhook-endpoint
 	 */
 	test(id: string, params?: TestWebhookEndpointParams, options?: RequestOptions): Promise<WebhookTest> {
-		return this.#client.request({ method: "POST", path: `/v1/webhook_endpoints/${encodeURIComponent(id)}/test`, body: params }, options);
+		return this.#client.request({ method: "POST", path: `/v1/webhook_endpoints/${encodeURIComponent(id)}/test`, body: params, idempotent: true }, options);
 	}
 }
 
