@@ -63,6 +63,8 @@ export const ErrorCode = {
 	IssuerNotAllowed: "issuer_not_allowed",
 	/** La cuenta tiene varios emisores y la solicitud no dice cuál: mande issuer (iss_…). */
 	IssuerRequired: "issuer_required",
+	/** La llave es de solo lectura: puede hacer GET, validar RFC, revisar listas del SAT y calcular recibos de nómina, pero nada que timbre, cancele, envíe o cambie datos. */
+	KeyReadOnly: "key_read_only",
 	/** La llave está limitada a algunos emisores y la solicitud toca otro (o crea uno nuevo, o usa algo de toda la cuenta como webhooks). */
 	KeyRestricted: "key_restricted",
 	/** El objeto es del otro modo: una llave fk_test_ solo ve lo de pruebas y una fk_live_ lo de producción. */

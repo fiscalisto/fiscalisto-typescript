@@ -20,6 +20,10 @@ export interface Account {
 		name: string;
 		/** Emisores a los que se limita la llave; null si puede usar todos. */
 		issuers: string[] | null;
+		/** true si la llave solo consulta (key_read_only en lo demás). */
+		read_only: boolean;
+		/** Cuándo deja de funcionar: la vigencia elegida al crearla, o el fin del traslape al cambiarla. null si no vence. */
+		expires_at: string | null;
 	};
 }
 
