@@ -1055,6 +1055,71 @@ export interface SatInvoice {
 	downloaded_at: string | null;
 }
 
+/** Una venta que su comprador puede facturar él mismo en el portal del emisor (autofactura). */
+export interface Ticket {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "ticket";
+	/** El emisor que vendió. */
+	issuer: string;
+	/** El folio de la venta en su sistema. */
+	folio: string;
+	/** Lo que su comprador escribe en el portal junto con el total: el folio y 4 caracteres al azar (A123-K7QX). Imprímalo en el ticket o mándelo con la compra. */
+	code: string;
+	/** pending (se puede facturar), invoiced (su comprador lo facturó: la factura en invoice), global (entró en la factura global del periodo) o cancelled. */
+	status: "pending" | "invoiced" | "global" | "cancelled";
+	/** La página del portal con el código ya escrito: el comprador pone el total y sus datos. Puede incrustarla con fiscalisto.js. null si ya no está pendiente. */
+	url: string | null;
+	/** Lo que se cobró, impuestos incluidos y sin propina. */
+	total: number;
+	/** La propina (no va en la factura). */
+	tip: number;
+	/** c_FormaPago de la venta. */
+	payment_form: string;
+	/** El concepto de la factura. */
+	description: string;
+	/** c_ClaveProdServ del concepto. */
+	product_key: string;
+	/** Cuándo se vendió. */
+	sold_at: string;
+	/** El último día (AAAA-MM-DD) en que el comprador puede facturarlo; después entra en la factura global. */
+	invoiceable_until: string;
+	/** La factura (inv_…) que hizo su comprador, o null. */
+	invoice: string | null;
+	/** La factura global (inv_…) en que entró, o null. */
+	global_invoice: string | null;
+	/** A quién se facturó, o null. */
+	customer: {
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string;
+		/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+		legal_name: string | null;
+	} | null;
+	/** Cuándo se registró. */
+	created_at: string | null;
+}
+
+/** El portal de autofactura de un emisor y sus reglas. */
+export interface SelfInvoicing {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "self_invoicing";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El portal permanente del emisor: ahí cualquier comprador factura con su código y su total. */
+	portal_url: string;
+	/** month: se factura hasta el fin del mes de la venta. days: hasta window_days días después. */
+	window: "month" | "days";
+	/** Días para facturar con window: days. */
+	window_days: number;
+	/** Cada cuánto se timbra sola la factura global con lo que nadie facturó: 01 diaria, 02 semanal, 03 quincenal, 04 mensual. */
+	global_periodicity: "01" | "02" | "03" | "04";
+}
+
 /** Una liga para que el dueño de un emisor suba su CSD y firme con su e.firma. */
 export interface IssuerOnboardingLink {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -1123,7 +1188,7 @@ export interface WebhookTest {
 }
 
 /** Lo que puede pasar: el tipo de cada evento. */
-export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "issuer.ready" | "balance.low";
+export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "issuer.ready" | "balance.low";
 
 /** Algo que pasó en su cuenta: el objeto completo como quedó. Se manda a sus webhooks firmado (Standard Webhooks). */
 export interface EventBase<T extends EventType = EventType, O = unknown> {
@@ -1131,7 +1196,7 @@ export interface EventBase<T extends EventType = EventType, O = unknown> {
 	id: string;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "event";
-	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, issuer.ready o balance.low. */
+	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, ticket.invoiced, ticket.included_in_global, issuer.ready o balance.low. */
 	type: T;
 	/** Versión de la API con que se armó el objeto. */
 	api_version: string;
@@ -1157,6 +1222,8 @@ export type Event =
 	| EventBase<"customer_data_request.completed", CustomerDataRequest>
 	| EventBase<"sat_download.completed", SatDownload>
 	| EventBase<"sat_download.failed", SatDownload>
+	| EventBase<"ticket.invoiced", Ticket>
+	| EventBase<"ticket.included_in_global", Ticket>
 	| EventBase<"issuer.ready", Issuer>
 	| EventBase<"balance.low", Balance>;
 
@@ -1328,6 +1395,17 @@ export interface SatInvoiceList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: SatInvoice[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface TicketList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: Ticket[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -2966,6 +3044,56 @@ export interface ListSatInvoicesParams {
 	date_lte?: string;
 }
 
+export interface CreateTicketParams {
+	/** El emisor (iss_…) que vendió. Por omisión, su único emisor. */
+	issuer?: string;
+	/** El folio de la venta en su sistema, único por emisor: letras, números, - _ / y punto. Registrar el mismo folio con el mismo total responde el ticket que ya existe. */
+	folio: string;
+	/** Lo que se cobró, impuestos incluidos y sin propina. */
+	total: number;
+	/** Propina: no va en la factura. El cliente puede escribir el total con ella o sin ella. */
+	tip?: number;
+	/** c_FormaPago de la venta: 01 efectivo, 04 tarjeta de crédito… */
+	payment_form: string;
+	/** Cuándo se vendió: ISO 8601 (2026-10-02T13:45:00-06:00) o la hora de la Ciudad de México sin zona. Por omisión, ahora. */
+	sold_at?: string;
+	/** Un producto (prd_…) de su catálogo: el concepto de la factura. */
+	product?: string;
+	/** El concepto. Con `product`, reemplaza su descripción; sin él, va con `product_key`. */
+	description?: string;
+	/** c_ClaveProdServ (8 dígitos), si no usa `product`. */
+	product_key?: string;
+	/** c_ClaveUnidad. Por omisión, la de la clave del producto. */
+	unit_key?: string;
+	/** Tasa de IVA incluida en el total. Por omisión 0.16. */
+	iva?: "0" | "0.16" | "0.08" | "exento";
+}
+
+/** Los parámetros de GET /v1/tickets. */
+export interface ListTicketsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** pending, invoiced, global o cancelled. */
+	status?: "pending" | "invoiced" | "global" | "cancelled";
+	/** Vendidos desde (ISO 8601 o AAAA-MM-DD). */
+	sold_at_gte?: string;
+	/** Vendidos hasta (ISO 8601 o AAAA-MM-DD, el día completo). */
+	sold_at_lte?: string;
+}
+
+export interface UpdateSelfInvoicingParams {
+	/** Hasta cuándo se puede facturar un ticket: `month`, hasta el fin del mes de la venta (lo usual ante el SAT); `days`, `window_days` días después. */
+	window?: "month" | "days";
+	/** Días para facturar con `window: days`. */
+	window_days?: number;
+	/** c_Periodicidad de la factura global con los tickets que nadie facturó: 01 diaria, 02 semanal, 03 quincenal, 04 mensual. */
+	global_periodicity?: "01" | "02" | "03" | "04";
+}
+
 export interface CreateWebhookEndpointParams {
 	/** Dirección https de su servidor que recibe los avisos. */
 	url: string;
@@ -3001,7 +3129,7 @@ export interface RollWebhookSecretParams {
 
 export interface TestWebhookEndpointParams {
 	/** El evento a mandar. Por omisión invoice.stamped. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "issuer.ready" | "balance.low";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "issuer.ready" | "balance.low";
 }
 
 /** Los parámetros de GET /v1/events. */
@@ -3011,7 +3139,7 @@ export interface ListEventsParams {
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
 	/** Solo de este tipo. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "issuer.ready" | "balance.low";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "issuer.ready" | "balance.low";
 	/** Solo los de este objeto (inv_…, ret_…, bat_…). */
 	object?: string;
 }
@@ -3185,6 +3313,28 @@ export class IssuersResource {
 	 */
 	createOnboardingLink(id: string, params?: CreateIssuerOnboardingLinkParams, options?: RequestOptions): Promise<IssuerOnboardingLink> {
 		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}/onboarding_links`, body: params }, options);
+	}
+
+	/**
+	 * Ver el portal de autofactura de un emisor
+	 *
+	 * GET /v1/issuers/{id}/self_invoicing
+	 * @see https://fiscalisto.com/docs/api/referencia/autofactura/get-self-invoicing
+	 */
+	getSelfInvoicing(id: string, options?: RequestOptions): Promise<SelfInvoicing> {
+		return this.#client.request({ method: "GET", path: `/v1/issuers/${encodeURIComponent(id)}/self_invoicing` }, options);
+	}
+
+	/**
+	 * Cambiar las reglas de autofactura
+	 *
+	 * Hasta cuándo se puede facturar un ticket y cada cuánto se timbra la factura global.
+	 *
+	 * POST /v1/issuers/{id}/self_invoicing
+	 * @see https://fiscalisto.com/docs/api/referencia/autofactura/update-self-invoicing
+	 */
+	updateSelfInvoicing(id: string, params?: UpdateSelfInvoicingParams, options?: RequestOptions): Promise<SelfInvoicing> {
+		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}/self_invoicing`, body: params }, options);
 	}
 }
 
@@ -3906,6 +4056,60 @@ export class SatInvoicesResource {
 	}
 }
 
+/** Autofactura: fiscalisto.tickets. */
+export class TicketsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Registrar un ticket
+	 *
+	 * Una venta que su comprador factura él mismo: con el código (code) y el total en el portal del emisor (url, que puede incrustar en su página con fiscalisto.js), da sus datos fiscales y la factura se timbra al momento con los timbres de su cuenta. Lo que nadie factura entra solo en la factura global del periodo. Registrar otra vez el mismo folio con el mismo total contesta el ticket que ya existe (los reintentos son seguros); con otro total, 409.
+	 *
+	 * POST /v1/tickets
+	 * @see https://fiscalisto.com/docs/api/referencia/autofactura/create-ticket
+	 */
+	create(params: CreateTicketParams, options?: RequestOptions): Promise<Ticket> {
+		return this.#client.request({ method: "POST", path: "/v1/tickets", body: params }, options);
+	}
+
+	/**
+	 * Listar tickets
+	 *
+	 * Del más reciente al más antiguo por fecha de venta.
+	 *
+	 * GET /v1/tickets
+	 * @see https://fiscalisto.com/docs/api/referencia/autofactura/list-tickets
+	 */
+	list(params?: ListTicketsParams, options?: RequestOptions): List<Ticket> {
+		return this.#client.list({ path: "/v1/tickets", query: params }, options);
+	}
+
+	/**
+	 * Ver un ticket
+	 *
+	 * GET /v1/tickets/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/autofactura/get-ticket
+	 */
+	get(id: string, options?: RequestOptions): Promise<Ticket> {
+		return this.#client.request({ method: "GET", path: `/v1/tickets/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Cancelar un ticket
+	 *
+	 * Una venta que no se hizo (devolución, error): ya no se puede facturar ni entra en la factura global. Solo mientras esté pendiente.
+	 *
+	 * DELETE /v1/tickets/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/autofactura/cancel-ticket
+	 */
+	cancel(id: string, options?: RequestOptions): Promise<Ticket> {
+		return this.#client.request({ method: "DELETE", path: `/v1/tickets/${encodeURIComponent(id)}` }, options);
+	}
+}
+
 /** Webhooks: fiscalisto.webhookEndpoints. */
 export class WebhookEndpointsResource {
 	readonly #client: Client;
@@ -4042,6 +4246,7 @@ export class FiscalistoApi extends Core {
 	readonly satLists = new SatListsResource(this);
 	readonly satDownloads = new SatDownloadsResource(this);
 	readonly satInvoices = new SatInvoicesResource(this);
+	readonly tickets = new TicketsResource(this);
 	readonly webhookEndpoints = new WebhookEndpointsResource(this);
 	readonly events = new EventsResource(this);
 }

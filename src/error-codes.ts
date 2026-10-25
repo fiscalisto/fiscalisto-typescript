@@ -105,6 +105,12 @@ export const ErrorCode = {
 	SubstitutionUnsupported: "substitution_unsupported",
 	/** Esto solo existe en pruebas (como reiniciar los datos de prueba): use su llave fk_test_. */
 	TestModeOnly: "test_mode_only",
+	/** Ese folio ya está registrado para el emisor con otro total o con otra propina (409). Con el mismo total se contesta el ticket que ya existe. */
+	TicketFolioTaken: "ticket_folio_taken",
+	/** El ticket no se pudo registrar: el folio trae caracteres no válidos, la fecha de venta está en el futuro o es de hace más de un año, el producto ya no está en el catálogo… El mensaje dice cuál. */
+	TicketInvalid: "ticket_invalid",
+	/** El ticket ya se facturó o entró en una factura global: no se puede cancelar. */
+	TicketNotPending: "ticket_not_pending",
 	/** La API no contestó a tiempo (connection_error). Con lo que timbra, repita con la misma Idempotency-Key para saber si se timbró. */
 	Timeout: "timeout",
 	/** Mande el cuerpo con Content-Type: application/json. */
