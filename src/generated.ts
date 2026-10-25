@@ -24,6 +24,8 @@ export interface Account {
 		read_only: boolean;
 		/** Cuándo deja de funcionar: la vigencia elegida al crearla, o el fin del traslape al cambiarla. null si no vence. */
 		expires_at: string | null;
+		/** El entorno de prueba (sbx_…) de la llave: solo ve sus emisores, webhooks y eventos. null si es de la cuenta. */
+		sandbox: string | null;
 	};
 }
 
@@ -101,6 +103,8 @@ export interface Issuer {
 	curp: string | null;
 	/** RFC con el que se timbra: el del emisor en producción y el de pruebas del SAT (EKU9003173C9) en pruebas. */
 	stamps_as: string;
+	/** El entorno de prueba (sbx_…) al que pertenece, o null si es de la cuenta. Vea /v1/sandboxes. */
+	sandbox: string | null;
 	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
 	created_at: string | null;
 	/** Cuándo se archivó (ya no timbra), o null. */
@@ -954,6 +958,33 @@ export interface TestDataReset {
 	products_created: number;
 }
 
+/** Un entorno de prueba: el modo de pruebas propio de una persona, con su emisor, llaves, webhooks y eventos aparte. */
+export interface Sandbox {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "sandbox";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: false;
+	/** Nombre. */
+	name: string;
+	/** Emisores activos en el entorno. */
+	issuers: number;
+	/** El emisor de pruebas del SAT con que nace (solo al crearlo). */
+	issuer?: Issuer | null;
+	/** Solo al crearlo. */
+	key?: {
+		/** Id de la llave. */
+		id: string;
+		/** La llave fk_test_… del entorno. Solo se ve esta vez: guárdela. */
+		secret: string;
+	};
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string | null;
+	/** Siempre true. */
+	deleted?: boolean;
+}
+
 /** Una solicitud al SAT de las facturas emitidas o recibidas de un emisor en un periodo. */
 export interface SatDownload {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
@@ -1617,6 +1648,8 @@ export interface WebhookEndpoint {
 	livemode: boolean;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "webhook_endpoint";
+	/** El entorno de prueba (sbx_…) al que pertenece, o null si es de la cuenta. Vea /v1/sandboxes. */
+	sandbox: string | null;
 	/** Dirección https de su servidor que recibe los avisos. */
 	url: string;
 	/** Para qué es, para usted. */
@@ -1734,6 +1767,17 @@ export interface ApiError {
 		/** El id de la solicitud (req_…). Inclúyalo si nos escribe. */
 		request_id: string;
 	};
+}
+
+export interface SandboxList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: Sandbox[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
 }
 
 export interface IssuerList {
@@ -2797,6 +2841,11 @@ export interface InvoiceCreate {
 export interface ResetTestDataParams {
 	/** true (por omisión) para dejarle a cada emisor de pruebas 3 clientes y 3 productos de ejemplo. false para dejarlo vacío. */
 	seed?: boolean;
+}
+
+export interface CreateSandboxParams {
+	/** Para quién o para qué es, por ejemplo el nombre de quien lo usa. */
+	name: string;
 }
 
 export interface CreateIssuerParams {
@@ -4312,6 +4361,58 @@ export class TestDataResource {
 	 */
 	reset(params?: ResetTestDataParams, options?: RequestOptions): Promise<TestDataReset> {
 		return this.#client.request({ method: "POST", path: "/v1/test_data/reset", body: params }, options);
+	}
+}
+
+/** Entornos de prueba: fiscalisto.sandboxes. */
+export class SandboxesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Crear un entorno de prueba
+	 *
+	 * Un modo de pruebas propio para una persona o un proyecto: nace con el emisor de pruebas del SAT y una llave fk_test_ (key.secret, una sola vez) que solo ve los emisores, webhooks y eventos del entorno, y que reinicia solo los suyos. Se crea con una llave de pruebas de la cuenta (no de otro entorno ni limitada a emisores). Hasta 25 por cuenta.
+	 *
+	 * POST /v1/sandboxes
+	 * @see https://fiscalisto.com/docs/api/referencia/entornos-de-prueba/create-sandbox
+	 */
+	create(params: CreateSandboxParams, options?: RequestOptions): Promise<Sandbox> {
+		return this.#client.request({ method: "POST", path: "/v1/sandboxes", body: params }, options);
+	}
+
+	/**
+	 * Listar entornos de prueba
+	 *
+	 * GET /v1/sandboxes
+	 * @see https://fiscalisto.com/docs/api/referencia/entornos-de-prueba/list-sandboxes
+	 */
+	list(options?: RequestOptions): Promise<SandboxList> {
+		return this.#client.request({ method: "GET", path: "/v1/sandboxes" }, options);
+	}
+
+	/**
+	 * Ver un entorno de prueba
+	 *
+	 * GET /v1/sandboxes/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/entornos-de-prueba/get-sandbox
+	 */
+	get(id: string, options?: RequestOptions): Promise<Sandbox> {
+		return this.#client.request({ method: "GET", path: `/v1/sandboxes/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Borrar un entorno de prueba
+	 *
+	 * Sus llaves dejan de funcionar al momento, sus emisores se archivan y sus webhooks se borran. No toca nada de la cuenta ni de otros entornos.
+	 *
+	 * DELETE /v1/sandboxes/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/entornos-de-prueba/delete-sandbox
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/sandboxes/${encodeURIComponent(id)}` }, options);
 	}
 }
 
@@ -5845,6 +5946,7 @@ export class EventsResource {
 export class FiscalistoApi extends Core {
 	readonly account = new AccountResource(this);
 	readonly testData = new TestDataResource(this);
+	readonly sandboxes = new SandboxesResource(this);
 	readonly balance = new BalanceResource(this);
 	readonly issuers = new IssuersResource(this);
 	readonly invoices = new InvoicesResource(this);

@@ -71,6 +71,8 @@ export const ErrorCode = {
 	IssuerNotAllowed: "issuer_not_allowed",
 	/** La cuenta tiene varios emisores y la solicitud no dice cuál: mande issuer (iss_…). */
 	IssuerRequired: "issuer_required",
+	/** La llave es de un entorno de prueba y la solicitud es de toda la cuenta (como crear o borrar entornos): use una llave de pruebas de la cuenta. */
+	KeyInSandbox: "key_in_sandbox",
 	/** La llave es de solo lectura: puede hacer GET, validar RFC, revisar listas del SAT y calcular recibos de nómina, pero nada que timbre, cancele, envíe o cambie datos. */
 	KeyReadOnly: "key_read_only",
 	/** La llave está limitada a algunos emisores y la solicitud toca otro (o crea uno nuevo, o usa algo de toda la cuenta como webhooks). */
@@ -119,6 +121,8 @@ export const ErrorCode = {
 	RetentionRejected: "retention_rejected",
 	/** No existe esa ruta. Revise la dirección y la versión (/v1). */
 	RouteNotFound: "route_not_found",
+	/** No se pudo crear el entorno de prueba: falta su nombre o la cuenta ya tiene 25 (borre uno que ya no use). */
+	SandboxInvalid: "sandbox_invalid",
 	/** El SAT rechazó la solicitud de descarga. El mensaje trae su motivo, por ejemplo que ya se pidió el mismo periodo con los mismos filtros demasiadas veces (el SAT pone un límite de por vida). */
 	SatRequestRejected: "sat_request_rejected",
 	/** Demasiados timbres seguidos del mismo emisor. Espere lo que dice Retry-After; para muchas facturas use POST /v1/invoice_batches. */
