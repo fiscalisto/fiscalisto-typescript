@@ -14,8 +14,7 @@
 	"homepage": "https://fiscalisto.com/docs/api/sdk",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/RVP97/invoices-retriever.git",
-		"directory": "sdk/typescript"
+		"url": "git+https://github.com/fiscalisto/fiscalisto-typescript.git"
 	},
 	"license": "MIT",
 	"type": "module",
