@@ -12,6 +12,10 @@ export interface Account {
 	object: "account";
 	/** El nombre de la cuenta API. */
 	name: string;
+	/** La versión de la API de la cuenta (la de sus solicitudes sin Fiscalisto-Version). Ver Versiones. */
+	api_version: string;
+	/** La versión más reciente de la API. */
+	latest_api_version: string;
 	/** La llave con que se hizo la solicitud: id, nombre y emisores a los que se limita. */
 	key: {
 		/** Id de la llave. */
@@ -1702,6 +1706,8 @@ export interface WebhookEndpoint {
 	failing_since?: string | null;
 	/** Hasta cuándo el secreto anterior también firma (después de cambiarlo), o null. */
 	previous_secret_expires_at: string | null;
+	/** La versión de la API de sus eventos; null: la de la cuenta. */
+	api_version: string | null;
 	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
 	created_at: string | null;
 	/** Secreto de firma (whsec_…). Solo viene al crearlo o al cambiarlo: guárdelo para verificar las firmas. */
@@ -2875,6 +2881,11 @@ export interface InvoiceCreate {
 	email_cc?: string | null;
 	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
 	metadata?: Record<string, string>;
+}
+
+export interface UpdateAccountParams {
+	/** La versión de la API de la cuenta: la que reciben sus solicitudes sin Fiscalisto-Version y sus webhooks sin api_version propio. Pruebe antes la nueva con el encabezado. */
+	api_version: string;
 }
 
 export interface ResetTestDataParams {
@@ -4330,6 +4341,8 @@ export interface CreateWebhookEndpointParams {
 	events?: string[] | null;
 	/** Para qué es, para usted (no se manda en los eventos). */
 	description?: string | null;
+	/** La versión de la API en que llegan sus eventos (por ejemplo 2026-10-24); null o sin mandar: la de la cuenta. Así actualiza un endpoint a la vez. */
+	api_version?: string | null;
 }
 
 /** Los parámetros de GET /v1/webhook_endpoints. */
@@ -4349,6 +4362,8 @@ export interface UpdateWebhookEndpointParams {
 	description?: string | null;
 	/** true para apagarlo sin borrarlo. */
 	disabled?: boolean;
+	/** La versión de la API en que llegan sus eventos (por ejemplo 2026-10-24); null o sin mandar: la de la cuenta. Así actualiza un endpoint a la vez. */
+	api_version?: string | null;
 }
 
 export interface RollWebhookSecretParams {
@@ -4390,6 +4405,18 @@ export class AccountResource {
 	 */
 	get(options?: RequestOptions): Promise<Account> {
 		return this.#client.request({ method: "GET", path: "/v1/account" }, options);
+	}
+
+	/**
+	 * Cambiar la versión de la API
+	 *
+	 * Mueve la versión de la API de la cuenta: la que reciben sus solicitudes sin el encabezado Fiscalisto-Version y sus webhooks sin api_version propio. Antes, pruebe la nueva mandando Fiscalisto-Version en sus solicitudes. Con una llave de la cuenta con todos los permisos (no de un entorno de prueba). Queda en Desarrolladores › Actividad.
+	 *
+	 * POST /v1/account
+	 * @see https://fiscalisto.com/docs/api/referencia/cuenta/update-account
+	 */
+	update(params: UpdateAccountParams, options?: RequestOptions): Promise<Account> {
+		return this.#client.request({ method: "POST", path: "/v1/account", body: params, idempotent: true }, options);
 	}
 }
 

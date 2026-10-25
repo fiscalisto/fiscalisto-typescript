@@ -23,6 +23,7 @@ export class Fiscalisto extends FiscalistoApi {
 
 export default Fiscalisto;
 export {
+	API_VERSION,
 	type ErrorType,
 	type Fetch,
 	FiscalistoError,

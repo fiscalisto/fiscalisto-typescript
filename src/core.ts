@@ -7,6 +7,11 @@
 import type { ErrorCode } from "./error-codes.js";
 
 export const VERSION = "0.1.0";
+/**
+ * La versión de la API para la que se hizo este SDK: la manda en cada solicitud
+ * (Fiscalisto-Version), así actualizar la API no cambia lo que recibe hasta que actualice el SDK.
+ */
+export const API_VERSION = "2026-10-24";
 const DEFAULT_BASE_URL = "https://api.fiscalisto.com";
 
 /** Lo que el SDK necesita de fetch. */
@@ -21,6 +26,11 @@ export interface FiscalistoOptions {
 	timeout?: number;
 	/** Otro fetch (pruebas, proxies). Por omisión el global. */
 	fetch?: Fetch;
+	/**
+	 * La versión de la API (Fiscalisto-Version). Por omisión la del SDK (API_VERSION); null manda
+	 * ninguna, así se usa la de su cuenta.
+	 */
+	apiVersion?: string | null;
 }
 
 export interface RequestOptions {
@@ -168,6 +178,7 @@ export class Core implements Client {
 	readonly #maxRetries: number;
 	readonly #timeout: number;
 	readonly #fetch: Fetch;
+	readonly #apiVersion: string | null;
 
 	constructor(apiKey?: string, options: FiscalistoOptions = {}) {
 		const env = (globalThis as { process?: { env?: Record<string, string | undefined> } })
@@ -186,6 +197,7 @@ export class Core implements Client {
 		this.#maxRetries = options.maxRetries ?? 2;
 		this.#timeout = options.timeout ?? 80_000;
 		this.#fetch = options.fetch ?? ((url, init) => fetch(url, init));
+		this.#apiVersion = options.apiVersion === undefined ? API_VERSION : options.apiVersion;
 	}
 
 	/** true con una llave fk_live_ (producción), false con fk_test_ (pruebas). */
@@ -201,6 +213,7 @@ export class Core implements Client {
 			authorization: `Bearer ${this.#key}`,
 			"user-agent": `fiscalisto-node/${VERSION}`,
 		};
+		if (this.#apiVersion) headers["fiscalisto-version"] = this.#apiVersion;
 		const idempotencyKey = spec.idempotent
 			? (options.idempotencyKey ?? crypto.randomUUID())
 			: undefined;
