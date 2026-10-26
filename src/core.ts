@@ -6,7 +6,7 @@
 
 import type { ErrorCode } from "./error-codes.js";
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.1.1";
 /**
  * La versión de la API para la que se hizo este SDK: la manda en cada solicitud
  * (Fiscalisto-Version), así actualizar la API no cambia lo que recibe hasta que actualice el SDK.
@@ -179,6 +179,18 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const backoff = (attempt: number) =>
 	Math.min(8000, 500 * 2 ** attempt) * (0.75 + Math.random() / 2);
 
+/** A success that isn't the API's JSON: a proxy's or a network portal's page answered instead. */
+const invalidResponse = (status: number, text: string, requestId?: string) =>
+	new FiscalistoError(
+		{
+			type: "api_error",
+			code: "invalid_response",
+			message: `La respuesta (${status}) no es de la API: ${text.replace(/\s+/g, " ").trim().slice(0, 80) || "vacía"}. ¿Hay un proxy o un portal de por medio?`,
+		},
+		status,
+		requestId,
+	);
+
 export class Core implements Client {
 	readonly #key: string;
 	readonly #baseUrl: string;
@@ -201,7 +213,8 @@ export class Core implements Client {
 				"La llave de la API empieza con fk_live_ o fk_test_. (Un secreto whsec_ es para verificar webhooks.)",
 			);
 		this.#key = key;
-		this.#baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
+		// A proxy's path stays: https://proxy.example.com/fiscalisto + /v1/invoices.
+		this.#baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
 		this.#maxRetries = options.maxRetries ?? 2;
 		this.#timeout = options.timeout ?? 80_000;
 		this.#fetch = options.fetch ?? ((url, init) => fetch(url, init));
@@ -215,7 +228,7 @@ export class Core implements Client {
 	}
 
 	async request<T>(spec: RequestSpec, options: RequestOptions = {}): Promise<T> {
-		const url = new URL(spec.path, this.#baseUrl);
+		const url = new URL(this.#baseUrl + spec.path);
 		for (const [k, v] of Object.entries(spec.query ?? {}))
 			if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
 		for (const e of options.expand ?? []) url.searchParams.append("expand[]", e);
@@ -266,7 +279,12 @@ export class Core implements Client {
 			if (response.ok) {
 				if (spec.as === "bytes") return new Uint8Array(await response.arrayBuffer()) as T;
 				if (spec.as === "text") return (await response.text()) as T;
-				return (await response.json()) as T;
+				const text = await response.text();
+				try {
+					return JSON.parse(text) as T;
+				} catch {
+					throw invalidResponse(response.status, text, requestId);
+				}
 			}
 			const raw = await response
 				.json()

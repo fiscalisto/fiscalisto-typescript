@@ -17,6 +17,7 @@ import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
 import { FiscalistoError, VERSION } from "./core.js";
 import { Fiscalisto } from "./index.js";
+import { createMock } from "./mock.js";
 
 // ── Salida ─────────────────────────────────────────────────────────────────
 
@@ -498,6 +499,19 @@ async function init(args: string[], g: Globals) {
 					? `SDK: ${install.join(" ")}`
 					: `SDK: falló «${install.join(" ")}», córralo usted`,
 			);
+			// pip installs into the environment only: also into the file a deploy installs from.
+			const requirements = join(dir, "requirements.txt");
+			if (installed && install[0] === "pip" && existsSync(requirements)) {
+				const listed = readFileSync(requirements, "utf8");
+				if (!/^fiscalisto\b/im.test(listed)) {
+					await appendFile(
+						requirements,
+						`${listed && !listed.endsWith("\n") ? "\n" : ""}fiscalisto\n`,
+					);
+					done.push("requirements.txt: fiscalisto");
+				}
+			} else if (installed && install[0] === "pip" && existsSync(join(dir, "pyproject.toml")))
+				done.push("pyproject.toml: agregue «fiscalisto» a dependencies");
 		}
 	}
 
@@ -553,17 +567,22 @@ interface Invoice {
 	cancellation: { status: string | null } | null;
 }
 
-const STATUS: Record<string, (s: string) => string> = {
-	valid: green,
-	pending: yellow,
-	processing: yellow,
-	rejected: red,
-	canceled: dim,
+/** An invoice's status as the app shows it (the API's value goes in --status and --json). */
+const STATUS: Record<string, [string, (s: string) => string]> = {
+	valid: ["vigente", green],
+	pending: ["pendiente", yellow],
+	processing: ["timbrando", yellow],
+	rejected: ["rechazada", red],
+	canceled: ["cancelada", dim],
+};
+const status = (s: string, width = 0) => {
+	const [label, color] = STATUS[s] ?? [s, String];
+	return color(label.padEnd(width));
 };
 
 function showInvoice(i: Invoice) {
 	line(
-		`${bold(`${i.series ?? ""}${i.folio ?? ""}` || i.id)} ${(STATUS[i.status] ?? String)(i.status)} ${money(i.total, i.currency)}`,
+		`${bold(`${i.series ?? ""}${i.folio ?? ""}` || i.id)} ${status(i.status)} ${money(i.total, i.currency)}`,
 	);
 	line(`  ${i.customer.legal_name ?? ""} ${dim(i.customer.tax_id)}`);
 	if (i.uuid) line(`  UUID ${i.uuid}`);
@@ -668,7 +687,7 @@ async function invoices(args: string[], g: Globals) {
 				if (!page.data.length) return line(dim("Sin facturas."));
 				for (const i of page.data)
 					line(
-						`${(`${i.series ?? ""}${i.folio ?? ""}` || "—").padEnd(8)} ${(STATUS[i.status] ?? String)(i.status.padEnd(10))} ${money(i.total, i.currency).padStart(14)}  ${(i.customer.legal_name ?? "").slice(0, 32).padEnd(32)} ${dim(i.id)}`,
+						`${(`${i.series ?? ""}${i.folio ?? ""}` || "—").padEnd(8)} ${status(i.status, 10)} ${money(i.total, i.currency).padStart(14)}  ${(i.customer.legal_name ?? "").slice(0, 32).padEnd(32)} ${dim(i.id)}`,
 					);
 				if (page.has_more) line(dim(`… hay más: --limit ${Number(values.limit) * 2}`));
 			});
@@ -1038,6 +1057,7 @@ async function listen(args: string[], g: Globals) {
 		query: { limit: 1 },
 	});
 	let last = first.data[0]?.id;
+	let lastAt = (first.data[0] as { created_at?: string } | undefined)?.created_at;
 	if (json)
 		line(
 			JSON.stringify({
@@ -1071,10 +1091,19 @@ async function listen(args: string[], g: Globals) {
 				query: { limit: 100 },
 			});
 			const at = last ? page.data.findIndex((e) => e.id === last) : -1;
+			// The last one seen may be gone (test data reset): what came after it, by time, not
+			// the whole page again.
 			fresh = (
-				at === -1 && last ? page.data : page.data.slice(0, at === -1 ? 0 : at)
+				at !== -1
+					? page.data.slice(0, at)
+					: last && lastAt
+						? page.data.filter((e) => e.created_at > (lastAt as string))
+						: []
 			).reverse();
-			if (!last && page.data[0]) last = page.data[0].id;
+			if (!last && page.data[0]) {
+				last = page.data[0].id;
+				lastAt = page.data[0].created_at;
+			}
 		} catch (e) {
 			note(
 				red(
@@ -1085,13 +1114,16 @@ async function listen(args: string[], g: Globals) {
 		}
 		for (const event of fresh) {
 			last = event.id;
+			lastAt = event.created_at;
 			if (wanted && !wanted.includes(event.type)) continue;
 			const body = JSON.stringify(event);
 			let result: { status: number | null; ms: number; error?: string } = {
 				status: null,
 				ms: 0,
 			};
-			if (target) {
+			// A server that isn't answering (restarting after a change) gets the event again, as
+			// a real delivery would, instead of losing it: up to a minute, then it moves on.
+			for (let tries = 0; target; tries++) {
 				const timestamp = Math.floor(Date.now() / 1000);
 				const started = Date.now();
 				try {
@@ -1115,13 +1147,21 @@ async function listen(args: string[], g: Globals) {
 						error: e instanceof Error ? e.message : String(e),
 					};
 				}
+				if (result.status !== null || tries >= 20) break;
+				if (tries === 0 && !json)
+					note(
+						dim(
+							`${event.type} ${event.id}: ${target} no contesta; reintento cada 3 s…`,
+						),
+					);
+				await sleep(3000);
 			}
 			if (json) line(JSON.stringify({ event, forwarded: target ? result : null }));
 			else {
 				const status = !target
 					? ""
 					: result.status === null
-						? red(` → sin respuesta (${result.error})`)
+						? red(` → sin respuesta (${result.error}); se perdió ${event.id}`)
 						: ` → ${result.status >= 200 && result.status < 300 ? green(String(result.status)) : red(String(result.status))} ${dim(`${result.ms} ms`)}`;
 				line(
 					`${dim(new Date().toLocaleTimeString("es-MX"))} ${bold(event.type)} ${event.data.object.id}${status}`,
@@ -1229,6 +1269,70 @@ async function docs() {
 	else process.stdout.write(text);
 }
 
+// ── mock ───────────────────────────────────────────────────────────────────
+
+/** `fiscalisto mock`: the API's shapes on localhost, offline (./mock.ts). */
+async function mock(args: string[]) {
+	const { values } = parseArgs({
+		args,
+		options: {
+			port: { type: "string", default: "12111" },
+			host: { type: "string", default: "127.0.0.1" },
+		},
+	});
+	const { createServer } = await import("node:http");
+	const api = createMock();
+	const server = createServer(async (req, res) => {
+		const chunks: Buffer[] = [];
+		for await (const c of req) chunks.push(c as Buffer);
+		const url = `http://${req.headers.host ?? "localhost"}${req.url ?? "/"}`;
+		const headers = new Headers();
+		for (const [k, v] of Object.entries(req.headers))
+			if (typeof v === "string") headers.set(k, v);
+		const request = new Request(url, {
+			method: req.method,
+			headers,
+			body: chunks.length && req.method !== "GET" ? Buffer.concat(chunks) : undefined,
+		});
+		const started = Date.now();
+		const response = await api.fetch(request);
+		res.writeHead(response.status, Object.fromEntries(response.headers));
+		res.end(Buffer.from(await response.arrayBuffer()));
+		if (!json)
+			line(
+				`${dim(new Date().toTimeString().slice(0, 8))} ${(response.ok ? green : yellow)(String(response.status))} ${request.method} ${new URL(url).pathname} ${dim(`${Date.now() - started} ms`)}`,
+			);
+	});
+	const port = Number(values.port);
+	await new Promise<void>((ok, fail) => {
+		server.once("error", fail);
+		server.listen(port, values.host, ok);
+	});
+	const base = `http://${values.host === "0.0.0.0" ? "localhost" : values.host}:${port}`;
+	print({ url: base }, () => {
+		line(`${bold("Servidor de prueba de Fiscalisto")} en ${cyan(base)}`);
+		line(
+			dim(
+				"Contesta cada ruta como la API, sin internet; lo que crea vive en memoria mientras corre.",
+			),
+		);
+		line(
+			dim(
+				"No revisa reglas del SAT ni timbra: para eso use su llave fk_test_ contra la API.",
+			),
+		);
+		line("");
+		line(`  ${bold("SDK")}   new Fiscalisto("fk_test_mock", { baseUrl: "${base}" })`);
+		line(`  ${bold("curl")}  curl ${base}/v1/account -H "Authorization: Bearer fk_test_mock"`);
+		line(
+			`  ${bold("CLI")}   FISCALISTO_BASE_URL=${base} FISCALISTO_API_KEY=fk_test_mock npx fiscalisto whoami`,
+		);
+		line("");
+		line(dim("Ctrl+C para salir."));
+	});
+	await new Promise(() => {});
+}
+
 // ── main ───────────────────────────────────────────────────────────────────
 
 const HELP = `${bold("fiscalisto")} ${dim(VERSION)} · facturación electrónica (CFDI 4.0) desde su terminal
@@ -1256,6 +1360,7 @@ ${bold("Webhooks")}
 ${bold("Otros")}
   issuers list|get              Sus emisores
   api [METHOD] /v1/… [--data]   Cualquier ruta de la API con su llave
+  mock [--port 12111]           La API en su computadora, sin internet, para desarrollar y probar
   open [panel|facturas|llaves|webhooks|eventos|docs]
   docs                          La guía completa para agentes (llms.txt)
 
@@ -1306,6 +1411,8 @@ export async function main(argv: string[]) {
 				return await rawApi(args, globals);
 			case "listen":
 				return await listen(args, globals);
+			case "mock":
+				return await mock(args);
 			case "trigger":
 				return await trigger(args, globals);
 			case "open":

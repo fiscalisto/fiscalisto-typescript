@@ -39,6 +39,8 @@ export const ErrorCode = {
 	EfirmaRequired: "efirma_required",
 	/** No se pudo mandar el correo; el comprobante sí está timbrado. */
 	EmailFailed: "email_failed",
+	/** Ya hay un webhook con esa dirección en este modo; el mensaje dice cuál. Cámbielo en vez de crear otro. */
+	EndpointExists: "endpoint_exists",
 	/** La cuenta llegó al máximo de webhooks en este modo. */
 	EndpointLimit: "endpoint_limit",
 	/** Un campo de expand[] no existe en la respuesta, no es el id de otro objeto, o se pidieron demasiados (hasta 10 campos, 4 niveles). Vea Expandir objetos. */
@@ -49,7 +51,7 @@ export const ErrorCode = {
 	IdempotencyKeyMissing: "idempotency_key_missing",
 	/** Esa Idempotency-Key ya se usó en las últimas 24 horas con otra solicitud (otra ruta u otro cuerpo). Use una nueva para cada operación distinta. */
 	IdempotencyKeyReused: "idempotency_key_reused",
-	/** La cuenta no tiene timbres de producción. Compre un paquete en Desarrolladores › Timbres. En pruebas nunca pasa. Para enterarse antes, escuche balance.low o active la recarga automática. */
+	/** La cuenta no tiene timbres de producción: para timbrar, revisar RFC en las listas, consultar constancias o pedir descargas al SAT. Compre un paquete en Desarrolladores › Timbres. En pruebas nunca pasa. Para enterarse antes, escuche balance.low o active la recarga automática. */
 	InsufficientBalance: "insufficient_balance",
 	/** Algo falló de nuestro lado. Repita la solicitud con la misma Idempotency-Key: nunca se timbra dos veces. Si sigue, escríbanos con el request_id. */
 	InternalError: "internal_error",
@@ -57,6 +59,8 @@ export const ErrorCode = {
 	InvalidApiKey: "invalid_api_key",
 	/** El cuerpo no es un objeto JSON válido. */
 	InvalidJson: "invalid_json",
+	/** La respuesta no se pudo leer (api_error): no es el JSON de la API, sino la página de un proxy o de un portal de la red. status dice qué contestó. */
+	InvalidResponse: "invalid_response",
 	/** La factura no cumple una regla del SAT que Fiscalisto revisa antes de mandarla al PAC (uso contra régimen, totales, complementos…). No se usó ningún timbre. */
 	InvoiceInvalid: "invoice_invalid",
 	/** Solo una factura de ingreso PUE vigente se marca pagada o por cobrar; una PPD se paga con su complemento de pago (type P). */
@@ -93,7 +97,7 @@ export const ErrorCode = {
 	ParameterInvalid: "parameter_invalid",
 	/** Falta un campo obligatorio. param dice cuál. */
 	ParameterMissing: "parameter_missing",
-	/** Mandó un campo que no existe (casi siempre un nombre mal escrito, como legalName en vez de legal_name). Nunca se ignora en silencio. */
+	/** Mandó un campo o un parámetro de la URL que no existe (casi siempre un nombre mal escrito, como legalName en vez de legal_name, o ?statuss= en vez de ?status=). Nunca se ignora en silencio. */
 	ParameterUnknown: "parameter_unknown",
 	/** El recibo de nómina no se puede calcular o timbrar con esos datos (periodo, días, registro patronal del emisor…). */
 	PayrollInvalid: "payroll_invalid",
@@ -115,7 +119,7 @@ export const ErrorCode = {
 	RecurringNotDue: "recurring_not_due",
 	/** La factura recurrente está en pausa: reanúdela con active: true para timbrarla. */
 	RecurringPaused: "recurring_paused",
-	/** Otra solicitud con la misma Idempotency-Key sigue en proceso (409, con Retry-After). Repítala en un momento con la misma llave: contestará lo mismo. */
+	/** Otra solicitud con la misma Idempotency-Key sigue en proceso, o otra solicitud está cambiando el mismo objeto (dos actualizaciones del mismo cliente a la vez esperan su turno hasta 15 segundos) (409, con Retry-After). Repítala en un momento con la misma llave: contestará lo mismo. */
 	RequestInProgress: "request_in_progress",
 	/** No existe un objeto con ese id (o es de otro emisor o del otro modo). */
 	ResourceMissing: "resource_missing",
@@ -129,8 +133,12 @@ export const ErrorCode = {
 	RouteNotFound: "route_not_found",
 	/** No se pudo crear el entorno de prueba: falta su nombre o la cuenta ya tiene 25 (borre uno que ya no use). */
 	SandboxInvalid: "sandbox_invalid",
+	/** Las declaraciones de ese emisor se consultaron en el SAT hace menos de 10 minutos (cada consulta entra al SAT con su e.firma). Retry-After dice cuántos segundos faltan; lo que ya trajo está en GET /v1/sat_declarations. */
+	SatRefreshTooSoon: "sat_refresh_too_soon",
 	/** El SAT rechazó la solicitud de descarga. El mensaje trae su motivo, por ejemplo que ya se pidió el mismo periodo con los mismos filtros demasiadas veces (el SAT pone un límite de por vida). */
 	SatRequestRejected: "sat_request_rejected",
+	/** El SAT no contestó o no dejó entrar con la e.firma del emisor. El mensaje trae lo que dijo; no se usó ningún timbre. Reintente en 10 minutos. */
+	SatUnavailable: "sat_unavailable",
 	/** Demasiados timbres seguidos del mismo emisor. Espere lo que dice Retry-After; para muchas facturas use POST /v1/invoice_batches. */
 	StampRateLimit: "stamp_rate_limit",
 	/** Esa tienda ya está conectada a este emisor. */

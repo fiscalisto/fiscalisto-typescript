@@ -537,6 +537,8 @@ export interface Customer {
 	} | null;
 	/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio. */
 	ieps_taxpayer: boolean;
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string;
 	/** Cuándo cambió por última vez, ISO 8601 (-06:00). */
 	updated_at: string | null;
 }
@@ -565,6 +567,8 @@ export interface Product {
 	sku: string | null;
 	/** Precio unitario antes de impuestos (ValorUnitario). */
 	unit_price: number;
+	/** Precio abierto: el producto no tiene precio fijo y cada concepto con él manda su unit_price. */
+	open_price: boolean;
 	/** Objeto de impuesto (ObjetoImp), c_ObjetoImp: 01 no objeto, 02 sí objeto (por omisión), 03 sin desglose, 04 no causa… */
 	taxability: string;
 	/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
@@ -577,6 +581,17 @@ export interface Product {
 	iva_retention: number;
 	/** Tasa de ISR retenido (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
 	isr_retention: number;
+	/** Impuestos locales (complemento implocal): traslados y retenciones estatales. */
+	local_taxes: {
+		/** true si es una retención local; false si es un traslado. */
+		retention: boolean;
+		/** Nombre del impuesto local (ImpLocTrasladado o ImpLocRetenido), como ISH. */
+		name: string;
+		/** Tasa en por ciento (TasadeTraslado o TasadeRetencion). */
+		rate: number;
+	}[];
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string;
 	/** Cuándo cambió por última vez, ISO 8601 (-06:00). */
 	updated_at: string | null;
 }
@@ -635,6 +650,8 @@ export interface Employee {
 	position: string | null;
 	/** Lo que el SAT podría observar de sus datos, antes de timbrar. */
 	warnings: string[];
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string;
 }
 
 /** El recibo como se timbraría: percepciones, deducciones (ISR, IMSS), otros pagos (subsidio) y el neto. */
@@ -1134,6 +1151,115 @@ export interface SatInvoice {
 	sat_download: string | null;
 	/** Cuándo llegó. */
 	downloaded_at: string | null;
+}
+
+/** Una declaración que el emisor presentó ante el SAT (provisional o definitiva, anual o del servicio anterior Declaraciones y pagos), con sus cifras y sus archivos. */
+export interface SatDeclaration {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "sat_declaration";
+	/** El emisor que la presentó. */
+	issuer: string;
+	/** monthly (provisional o definitiva, desde 2022), annual (la anual de persona moral) o dyp (el servicio anterior Declaraciones y pagos, 2021 y antes). */
+	source: "monthly" | "annual" | "dyp";
+	/** El ejercicio. */
+	year: number;
+	/** El mes (1 a 12), o null en la anual y otros periodos. */
+	month: number | null;
+	/** El periodo como lo nombra el SAT: «Enero», «Del Ejercicio»… */
+	period: string;
+	/** normal o complementary (complementaria). */
+	type: "normal" | "complementary";
+	/** El tipo de complementaria como lo dice el SAT («Modificación de obligaciones»…), o null. */
+	complementary_type: string | null;
+	/** El número de operación que le dio el SAT. */
+	operation_number: string;
+	/** La línea de captura, si hubo algo a pagar. */
+	payment_line: string | null;
+	/** Cuándo se presentó (AAAA-MM-DD). */
+	filed_on: string | null;
+	/** El coeficiente de utilidad que aplicó (ISR de personas morales), o null. */
+	profit_coefficient: number | null;
+	/** El ISR a cargo, según el acuse. */
+	isr_due: number | null;
+	/** El IVA a cargo, según el acuse. */
+	vat_due: number | null;
+	/** El total a pagar, según el acuse. */
+	total_due: number | null;
+	/** Las cifras de la declaración por impuesto (tax), cada una con su texto como lo imprime el SAT (label) y su valor. Vacío en las de Declaraciones y pagos (su PDF trae dos columnas que no se leen con certeza) o si el PDF aún no llega. */
+	sections: {
+		/** Impuesto: isr, iva o ieps (ImpuestoRet 001, 002, 003). */
+		tax: string;
+		/** Los renglones del impuesto, en el orden del PDF. */
+		fields: {
+			/** El renglón como lo imprime el SAT. */
+			label: string;
+			/** Valor de la mercancía (ValorMercancia); obligatorio en transporte aéreo. */
+			value: number | string;
+		}[];
+	}[];
+	/** Lo que dice el acuse: cada concepto con su cantidad a cargo y a pagar, el total, la línea de captura y su vigencia. null si el acuse aún no llega. */
+	receipt: {
+		/** Cada impuesto del acuse. */
+		concepts: {
+			/** Concepto del pago (ConceptoPago), c_TipoContribuyenteSujetoRetencion. */
+			concept: string;
+			/** Lo que resultó a cargo. */
+			due: number | null;
+			/** La cantidad a cargo. */
+			amount_due: number | null;
+			/** La cantidad a pagar. */
+			amount_to_pay: number | null;
+		}[];
+		/** Total en la moneda del comprobante (Total). */
+		total: number | null;
+		/** La línea de captura del acuse. */
+		payment_line: string | null;
+		/** Hasta cuándo sirve la línea de captura (AAAA-MM-DD). */
+		valid_until: string | null;
+	} | null;
+	/** Qué archivos ya tiene: pdf (GET …/pdf), receipt (GET …/receipt) y financial_statements (GET …/financial_statements, solo en la anual de persona moral). */
+	files: {
+		/** Si ya tiene la declaración en PDF (GET …/pdf). */
+		pdf: boolean;
+		/** Si ya tiene el acuse (GET …/receipt). */
+		receipt: boolean;
+		/** Si ya tiene el Excel de estados financieros (GET …/financial_statements), solo en la anual de persona moral. */
+		financial_statements: boolean;
+	};
+	/** Por qué falta un archivo, como lo dijo el SAT (por ejemplo «No se puede generar el archivo»). Se vuelve a pedir en la siguiente consulta. */
+	files_error: string | null;
+	/** Cuándo se trajo por primera vez. */
+	created_at: string | null;
+	/** Cuándo cambió por última vez. */
+	updated_at: string | null;
+}
+
+/** Lo que trajo una consulta de las declaraciones del emisor en el SAT. */
+export interface SatDeclarationsRefresh {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "sat_declarations_refresh";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor consultado. */
+	issuer: string;
+	/** completed (ya bajó todo) o processing (queda algo por bajar: sigue solo en la siguiente hora, sin otro timbre). */
+	status: "completed" | "processing";
+	/** Cuántas declaraciones listó el SAT en los años consultados. */
+	found: number;
+	/** Cuántos archivos bajó en esta consulta. */
+	downloaded: number;
+	/** Cuántas declaraciones quedan con archivos por bajar. */
+	pending: number;
+	/** Si una parte del SAT falló (por ejemplo, la anual), lo que dijo; lo demás sí se trajo. null si todo salió. */
+	warning: string | null;
+	/** Cuándo se consultó. */
+	refreshed_at: string;
+	/** Desde cuándo se puede volver a consultar este emisor (10 minutos después). */
+	next_refresh_at: string;
 }
 
 /** Una venta que su comprador puede facturar él mismo en el portal del emisor (autofactura). */
@@ -1986,6 +2112,17 @@ export interface SatInvoiceList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: SatInvoice[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface SatDeclarationList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: SatDeclaration[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -2993,7 +3130,7 @@ export interface ListInvoicesParams {
 	status?: "valid" | "pending" | "canceled" | "rejected" | "processing";
 	/** I, E, P, T o N. */
 	type?: "I" | "E" | "P" | "T" | "N";
-	/** RFC del cliente. */
+	/** RFC del cliente o su id (cus_…). */
 	customer?: string;
 	/** Facturas de ingreso por lo que deben: unpaid, partial, open (unpaid o partial) o paid. */
 	payment_status?: "unpaid" | "partial" | "open" | "paid";
@@ -3045,7 +3182,7 @@ export interface ListReceivablesParams {
 	starting_after?: string;
 	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
 	issuer?: string;
-	/** Solo este RFC. */
+	/** Solo este cliente: su RFC o su id (cus_…). */
 	customer?: string;
 }
 
@@ -3203,7 +3340,7 @@ export interface CreateAdvanceParams {
 export interface ListAdvancesParams {
 	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
 	issuer?: string;
-	/** RFC del cliente. */
+	/** RFC del cliente o su id (cus_…). */
 	customer?: string;
 }
 
@@ -3652,7 +3789,9 @@ export interface CreateProductParams {
 	/** Número de identificación o SKU (NoIdentificacion). */
 	sku?: string | null;
 	/** Precio unitario antes de impuestos (ValorUnitario). */
-	unit_price: number;
+	unit_price?: number;
+	/** Precio abierto: sin precio fijo (una noche de hotel que cambia cada día); cada factura manda su unit_price. */
+	open_price?: boolean;
 	/** Objeto de impuesto (ObjetoImp), c_ObjetoImp: 01 no objeto, 02 sí objeto (por omisión), 03 sin desglose, 04 no causa… */
 	taxability?: "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08";
 	/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
@@ -3665,6 +3804,15 @@ export interface CreateProductParams {
 	iva_retention?: number;
 	/** Tasa de ISR retenido (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
 	isr_retention?: number;
+	/** Impuestos locales que lleva, como el ISH 3% de hospedaje: van en cada factura con él, sobre sus conceptos. */
+	local_taxes?: {
+		/** true si es una retención local; false si es un traslado. */
+		retention: boolean;
+		/** Nombre del impuesto local (ImpLocTrasladado o ImpLocRetenido), como ISH. */
+		name: string;
+		/** Tasa en por ciento (TasadeTraslado o TasadeRetencion). */
+		rate: number;
+	}[];
 }
 
 /** Los parámetros de GET /v1/products. */
@@ -3696,6 +3844,8 @@ export interface UpdateProductParams {
 	sku?: string | null;
 	/** Precio unitario antes de impuestos (ValorUnitario). */
 	unit_price?: number;
+	/** Precio abierto: sin precio fijo (una noche de hotel que cambia cada día); cada factura manda su unit_price. */
+	open_price?: boolean;
 	/** Objeto de impuesto (ObjetoImp), c_ObjetoImp: 01 no objeto, 02 sí objeto (por omisión), 03 sin desglose, 04 no causa… */
 	taxability?: "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08";
 	/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
@@ -3708,6 +3858,15 @@ export interface UpdateProductParams {
 	iva_retention?: number;
 	/** Tasa de ISR retenido (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
 	isr_retention?: number;
+	/** Impuestos locales que lleva, como el ISH 3% de hospedaje: van en cada factura con él, sobre sus conceptos. */
+	local_taxes?: {
+		/** true si es una retención local; false si es un traslado. */
+		retention: boolean;
+		/** Nombre del impuesto local (ImpLocTrasladado o ImpLocRetenido), como ISH. */
+		name: string;
+		/** Tasa en por ciento (TasadeTraslado o TasadeRetencion). */
+		rate: number;
+	}[];
 }
 
 /** Los parámetros de GET /v1/sat_catalogs/{name}. */
@@ -3768,6 +3927,25 @@ export interface ListSatInvoicesParams {
 	date_gte?: string;
 	/** Con fecha hasta este día (AAAA-MM-DD), incluido. */
 	date_lte?: string;
+}
+
+export interface RefreshSatDeclarationsParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+}
+
+/** Los parámetros de GET /v1/sat_declarations. */
+export interface ListSatDeclarationsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Solo las de un ejercicio, como 2025. */
+	year?: number;
+	/** monthly (provisionales o definitivas), annual (la anual) o dyp (Declaraciones y pagos). */
+	source?: "monthly" | "annual" | "dyp";
 }
 
 export interface CreateTicketParams {
@@ -4782,7 +4960,7 @@ export class InvoicesResource {
 	/**
 	 * Cancelar una factura
 	 *
-	 * Pide la cancelación al SAT. Si el cliente debe aceptarla queda en pending (escuche invoice.canceled o invoice.cancellation_rejected). Usa un timbre la primera vez que el SAT acepta la solicitud; repetirla, o pedirla otra vez después de un rechazo, no. Nunca se niega por falta de timbres.
+	 * Pide la cancelación al SAT. Si el cliente debe aceptarla queda en pending (escuche invoice.canceled o invoice.cancellation_rejected). No usa timbres.
 	 *
 	 * POST /v1/invoices/{id}/cancel
 	 * @see https://fiscalisto.com/docs/api/referencia/facturas/cancel-invoice
@@ -5078,7 +5256,7 @@ export class RetentionsResource {
 	/**
 	 * Cancelar una constancia
 	 *
-	 * Se cancela en el momento (no espera aceptación). Usa un timbre.
+	 * Se cancela en el momento (no espera aceptación). No usa timbres.
 	 *
 	 * POST /v1/retentions/{id}/cancel
 	 * @see https://fiscalisto.com/docs/api/referencia/retenciones/cancel-retention
@@ -5470,7 +5648,7 @@ export class SatDownloadsResource {
 	/**
 	 * Pedirle al SAT las facturas de un emisor
 	 *
-	 * La descarga masiva del SAT: las facturas que el emisor recibió (o emitió) en un periodo de hasta un año, con su XML. Contesta 202 de inmediato; el SAT tarda de minutos a horas y al terminar llega sat_download.completed (o sat_download.failed) y las facturas quedan en GET /v1/sat_invoices. En producción necesita la e.firma guardada del emisor; en pruebas no se le pregunta al SAT: la descarga trae facturas de ejemplo al instante. No usa timbres.
+	 * La descarga masiva del SAT: las facturas que el emisor recibió (o emitió) en un periodo de hasta un año, con su XML. Contesta 202 de inmediato; el SAT tarda de minutos a horas y al terminar llega sat_download.completed (o sat_download.failed) y las facturas quedan en GET /v1/sat_invoices. En producción necesita la e.firma guardada del emisor; en pruebas no se le pregunta al SAT: la descarga trae facturas de ejemplo al instante. En producción usa 1 timbre por cada 100 CFDI que trae (al menos 1).
 	 *
 	 * POST /v1/sat_downloads
 	 * @see https://fiscalisto.com/docs/api/referencia/descargas-del-sat/create-sat-download
@@ -5539,6 +5717,84 @@ export class SatInvoicesResource {
 	 */
 	xml(id: string, options?: RequestOptions): Promise<string> {
 		return this.#client.request({ method: "GET", path: `/v1/sat_invoices/${encodeURIComponent(id)}/xml`, as: "text" }, options);
+	}
+}
+
+/** Declaraciones del SAT: fiscalisto.satDeclarations. */
+export class SatDeclarationsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Consultar las declaraciones de un emisor en el SAT
+	 *
+	 * Entra al SAT con la e.firma guardada del emisor y trae las declaraciones que presentó: provisionales o definitivas (desde 2022), la anual de persona moral (desde 2019) y las del servicio anterior Declaraciones y pagos, con su PDF, su acuse y sus cifras. La primera consulta trae todos los años que el SAT conserva; las siguientes, este año y el anterior. Solo consulta: nunca presenta ni firma nada. En producción usa 1 timbre por consulta (regresa si el SAT no contesta) y se puede hacer una vez cada 10 minutos por emisor. Contesta en menos de un minuto; si queda algo por bajar (status processing), sigue solo en la siguiente hora sin otro timbre. En pruebas no se le pregunta al SAT: trae declaraciones de ejemplo al instante.
+	 *
+	 * POST /v1/sat_declarations/refresh
+	 * @see https://fiscalisto.com/docs/api/referencia/declaraciones-del-sat/refresh-sat-declarations
+	 */
+	refresh(params?: RefreshSatDeclarationsParams, options?: RequestOptions): Promise<SatDeclarationsRefresh> {
+		return this.#client.request({ method: "POST", path: "/v1/sat_declarations/refresh", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar declaraciones del SAT
+	 *
+	 * Las declaraciones que trajeron sus consultas, del ejercicio y mes más recientes a los más antiguos (la anual antes de los meses de su año). No usa timbres.
+	 *
+	 * GET /v1/sat_declarations
+	 * @see https://fiscalisto.com/docs/api/referencia/declaraciones-del-sat/list-sat-declarations
+	 */
+	list(params?: ListSatDeclarationsParams, options?: RequestOptions): List<SatDeclaration> {
+		return this.#client.list({ path: "/v1/sat_declarations", query: params }, options);
+	}
+
+	/**
+	 * Ver una declaración del SAT
+	 *
+	 * GET /v1/sat_declarations/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/declaraciones-del-sat/get-sat-declaration
+	 */
+	get(id: string, options?: RequestOptions): Promise<SatDeclaration> {
+		return this.#client.request({ method: "GET", path: `/v1/sat_declarations/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Descargar el PDF de una declaración
+	 *
+	 * La declaración como la da el SAT. No usa timbres.
+	 *
+	 * GET /v1/sat_declarations/{id}/pdf
+	 * @see https://fiscalisto.com/docs/api/referencia/declaraciones-del-sat/get-sat-declaration-pdf
+	 */
+	pdf(id: string, options?: RequestOptions): Promise<Uint8Array> {
+		return this.#client.request({ method: "GET", path: `/v1/sat_declarations/${encodeURIComponent(id)}/pdf`, as: "bytes" }, options);
+	}
+
+	/**
+	 * Descargar el acuse de una declaración
+	 *
+	 * El acuse de recibo, con la línea de captura si hay algo a pagar. No usa timbres.
+	 *
+	 * GET /v1/sat_declarations/{id}/receipt
+	 * @see https://fiscalisto.com/docs/api/referencia/declaraciones-del-sat/get-sat-declaration-receipt
+	 */
+	receipt(id: string, options?: RequestOptions): Promise<Uint8Array> {
+		return this.#client.request({ method: "GET", path: `/v1/sat_declarations/${encodeURIComponent(id)}/receipt`, as: "bytes" }, options);
+	}
+
+	/**
+	 * Descargar los estados financieros de una anual
+	 *
+	 * El Excel de estados financieros de la anual de persona moral, como lo da el SAT. No usa timbres.
+	 *
+	 * GET /v1/sat_declarations/{id}/financial_statements
+	 * @see https://fiscalisto.com/docs/api/referencia/declaraciones-del-sat/get-sat-declaration-financial-statements
+	 */
+	financialStatements(id: string, options?: RequestOptions): Promise<string> {
+		return this.#client.request({ method: "GET", path: `/v1/sat_declarations/${encodeURIComponent(id)}/financial_statements`, as: "text" }, options);
 	}
 }
 
@@ -6100,6 +6356,7 @@ export class FiscalistoApi extends Core {
 	readonly satLists = new SatListsResource(this);
 	readonly satDownloads = new SatDownloadsResource(this);
 	readonly satInvoices = new SatInvoicesResource(this);
+	readonly satDeclarations = new SatDeclarationsResource(this);
 	readonly tickets = new TicketsResource(this);
 	readonly accounting = new AccountingResource(this);
 	readonly storeConnections = new StoreConnectionsResource(this);

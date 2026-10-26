@@ -10,7 +10,7 @@ export class FiscalistoWebhookError extends Error {
 	override readonly name = "FiscalistoWebhookError";
 }
 
-/** Headers, o los de Node (IncomingHttpHeaders): con nombres en minúsculas. */
+/** Headers, los de Node (IncomingHttpHeaders) o un objeto con los nombres en mayúsculas o minúsculas. */
 export type WebhookHeaders = Headers | Record<string, string | string[] | undefined>;
 
 export interface VerifyOptions {
@@ -22,7 +22,10 @@ export interface VerifyOptions {
 
 const header = (headers: WebhookHeaders, name: string) => {
 	if (typeof (headers as Headers).get === "function") return (headers as Headers).get(name);
-	const value = (headers as Record<string, string | string[] | undefined>)[name];
+	// Node lowercases them; AWS Lambda and others pass them as sent (Webhook-Signature).
+	const record = headers as Record<string, string | string[] | undefined>;
+	const key = name in record ? name : Object.keys(record).find((k) => k.toLowerCase() === name);
+	const value = key === undefined ? undefined : record[key];
 	return Array.isArray(value) ? value[0] : value;
 };
 
