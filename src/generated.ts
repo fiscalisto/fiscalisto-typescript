@@ -1397,7 +1397,7 @@ export interface RecurringInvoice {
 	created_at: string | null;
 }
 
-/** La póliza de diario de un CFDI: sus cargos y abonos, que siempre cuadran. */
+/** Una póliza de diario (de un CFDI, un pago, un recibo de nómina o la depreciación del mes): sus cargos y abonos, que siempre cuadran. */
 export interface JournalEntry {
 	/** El número de la póliza: D-AAAAMM-NNNNN, en orden de fecha dentro del mes. */
 	id: string;
@@ -1407,19 +1407,21 @@ export interface JournalEntry {
 	object: "journal_entry";
 	/** El emisor. */
 	issuer: string;
-	/** La fecha del CFDI. */
+	/** De qué es: invoice (un CFDI de ingreso o egreso), payment_received o payment_made (un pago de un complemento), payroll (un recibo de nómina) o depreciation (la depreciación del mes de los activos fijos). */
+	type: "invoice" | "payment_received" | "payment_made" | "payroll" | "depreciation";
+	/** La fecha del CFDI o del pago; en la depreciación, el último día del mes. */
 	date: string;
-	/** Factura o nota de crédito, su folio y la contraparte. */
+	/** El documento, su folio y la contraparte. */
 	description: string;
-	/** La factura (inv_…) si la timbró este emisor; null si la recibió. */
+	/** La factura (inv_…) si es la póliza de un CFDI que timbró este emisor; null en los demás casos. */
 	invoice: string | null;
-	/** El folio fiscal del CFDI. */
-	uuid: string;
-	/** El RFC de la contraparte (cliente o proveedor). */
-	tax_id: string;
-	/** El total del CFDI, en su moneda. */
+	/** El folio fiscal del CFDI (o del complemento de pago); null en la depreciación. */
+	uuid: string | null;
+	/** El RFC de la contraparte (cliente, proveedor o empleado); null en la depreciación. */
+	tax_id: string | null;
+	/** El total del documento, en su moneda. */
 	total: number;
-	/** La moneda del CFDI. */
+	/** La moneda del documento. */
 	currency: string;
 	/** El tipo de cambio, si no es en pesos; null si es en pesos. */
 	exchange_rate: number | null;
@@ -1491,6 +1493,239 @@ export interface TrialBalance {
 		debit: number;
 		/** Todos los abonos del mes. */
 		credit: number;
+	};
+}
+
+/** El estado de resultados y el balance general de un mes, leídos de su balanza. */
+export interface FinancialStatements {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "financial_statements";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** El estado de resultados del mes (month) y del año hasta ese mes (year_to_date). Cada sección suma en positivo lo que aumenta la utilidad (ingresos) y en negativo lo que la reduce (costos y gastos). */
+	income_statement: {
+		/** El estado de resultados del mes. */
+		month: {
+			/** Ingresos, costos, gastos, financiamiento y otros, cada uno con su total. */
+			sections: {
+				/** El archivo .key en base64 (puede traer el prefijo data:). */
+				key: "ingresos" | "costos" | "gastos" | "financiamiento" | "otros";
+				/** Nombre. */
+				name: string;
+				/** Total en la moneda del comprobante (Total). */
+				total: number;
+				/** Su monto por el primer nivel del código agrupador. */
+				groups: {
+					/** El primer nivel del código agrupador (401, 601…). */
+					grouping_code: string;
+					/** Nombre. */
+					name: string;
+					/** Importe. */
+					amount: number;
+					/** Las cuentas del grupo con su monto. */
+					accounts: {
+						/** Número de empleado (NumEmpleado). */
+						number: string;
+						/** Nombre. */
+						name: string;
+						/** Importe. */
+						amount: number;
+					}[];
+				}[];
+			}[];
+			/** La utilidad (o pérdida, negativa) antes de impuestos del mes. */
+			net_income: number;
+		};
+		/** El estado de resultados de enero al mes. */
+		year_to_date: {
+			/** Ingresos, costos, gastos, financiamiento y otros, cada uno con su total. */
+			sections: {
+				/** El archivo .key en base64 (puede traer el prefijo data:). */
+				key: "ingresos" | "costos" | "gastos" | "financiamiento" | "otros";
+				/** Nombre. */
+				name: string;
+				/** Total en la moneda del comprobante (Total). */
+				total: number;
+				/** Su monto por el primer nivel del código agrupador. */
+				groups: {
+					/** El primer nivel del código agrupador (401, 601…). */
+					grouping_code: string;
+					/** Nombre. */
+					name: string;
+					/** Importe. */
+					amount: number;
+					/** Las cuentas del grupo con su monto. */
+					accounts: {
+						/** Número de empleado (NumEmpleado). */
+						number: string;
+						/** Nombre. */
+						name: string;
+						/** Importe. */
+						amount: number;
+					}[];
+				}[];
+			}[];
+			/** La utilidad (o pérdida, negativa) antes de impuestos de enero al mes. */
+			net_income: number;
+		};
+	};
+	/** El balance general al cierre del mes, agrupado por el primer nivel del código agrupador. difference es activo menos pasivo y capital: 0 cuando los libros cuadran. */
+	balance_sheet: {
+		/** El activo: su total y sus grupos. */
+		assets: {
+			/** Total en la moneda del comprobante (Total). */
+			total: number;
+			/** Su monto por el primer nivel del código agrupador. */
+			groups: {
+				/** El primer nivel del código agrupador (401, 601…). */
+				grouping_code: string;
+				/** Nombre. */
+				name: string;
+				/** Importe. */
+				amount: number;
+				/** Las cuentas del grupo con su monto. */
+				accounts: {
+					/** Número de empleado (NumEmpleado). */
+					number: string;
+					/** Nombre. */
+					name: string;
+					/** Importe. */
+					amount: number;
+				}[];
+			}[];
+		};
+		/** El pasivo: su total y sus grupos. */
+		liabilities: {
+			/** Total en la moneda del comprobante (Total). */
+			total: number;
+			/** Su monto por el primer nivel del código agrupador. */
+			groups: {
+				/** El primer nivel del código agrupador (401, 601…). */
+				grouping_code: string;
+				/** Nombre. */
+				name: string;
+				/** Importe. */
+				amount: number;
+				/** Las cuentas del grupo con su monto. */
+				accounts: {
+					/** Número de empleado (NumEmpleado). */
+					number: string;
+					/** Nombre. */
+					name: string;
+					/** Importe. */
+					amount: number;
+				}[];
+			}[];
+		};
+		/** El capital contable sin el resultado del ejercicio: su total y sus grupos. */
+		equity: {
+			/** Total en la moneda del comprobante (Total). */
+			total: number;
+			/** Su monto por el primer nivel del código agrupador. */
+			groups: {
+				/** El primer nivel del código agrupador (401, 601…). */
+				grouping_code: string;
+				/** Nombre. */
+				name: string;
+				/** Importe. */
+				amount: number;
+				/** Las cuentas del grupo con su monto. */
+				accounts: {
+					/** Número de empleado (NumEmpleado). */
+					number: string;
+					/** Nombre. */
+					name: string;
+					/** Importe. */
+					amount: number;
+				}[];
+			}[];
+		};
+		/** El resultado del ejercicio hasta el mes, parte del capital. */
+		net_income_year_to_date: number;
+		/** Pasivo más capital más el resultado del ejercicio. */
+		liabilities_and_equity: number;
+		/** Activo menos pasivo y capital: 0 cuando los libros cuadran. */
+		difference: number;
+	};
+	/** Cuántas pólizas tuvo el mes. */
+	journal_entries: number;
+	/** Desde qué fecha cuentan los saldos iniciales capturados en la app; null si no hay. */
+	opening_balances_date: string | null;
+	/** Pagos que se refieren a facturas que no están en Fiscalisto y no se registraron. */
+	missing_invoices: number;
+}
+
+/** Lo que el emisor declaró cada mes contra lo que dicen sus CFDI, el IVA a favor y el régimen con que factura. */
+export interface CrossChecks {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "cross_checks";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El ejercicio. */
+	year: number;
+	/** Cada mes cuya declaración mensual ya venció (el día 17 del mes siguiente), con sus cruces. Un mes con complementaria toma, por impuesto, la más reciente que lo trae. */
+	months: {
+		/** El mes (AAAA-MM). */
+		month: string;
+		/** El peor de sus cruces: differs (no coincide), unreadable (una cifra no se pudo leer), not_filed (sin declaración mensual) o matches. */
+		status: "matches" | "differs" | "not_filed" | "unreadable";
+		/** Un cruce por cifra. */
+		checks: {
+			/** Qué cifra: vat_charged (IVA trasladado), vat_creditable (IVA acreditable), vat_withheld (IVA que le retuvieron) o isr_income (ingresos para ISR: nominales en persona moral, cobrados en los demás). */
+			key: "vat_charged" | "vat_creditable" | "vat_withheld" | "isr_income";
+			/** matches (hasta $2 de diferencia), differs, not_filed (no hay declaración del mes) o unreadable (la declaración no trae la cifra en un renglón reconocible). */
+			status: "matches" | "differs" | "not_filed" | "unreadable";
+			/** Lo declarado, en pesos; null si no hay declaración o no se pudo leer. */
+			declared: number | null;
+			/** Lo que dicen los CFDI del mes, con los mismos cálculos de Impuestos. */
+			invoiced: number;
+			/** declared menos invoiced; null si declared es null. */
+			difference: number | null;
+			/** El número de operación de la declaración de donde salió la cifra. */
+			operation_number: string | null;
+		}[];
+	}[];
+	/** El IVA a favor que muestran las declaraciones del año y lo que meses posteriores acreditaron. Una estimación con las declaraciones leídas, no la cuenta del SAT. */
+	vat_balance_in_favor: {
+		/** Cada mes con IVA a favor. */
+		periods: {
+			/** El mes cuya declaración muestra el IVA a favor. */
+			month: string;
+			/** El IVA a favor de ese mes. */
+			amount: number;
+			/** El número de operación de esa declaración. */
+			operation_number: string;
+		}[];
+		/** La suma del IVA a favor del año. */
+		total: number;
+		/** Lo que las declaraciones del año acreditaron de saldos a favor de periodos anteriores. */
+		credited: number;
+		/** total menos credited, nunca menos de 0: lo que quedaría por acreditar o pedir en devolución. */
+		remaining: number;
+	};
+	/** Los regímenes del emisor (registered, de su constancia) y con cuáles facturó en el año. */
+	tax_regimes: {
+		/** Los regímenes de su constancia (c_RegimenFiscal), capturados en la app. */
+		registered: string[];
+		/** Cada régimen con que facturó en el año (RegimenFiscal del emisor). */
+		invoiced: {
+			/** El régimen (c_RegimenFiscal). */
+			tax_regime: string;
+			/** Cuántos CFDI lo llevan (ingreso, egreso y pago, sin cancelados). */
+			invoices: number;
+			/** La fecha del primero (AAAA-MM-DD). */
+			first_date: string;
+			/** La fecha del último (AAAA-MM-DD). */
+			last_date: string;
+			/** Si el régimen está en su constancia; null si no se capturaron los regímenes de la constancia. */
+			registered: boolean | null;
+		}[];
 	};
 }
 
@@ -4018,6 +4253,22 @@ export interface GetTrialBalanceParams {
 	issuer?: string;
 }
 
+/** Los parámetros de GET /v1/accounting/financial_statements. */
+export interface GetFinancialStatementsParams {
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+/** Los parámetros de GET /v1/accounting/cross_checks. */
+export interface GetCrossChecksParams {
+	/** El ejercicio. Por omisión, el actual. */
+	year?: number;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
 /** Los parámetros de GET /v1/accounting/accounts. */
 export interface ListLedgerAccountsParams {
 	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
@@ -5862,7 +6113,7 @@ export class AccountingResource {
 	/**
 	 * Listar las pólizas de un mes
 	 *
-	 * Una póliza de diario por cada CFDI de ingreso o egreso vigente del mes, emitido o recibido (los recibidos con la categoría de su gasto), con sus cuentas y código agrupador del SAT. En pesos; un CFDI en otra moneda sin tipo de cambio no se registra. Es un punto de partida para su contador: no incluye bancos, nómina ni depreciaciones.
+	 * Las pólizas de diario del mes, con sus cuentas y código agrupador del SAT: una por cada CFDI de ingreso o egreso vigente, emitido o recibido (los recibidos con la categoría de su gasto); una por cada pago de un complemento; una por cada recibo de nómina, y una con la depreciación de los activos fijos. Un PUE se registra cobrado o pagado según su forma de pago. En pesos; un CFDI en otra moneda sin tipo de cambio no se registra. No incluye movimientos de banco sin CFDI ni provisiones.
 	 *
 	 * GET /v1/accounting/journal_entries
 	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/list-journal-entries
@@ -5874,13 +6125,37 @@ export class AccountingResource {
 	/**
 	 * Ver la balanza de comprobación
 	 *
-	 * Saldo inicial, cargos, abonos y saldo final de cada cuenta en el mes. Los saldos iniciales se acumulan desde el primer CFDI (las de resultados, desde enero), y los resultados de cada año anterior se cierran a capital.
+	 * Saldo inicial, cargos, abonos y saldo final de cada cuenta en el mes. Los saldos iniciales se acumulan desde el primer CFDI, o desde los saldos iniciales capturados en la app (las de resultados, desde enero), y los resultados de cada año anterior se cierran a capital.
 	 *
 	 * GET /v1/accounting/trial_balance
 	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-trial-balance
 	 */
 	trialBalance(params: GetTrialBalanceParams, options?: RequestOptions): Promise<TrialBalance> {
 		return this.#client.request({ method: "GET", path: "/v1/accounting/trial_balance", query: params }, options);
+	}
+
+	/**
+	 * Ver los estados financieros
+	 *
+	 * El estado de resultados (del mes y del año hasta ese mes) y el balance general al cierre del mes, leídos de la misma balanza, así que siempre suman las mismas pólizas.
+	 *
+	 * GET /v1/accounting/financial_statements
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-financial-statements
+	 */
+	financialStatements(params: GetFinancialStatementsParams, options?: RequestOptions): Promise<FinancialStatements> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/financial_statements", query: params }, options);
+	}
+
+	/**
+	 * Cruzar lo declarado con lo facturado
+	 *
+	 * Cada mes ya vencido del año: el IVA trasladado, acreditable y retenido y los ingresos para ISR que el emisor declaró (de GET /v1/sat_declarations, después de POST /v1/sat_declarations/refresh) contra lo que dicen sus CFDI. Hasta $2 de diferencia es redondeo (las declaraciones van en pesos enteros). Una cifra que la declaración no trae en un renglón reconocible es unreadable con declared null, nunca 0. También el IVA a favor y el régimen con que factura. Gratis: no consulta al SAT.
+	 *
+	 * GET /v1/accounting/cross_checks
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-cross-checks
+	 */
+	crossChecks(params?: GetCrossChecksParams, options?: RequestOptions): Promise<CrossChecks> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/cross_checks", query: params }, options);
 	}
 
 	/**
