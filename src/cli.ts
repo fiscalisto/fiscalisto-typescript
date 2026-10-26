@@ -9,7 +9,7 @@
  */
 import { spawn, spawnSync } from "node:child_process";
 import { createHmac } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { appendFile, chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -312,7 +312,8 @@ async function whoami(g: Globals) {
 
 // ── init ───────────────────────────────────────────────────────────────────
 
-type Lang = "node" | "python" | "php";
+type Lang = "node" | "python" | "php" | "go" | "dotnet" | "java";
+const LANGS: Lang[] = ["node", "python", "php", "go", "dotnet", "java"];
 
 function detectLang(dir: string): Lang | null {
 	if (existsSync(join(dir, "package.json"))) return "node";
@@ -323,22 +324,36 @@ function detectLang(dir: string): Lang | null {
 	)
 		return "python";
 	if (existsSync(join(dir, "composer.json"))) return "php";
+	if (existsSync(join(dir, "go.mod"))) return "go";
+	if (["pom.xml", "build.gradle", "build.gradle.kts"].some((f) => existsSync(join(dir, f))))
+		return "java";
+	if (readdirSync(dir).some((f) => /\.(csproj|fsproj|sln)$/.test(f))) return "dotnet";
 	return null;
 }
 
-function installCommand(lang: Lang, dir: string): string[] {
+/** The command that adds the SDK, or null where it goes in a build file by hand (Java). */
+function installCommand(lang: Lang, dir: string): string[] | null {
 	if (lang === "python") {
 		if (existsSync(join(dir, "uv.lock"))) return ["uv", "add", "fiscalisto"];
 		if (existsSync(join(dir, "poetry.lock"))) return ["poetry", "add", "fiscalisto"];
 		return ["pip", "install", "fiscalisto"];
 	}
 	if (lang === "php") return ["composer", "require", "fiscalisto/fiscalisto"];
+	if (lang === "go") return ["go", "get", "fiscalisto.com/go"];
+	if (lang === "dotnet") return ["dotnet", "add", "package", "Fiscalisto"];
+	if (lang === "java") return null;
 	if (existsSync(join(dir, "bun.lock")) || existsSync(join(dir, "bun.lockb")))
 		return ["bun", "add", "fiscalisto"];
 	if (existsSync(join(dir, "pnpm-lock.yaml"))) return ["pnpm", "add", "fiscalisto"];
 	if (existsSync(join(dir, "yarn.lock"))) return ["yarn", "add", "fiscalisto"];
 	return ["npm", "install", "fiscalisto"];
 }
+
+/** What to add to a Java build by hand. */
+const javaDependency = (dir: string) =>
+	existsSync(join(dir, "pom.xml"))
+		? `pom.xml: agregue <dependency><groupId>com.fiscalisto</groupId><artifactId>fiscalisto</artifactId><version>${VERSION}</version></dependency>`
+		: `build.gradle: agregue implementation("com.fiscalisto:fiscalisto:${VERSION}")`;
 
 const EXAMPLE_INVOICE = {
 	customer: {
@@ -351,7 +366,7 @@ const EXAMPLE_INVOICE = {
 	items: [{ description: "Consultoría", product_key: "80101500", unit_price: 1000 }],
 };
 
-const EXAMPLES: Record<Lang, { file: string; code: string; run: string }> = {
+const EXAMPLES: Partial<Record<Lang, { file: string; code: string; run: string }>> = {
 	node: {
 		file: "fiscalisto-ejemplo.mjs",
 		run: "node --env-file=.env fiscalisto-ejemplo.mjs",
@@ -425,14 +440,118 @@ echo $factura['status'], ' ', $factura['uuid'], ' ', $factura['total'], PHP_EOL;
 	},
 };
 
+EXAMPLES.go = {
+	file: "fiscalisto-ejemplo/main.go",
+	run: "env $(grep -v '^#' .env | xargs) go run ./fiscalisto-ejemplo",
+	code: `// Timbra una factura de prueba con el SDK de Fiscalisto:
+// env $(grep -v '^#' .env | xargs) go run ./fiscalisto-ejemplo
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+
+	fiscalisto "fiscalisto.com/go"
+)
+
+func main() {
+	// La llave viene de FISCALISTO_API_KEY.
+	client, err := fiscalisto.NewClient("")
+	if err != nil {
+		log.Fatal(err)
+	}
+	factura, err := client.Invoices.Create(context.Background(), &fiscalisto.InvoiceCreate{
+		Customer: fiscalisto.ObjectOf(fiscalisto.InvoiceCreateCustomer{
+			TaxID:     "ICV060329BY0",
+			LegalName: "INMOBILIARIA CVA",
+			TaxSystem: "601",
+			Zip:       "33826",
+		}),
+		PaymentForm: fiscalisto.String("03"),
+		Items: []fiscalisto.InvoiceCreateItem{{
+			Description: fiscalisto.String("Consultoría"),
+			ProductKey:  fiscalisto.String("80101500"),
+			UnitPrice:   fiscalisto.Float64(1000),
+		}},
+	}, fiscalisto.WithIdempotencyKey(fmt.Sprintf("pedido-%d", time.Now().Unix()))) // use el id de su pedido
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(factura.ID)
+}
+`,
+};
+EXAMPLES.dotnet = {
+	file: "FiscalistoEjemplo.cs",
+	run: "llame a await FiscalistoEjemplo.RunAsync() con FISCALISTO_API_KEY en el entorno",
+	code: `// Timbra una factura de prueba con el SDK de Fiscalisto: await FiscalistoEjemplo.RunAsync();
+using Fiscalisto;
+
+public static class FiscalistoEjemplo
+{
+    public static async Task RunAsync()
+    {
+        // La llave viene de FISCALISTO_API_KEY.
+        var fiscalisto = new FiscalistoClient();
+        var factura = await fiscalisto.Invoices.CreateAsync(new InvoiceCreate
+        {
+            Customer = new InvoiceCreateCustomer
+            {
+                TaxId = "ICV060329BY0",
+                LegalName = "INMOBILIARIA CVA",
+                TaxSystem = "601",
+                Zip = "33826",
+            },
+            PaymentForm = "03",
+            Items = new() { new() { Description = "Consultoría", ProductKey = "80101500", UnitPrice = 1000 } },
+        }, new RequestOptions { IdempotencyKey = $"pedido-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}" }); // use el id de su pedido
+        Console.WriteLine(factura.Id);
+    }
+}
+`,
+};
+EXAMPLES.java = {
+	file: "FiscalistoEjemplo.java",
+	run: "corra FiscalistoEjemplo.main con FISCALISTO_API_KEY en el entorno",
+	code: `// Timbra una factura de prueba con el SDK de Fiscalisto (FISCALISTO_API_KEY en el entorno).
+import com.fiscalisto.FiscalistoClient;
+import com.fiscalisto.RequestOptions;
+import com.fiscalisto.model.InvoiceCreate;
+import com.fiscalisto.model.InvoiceCreateCustomer;
+import com.fiscalisto.model.InvoiceCreateItem;
+import java.util.List;
+
+public class FiscalistoEjemplo {
+    public static void main(String[] args) {
+        var fiscalisto = new FiscalistoClient();
+        var factura = fiscalisto.invoices().create(new InvoiceCreate()
+                .setCustomer(new InvoiceCreateCustomer()
+                        .setTaxId("ICV060329BY0")
+                        .setLegalName("INMOBILIARIA CVA")
+                        .setTaxSystem("601")
+                        .setZip("33826"))
+                .setPaymentForm("03")
+                .setItems(List.of(new InvoiceCreateItem()
+                        .setDescription("Consultoría")
+                        .setProductKey("80101500")
+                        .setUnitPrice(1000))),
+                RequestOptions.idempotencyKey("pedido-" + System.currentTimeMillis() / 1000)); // use el id de su pedido
+        System.out.println(factura.getId());
+    }
+}
+`,
+};
+
 const AGENTS_SECTION = `
 ## Facturación (Fiscalisto)
 
 Facturas electrónicas (CFDI 4.0) con la API de Fiscalisto. La llave está en \`FISCALISTO_API_KEY\`
 (\`.env\`; \`fk_test_\` timbra en pruebas sin costo). Documentación completa para agentes:
-https://fiscalisto.com/llms.txt y la referencia en https://api.fiscalisto.com/v1/openapi.json.
+https://fiscalisto.com/docs/api/llms.txt y la referencia en https://api.fiscalisto.com/v1/openapi.json.
 
-- Use el SDK \`fiscalisto\` (npm, PyPI, Packagist). Cada timbrado lleva una Idempotency-Key
+- Use el SDK \`fiscalisto\` (npm, PyPI, Packagist, Go, Maven, NuGet). Cada timbrado lleva una Idempotency-Key
   (el id del pedido): repetirla nunca timbra dos veces.
 - El cliente va con su RFC, nombre, régimen y código postal exactamente como en su constancia.
 - Para probar rechazos del SAT use los RFC de prueba (NOM010101FK9 y otros, ver "Pruebas y producción").
@@ -451,10 +570,10 @@ async function init(args: string[], g: Globals) {
 	});
 	const dir = resolve(values.dir ?? ".");
 	const lang = (values.lang as Lang | undefined) ?? detectLang(dir);
-	if (lang && !EXAMPLES[lang]) throw new UsageError("--lang es node, python o php.");
+	if (lang && !LANGS.includes(lang)) throw new UsageError(`--lang es ${LANGS.join(", ")}.`);
 	if (!lang)
 		throw new UsageError(
-			"No encontré package.json, pyproject.toml/requirements.txt ni composer.json aquí. Indique --lang node|python|php.",
+			`No encontré package.json, pyproject.toml/requirements.txt, composer.json, go.mod, pom.xml/build.gradle ni un .csproj aquí. Indique --lang ${LANGS.join("|")}.`,
 		);
 	if (!env.FISCALISTO_API_KEY && !g.apiKey && !(await loadConfig()).test_key) await login([], g);
 	const key = g.apiKey ?? env.FISCALISTO_API_KEY ?? (await loadConfig()).test_key ?? "";
@@ -482,7 +601,8 @@ async function init(args: string[], g: Globals) {
 	// The SDK.
 	const install = installCommand(lang, dir);
 	let installed = false;
-	if (!values["no-install"]) {
+	if (!install) done.push(javaDependency(dir));
+	else if (!values["no-install"]) {
 		const go =
 			g.yes || !process.stdin.isTTY || json
 				? true
@@ -516,11 +636,17 @@ async function init(args: string[], g: Globals) {
 	}
 
 	// An example that stamps.
-	const example = EXAMPLES[lang];
-	const examplePath = join(dir, example.file);
+	const example = EXAMPLES[lang] as { file: string; code: string; run: string };
+	// Maven and Gradle compile src/main/java.
+	const exampleFile =
+		lang === "java" && existsSync(join(dir, "src/main/java"))
+			? `src/main/java/${example.file}`
+			: example.file;
+	const examplePath = join(dir, exampleFile);
 	if (!existsSync(examplePath)) {
+		await mkdir(dirname(examplePath), { recursive: true });
 		await writeFile(examplePath, example.code);
-		done.push(`${example.file}: timbra una factura de prueba`);
+		done.push(`${exampleFile}: timbra una factura de prueba`);
 	}
 
 	if (values.agents) {
@@ -1262,10 +1388,11 @@ function openPlace(args: string[]) {
 }
 
 async function docs() {
-	const r = await fetch(`${APP_URL()}/llms.txt`);
+	const url = `${APP_URL()}/docs/api/llms.txt`;
+	const r = await fetch(url);
 	if (!r.ok) throw new Error(`No se pudo leer la documentación (${r.status}).`);
 	const text = await r.text();
-	if (json) print({ url: `${APP_URL()}/llms.txt`, text });
+	if (json) print({ url, text });
 	else process.stdout.write(text);
 }
 
@@ -1339,7 +1466,7 @@ const HELP = `${bold("fiscalisto")} ${dim(VERSION)} · facturación electrónica
 
 ${bold("Empezar")}
   login [--live] [--key fk_…]   Inicia sesión por el navegador y guarda su llave de pruebas
-  init [--lang node|python|php] Deja el SDK, la llave en .env y un ejemplo en su proyecto (--agents: AGENTS.md)
+  init [--lang node|python|php|go|dotnet|java] Deja el SDK, la llave en .env y un ejemplo en su proyecto (--agents: AGENTS.md)
   whoami                        Cuenta, modo, timbres y emisores
   logout                        Olvida las llaves en esta computadora
 

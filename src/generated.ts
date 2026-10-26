@@ -336,7 +336,7 @@ export interface Invoice {
 	cancellation: {
 		/** pending (espera la respuesta del cliente), accepted (cancelada), rejected (el cliente la rechazó) o lapsed (venció; puede pedirla otra vez). */
 		status: string | null;
-		/** Motivo de cancelación (c_MotivoCancelacion): 01 con errores con relación (lleva substitution), 02 con errores sin relación (por omisión), 03 no se llevó a cabo, 04 nominativa en una global. */
+		/** Motivo de cancelación (c_MotivoCancelacion): 01 con errores con relación (lleva substitution), 02 con errores sin relación (por omisión), 03 no se llevó a cabo, 04 solo en una factura global, cuando una venta incluida se facturó a nombre del cliente. */
 		motive: string | null;
 		/** El comprobante que sustituye a este (su id o su UUID), con el motivo 01. */
 		substitution: string | null;
@@ -475,7 +475,7 @@ export interface Retention {
 	cancellation: {
 		/** pending (espera la respuesta del cliente), accepted (cancelada), rejected (el cliente la rechazó) o lapsed (venció; puede pedirla otra vez). */
 		status: string;
-		/** Motivo de cancelación (c_MotivoCancelacion): 01 con errores con relación (lleva substitution), 02 con errores sin relación (por omisión), 03 no se llevó a cabo, 04 nominativa en una global. */
+		/** Motivo de cancelación (c_MotivoCancelacion): 01 con errores con relación (lleva substitution), 02 con errores sin relación (por omisión), 03 no se llevó a cabo, 04 solo en una factura global, cuando una venta incluida se facturó a nombre del cliente. */
 		motive: string | null;
 		/** Cuándo se canceló. */
 		canceled_at: string | null;
@@ -1221,6 +1221,26 @@ export interface SatDeclaration {
 		/** Hasta cuándo sirve la línea de captura (AAAA-MM-DD). */
 		valid_until: string | null;
 	} | null;
+	/** Las mismas cifras con nombres fijos, por obligación (ISR, IVA, cada retención), para leerlas igual cada mes sin conocer el formato del SAT. Una cifra que no viene en la declaración o no se pudo leer es null, nunca 0. En Declaraciones y pagos solo trae lo del acuse. */
+	summary: {
+		/** Cada obligación de la declaración: isr, vat, ieps, isr_salaries, isr_assimilated_salaries, isr_professional_services, isr_rent, vat_withholdings u other. */
+		obligations: {
+			/** Qué obligación es. */
+			obligation: "isr" | "vat" | "ieps" | "isr_salaries" | "isr_assimilated_salaries" | "isr_professional_services" | "isr_rent" | "vat_withholdings" | "other";
+			/** Su nombre como lo imprime el SAT. */
+			name: string;
+			/** true si sus cifras se leyeron de la declaración; false si solo vienen del acuse. */
+			read: boolean;
+			/** La cantidad a cargo. */
+			amount_due: number | null;
+			/** La cantidad a pagar. */
+			amount_to_pay: number | null;
+			/** Sus cifras con nombres fijos. ISR: income, invoiced_income, income_ytd, deductions, profit_coefficient, taxable_profit, losses_applied, tax_base, tax_caused, prior_payments, withheld. IVA: taxable_16, taxable_0, exempt, charged, paid_16, creditable, withheld, balance_applied. Salarios: workers, payments, exempt, withheld. Todas: surcharges, inflation, paid_before, due, in_favor, to_pay. null si no viene o no se pudo leer. */
+			figures: Record<string, number | null>;
+		}[];
+		/** El total a pagar del acuse; si no hay acuse, la suma de las obligaciones cuando todas se conocen. */
+		total_to_pay: number | null;
+	};
 	/** Qué archivos ya tiene: pdf (GET …/pdf), receipt (GET …/receipt) y financial_statements (GET …/financial_statements, solo en la anual de persona moral). */
 	files: {
 		/** Si ya tiene la declaración en PDF (GET …/pdf). */
@@ -1260,6 +1280,36 @@ export interface SatDeclarationsRefresh {
 	refreshed_at: string;
 	/** Desde cuándo se puede volver a consultar este emisor (10 minutos después). */
 	next_refresh_at: string;
+}
+
+/** El ejercicio del emisor mes por mes: qué obligaciones presentó, cuáles parecen faltar y cuáles aún no vencen. */
+export interface SatDeclarationCalendar {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "sat_declaration_calendar";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El ejercicio. */
+	year: number;
+	/** Cuántas obligaciones ya vencidas no encontramos presentadas en el SAT. */
+	missing: number;
+	/** Los 12 meses y, en persona moral, la anual (month null). Las obligaciones se deducen de lo que el emisor presenta: ISR e IVA cada mes desde el primero que presentó; una retención si la presentó en 2 de los 3 meses anteriores o antes y después. La opinión de cumplimiento del SAT es la que manda. */
+	months: {
+		/** El mes (1 a 12), o null para la anual. */
+		month: number | null;
+		/** El último día para presentarla (AAAA-MM-DD). */
+		due_on: string;
+		/** Las obligaciones del mes. */
+		obligations: {
+			/** Qué obligación es (las de summary.obligations), o annual_return para la anual. */
+			obligation: "isr" | "vat" | "ieps" | "isr_salaries" | "isr_assimilated_salaries" | "isr_professional_services" | "isr_rent" | "vat_withholdings" | "other" | "annual_return";
+			/** filed (presentada), missing (venció y no la encontramos) o due (aún no vence). */
+			status: "filed" | "missing" | "due";
+			/** Las declaraciones (dcl_…) que la presentaron, la normal y sus complementarias. */
+			declarations: string[];
+		}[];
+	}[];
 }
 
 /** Una venta que su comprador puede facturar él mismo en el portal del emisor (autofactura). */
@@ -1677,9 +1727,9 @@ export interface CrossChecks {
 		status: "matches" | "differs" | "not_filed" | "unreadable";
 		/** Un cruce por cifra. */
 		checks: {
-			/** Qué cifra: vat_charged (IVA trasladado), vat_creditable (IVA acreditable), vat_withheld (IVA que le retuvieron) o isr_income (ingresos para ISR: nominales en persona moral, cobrados en los demás). */
-			key: "vat_charged" | "vat_creditable" | "vat_withheld" | "isr_income";
-			/** matches (hasta $2 de diferencia), differs, not_filed (no hay declaración del mes) o unreadable (la declaración no trae la cifra en un renglón reconocible). */
+			/** Qué cifra: vat_charged (IVA trasladado), vat_creditable (IVA acreditable), vat_withheld (IVA que le retuvieron), isr_income (ingresos para ISR: nominales en persona moral, cobrados en los demás) y, solo en los meses en que retuvo, isr_withheld_salaries (ISR retenido por salarios y asimilados, contra sus recibos de nómina), isr_withheld_suppliers (ISR retenido por honorarios y arrendamiento, contra las facturas recibidas que pagó) o vat_withheld_suppliers (IVA retenido a proveedores). */
+			key: "vat_charged" | "vat_creditable" | "vat_withheld" | "isr_income" | "isr_withheld_salaries" | "isr_withheld_suppliers" | "vat_withheld_suppliers";
+			/** matches (hasta $2 de diferencia), differs, not_filed (no hay declaración del mes, o en una retención ninguna declaración del mes la trae) o unreadable (la declaración no trae la cifra en un renglón reconocible). */
 			status: "matches" | "differs" | "not_filed" | "unreadable";
 			/** Lo declarado, en pesos; null si no hay declaración o no se pudo leer. */
 			declared: number | null;
@@ -2097,7 +2147,7 @@ export interface WebhookTest {
 }
 
 /** Lo que puede pasar: el tipo de cada evento. */
-export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready";
+export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready";
 
 /** Algo que pasó en su cuenta: el objeto completo como quedó. Se manda a sus webhooks firmado (Standard Webhooks). */
 export interface EventBase<T extends EventType = EventType, O = unknown> {
@@ -2105,7 +2155,7 @@ export interface EventBase<T extends EventType = EventType, O = unknown> {
 	id: string;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "event";
-	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, invoice.paid, invoice.partially_paid, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, issuer.ready, balance.low o test_clock.ready. */
+	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, invoice.paid, invoice.partially_paid, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, sat_declaration.created, sat_declaration.updated, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, issuer.ready, balance.low o test_clock.ready. */
 	type: T;
 	/** Versión de la API con que se armó el objeto. */
 	api_version: string;
@@ -2133,6 +2183,8 @@ export type Event =
 	| EventBase<"customer_data_request.completed", CustomerDataRequest>
 	| EventBase<"sat_download.completed", SatDownload>
 	| EventBase<"sat_download.failed", SatDownload>
+	| EventBase<"sat_declaration.created", SatDeclaration>
+	| EventBase<"sat_declaration.updated", SatDeclaration>
 	| EventBase<"ticket.invoiced", Ticket>
 	| EventBase<"ticket.included_in_global", Ticket>
 	| EventBase<"recurring_invoice.failed", RecurringInvoice>
@@ -3403,7 +3455,7 @@ export interface SendInvoiceParams {
 }
 
 export interface CancelInvoiceParams {
-	/** Motivo de cancelación (c_MotivoCancelacion): 01 con errores con relación (lleva substitution), 02 con errores sin relación (por omisión), 03 no se llevó a cabo, 04 nominativa en una global. */
+	/** Motivo de cancelación (c_MotivoCancelacion): 01 con errores con relación (lleva substitution), 02 con errores sin relación (por omisión), 03 no se llevó a cabo, 04 solo en una factura global, cuando una venta incluida se facturó a nombre del cliente. */
 	motive?: "01" | "02" | "03" | "04";
 	/** El comprobante que sustituye a este (su id o su UUID), con el motivo 01. */
 	substitution?: string;
@@ -3744,7 +3796,7 @@ export interface SendRetentionParams {
 }
 
 export interface CancelRetentionParams {
-	/** Motivo de cancelación (c_MotivoCancelacion): 01 con errores con relación (lleva substitution), 02 con errores sin relación (por omisión), 03 no se llevó a cabo, 04 nominativa en una global. */
+	/** Motivo de cancelación (c_MotivoCancelacion): 01 con errores con relación (lleva substitution), 02 con errores sin relación (por omisión), 03 no se llevó a cabo, 04 solo en una factura global, cuando una venta incluida se facturó a nombre del cliente. */
 	motive?: "01" | "02" | "03" | "04";
 	/** El comprobante que sustituye a este (su id o su UUID), con el motivo 01. */
 	substitution?: string;
@@ -4181,6 +4233,18 @@ export interface ListSatDeclarationsParams {
 	year?: number;
 	/** monthly (provisionales o definitivas), annual (la anual) o dyp (Declaraciones y pagos). */
 	source?: "monthly" | "annual" | "dyp";
+	/** Solo las de un mes (1 a 12). */
+	month?: number;
+	/** normal o complementary (complementarias). */
+	type?: "normal" | "complementary";
+}
+
+/** Los parámetros de GET /v1/sat_declarations/calendar. */
+export interface GetSatDeclarationCalendarParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** El ejercicio, como 2026. Por omisión, el actual. */
+	year?: number;
 }
 
 export interface CreateTicketParams {
@@ -4804,7 +4868,7 @@ export interface RollWebhookSecretParams {
 
 export interface TestWebhookEndpointParams {
 	/** El evento a mandar. Por omisión invoice.stamped. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready";
 }
 
 /** Los parámetros de GET /v1/events. */
@@ -4814,7 +4878,7 @@ export interface ListEventsParams {
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
 	/** Solo de este tipo. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready";
 	/** Solo los de este objeto (inv_…, ret_…, bat_…). */
 	object?: string;
 }
@@ -4893,6 +4957,8 @@ export class SandboxesResource {
 	/**
 	 * Listar entornos de prueba
 	 *
+	 * Los entornos de prueba de la cuenta, cada uno con su emisor de prueba y su llave fk_test_. Hasta 25 por cuenta.
+	 *
 	 * GET /v1/sandboxes
 	 * @see https://fiscalisto.com/docs/api/referencia/entornos-de-prueba/list-sandboxes
 	 */
@@ -4902,6 +4968,8 @@ export class SandboxesResource {
 
 	/**
 	 * Ver un entorno de prueba
+	 *
+	 * Un entorno de prueba: su nombre, su emisor y lo que lleva usado hoy de sus reinicios.
 	 *
 	 * GET /v1/sandboxes/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/entornos-de-prueba/get-sandbox
@@ -4944,6 +5012,8 @@ export class TestClocksResource {
 
 	/**
 	 * Ver el reloj de prueba
+	 *
+	 * La hora que es «hoy» para un emisor de prueba y hasta dónde se ha adelantado. Solo emisores de prueba.
 	 *
 	 * GET /v1/issuers/{id}/test_clock
 	 * @see https://fiscalisto.com/docs/api/referencia/entornos-de-prueba/get-test-clock
@@ -5019,6 +5089,8 @@ export class IssuersResource {
 	/**
 	 * Listar emisores
 	 *
+	 * Los emisores de la cuenta en el modo de la llave, los más recientes primero. Una llave limitada a algunos emisores solo ve los suyos.
+	 *
 	 * GET /v1/issuers
 	 * @see https://fiscalisto.com/docs/api/referencia/emisores/list-issuers
 	 */
@@ -5028,6 +5100,8 @@ export class IssuersResource {
 
 	/**
 	 * Ver un emisor
+	 *
+	 * Un emisor: sus datos fiscales, si ya puede timbrar (status, CSD y contrato con el PAC) y su registro patronal.
 	 *
 	 * GET /v1/issuers/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/emisores/get-issuer
@@ -5111,6 +5185,8 @@ export class IssuersResource {
 	/**
 	 * Ver el portal de autofactura de un emisor
 	 *
+	 * El portal de autofactura del emisor: su dirección, hasta cuándo se puede facturar un ticket y cómo se arma la factura global.
+	 *
 	 * GET /v1/issuers/{id}/self_invoicing
 	 * @see https://fiscalisto.com/docs/api/referencia/autofactura/get-self-invoicing
 	 */
@@ -5176,6 +5252,8 @@ export class InvoicesResource {
 
 	/**
 	 * Descargar el PDF
+	 *
+	 * La representación impresa del CFDI, como la recibe su cliente. En vez del id puede usar el UUID (con issuer si la cuenta tiene varios emisores).
 	 *
 	 * GET /v1/invoices/{id}/pdf
 	 * @see https://fiscalisto.com/docs/api/referencia/facturas/get-invoice-pdf
@@ -5311,6 +5389,8 @@ export class BankTransactionsResource {
 	/**
 	 * Ver un depósito
 	 *
+	 * Un depósito mandado a conciliación, con las facturas que se le encontraron o el pago que se registró con él.
+	 *
 	 * GET /v1/bank_transactions/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/conciliacion-bancaria/get-bank-transaction
 	 */
@@ -5417,6 +5497,8 @@ export class AdvancesResource {
 	/**
 	 * Listar anticipos sin aplicar
 	 *
+	 * Los anticipos timbrados que todavía no se aplican a una factura, con lo que queda de cada uno. Filtre por customer para los de un cliente.
+	 *
 	 * GET /v1/advances
 	 * @see https://fiscalisto.com/docs/api/referencia/anticipos/list-advances
 	 */
@@ -5447,6 +5529,8 @@ export class RetentionsResource {
 	/**
 	 * Timbrar una constancia de retenciones
 	 *
+	 * Timbra una constancia de retenciones e información de pagos (Retenciones 2.0) con los folios RET1, RET2… del emisor. Una vez por Idempotency-Key; con send_email y email la manda al receptor al timbrarla.
+	 *
 	 * POST /v1/retentions
 	 * @see https://fiscalisto.com/docs/api/referencia/retenciones/create-retention
 	 */
@@ -5456,6 +5540,8 @@ export class RetentionsResource {
 
 	/**
 	 * Listar constancias
+	 *
+	 * Las constancias del emisor, las más recientes primero.
 	 *
 	 * GET /v1/retentions
 	 * @see https://fiscalisto.com/docs/api/referencia/retenciones/list-retentions
@@ -5467,6 +5553,8 @@ export class RetentionsResource {
 	/**
 	 * Ver una constancia
 	 *
+	 * Una constancia de retenciones con su estado, sus impuestos retenidos y, si se mandó, a quién.
+	 *
 	 * GET /v1/retentions/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/retenciones/get-retention
 	 */
@@ -5476,6 +5564,8 @@ export class RetentionsResource {
 
 	/**
 	 * Descargar el PDF
+	 *
+	 * La representación impresa de la constancia.
 	 *
 	 * GET /v1/retentions/{id}/pdf
 	 * @see https://fiscalisto.com/docs/api/referencia/retenciones/get-retention-pdf
@@ -5487,6 +5577,8 @@ export class RetentionsResource {
 	/**
 	 * Descargar el XML
 	 *
+	 * El XML timbrado de la constancia, tal como lo tiene el SAT.
+	 *
 	 * GET /v1/retentions/{id}/xml
 	 * @see https://fiscalisto.com/docs/api/referencia/retenciones/get-retention-xml
 	 */
@@ -5496,6 +5588,8 @@ export class RetentionsResource {
 
 	/**
 	 * Enviar por correo
+	 *
+	 * Manda el PDF y el XML de la constancia a los correos de to (o al que se dio al timbrarla). Dos envíos a la vez de la misma constancia: el segundo contesta email_failed.
 	 *
 	 * POST /v1/retentions/{id}/send
 	 * @see https://fiscalisto.com/docs/api/referencia/retenciones/send-retention
@@ -5527,6 +5621,8 @@ export class EmployeesResource {
 	/**
 	 * Crear un empleado
 	 *
+	 * Un empleado del emisor para sus recibos de nómina: RFC, CURP, NSS, salario diario, salario diario integrado y periodicidad. Lo que no mande tiene el valor usual (contrato indefinido, jornada diurna, quincenal, riesgo clase I). warnings dice lo que el SAT podría rechazar.
+	 *
 	 * POST /v1/employees
 	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-employee
 	 */
@@ -5536,6 +5632,8 @@ export class EmployeesResource {
 
 	/**
 	 * Listar empleados
+	 *
+	 * Los empleados del emisor, los más recientes primero.
 	 *
 	 * GET /v1/employees
 	 * @see https://fiscalisto.com/docs/api/referencia/nomina/list-employees
@@ -5547,6 +5645,8 @@ export class EmployeesResource {
 	/**
 	 * Ver un empleado
 	 *
+	 * Un empleado con sus datos y lo que el SAT podría rechazar en warnings.
+	 *
 	 * GET /v1/employees/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-employee
 	 */
@@ -5556,6 +5656,8 @@ export class EmployeesResource {
 
 	/**
 	 * Actualizar un empleado
+	 *
+	 * Cambia solo los campos que manda; los recibos ya timbrados no cambian.
 	 *
 	 * POST /v1/employees/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-employee
@@ -5599,6 +5701,8 @@ export class PayrollReceiptsResource {
 	/**
 	 * Calcular un recibo sin timbrar
 	 *
+	 * El recibo como se timbraría (percepciones, ISR con el subsidio para el empleo, cuotas IMSS y el neto), sin timbrar ni usar timbres.
+	 *
 	 * POST /v1/payroll_receipts/preview
 	 * @see https://fiscalisto.com/docs/api/referencia/nomina/preview-payroll-receipt
 	 */
@@ -5628,6 +5732,8 @@ export class InvoiceBatchesResource {
 
 	/**
 	 * Listar lotes
+	 *
+	 * Los lotes de facturas, los más recientes primero, con cuántas se timbraron y cuántas fallaron.
 	 *
 	 * GET /v1/invoice_batches
 	 * @see https://fiscalisto.com/docs/api/referencia/lotes/list-invoice-batches
@@ -5679,6 +5785,8 @@ export class CustomersResource {
 	/**
 	 * Crear un cliente
 	 *
+	 * Un cliente del catálogo del emisor, con sus datos fiscales como vienen en su constancia. Un RFC que ya está en el catálogo contesta customer_exists.
+	 *
 	 * POST /v1/customers
 	 * @see https://fiscalisto.com/docs/api/referencia/clientes/create-customer
 	 */
@@ -5688,6 +5796,8 @@ export class CustomersResource {
 
 	/**
 	 * Listar clientes
+	 *
+	 * Los clientes del emisor, los más recientes primero. Con tax_id, el de ese RFC.
 	 *
 	 * GET /v1/customers
 	 * @see https://fiscalisto.com/docs/api/referencia/clientes/list-customers
@@ -5699,6 +5809,8 @@ export class CustomersResource {
 	/**
 	 * Ver un cliente
 	 *
+	 * Un cliente del catálogo.
+	 *
 	 * GET /v1/customers/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/clientes/get-customer
 	 */
@@ -5709,6 +5821,8 @@ export class CustomersResource {
 	/**
 	 * Actualizar un cliente
 	 *
+	 * Cambia solo los campos que manda. Las facturas ya timbradas no cambian.
+	 *
 	 * POST /v1/customers/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/clientes/update-customer
 	 */
@@ -5718,6 +5832,8 @@ export class CustomersResource {
 
 	/**
 	 * Borrar un cliente
+	 *
+	 * Lo quita del catálogo. Sus facturas timbradas siguen igual.
 	 *
 	 * DELETE /v1/customers/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/clientes/delete-customer
@@ -5749,6 +5865,8 @@ export class CustomerDataRequestsResource {
 	/**
 	 * Listar solicitudes de datos
 	 *
+	 * Las ligas para pedir datos fiscales, las más recientes primero, con su estado.
+	 *
 	 * GET /v1/customer_data_requests
 	 * @see https://fiscalisto.com/docs/api/referencia/clientes/list-customer-data-requests
 	 */
@@ -5758,6 +5876,8 @@ export class CustomerDataRequestsResource {
 
 	/**
 	 * Ver una solicitud de datos
+	 *
+	 * Una solicitud de datos: su liga y, si el cliente ya contestó, sus datos fiscales y el cliente que se guardó.
 	 *
 	 * GET /v1/customer_data_requests/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/clientes/get-customer-data-request
@@ -5789,6 +5909,8 @@ export class ProductsResource {
 	/**
 	 * Crear un producto
 	 *
+	 * Un producto o servicio del catálogo del emisor, con su clave del SAT, su unidad, su precio y sus impuestos, para usarlo en items con product.
+	 *
 	 * POST /v1/products
 	 * @see https://fiscalisto.com/docs/api/referencia/productos/create-product
 	 */
@@ -5798,6 +5920,8 @@ export class ProductsResource {
 
 	/**
 	 * Listar productos
+	 *
+	 * Los productos del emisor, los más recientes primero. Filtre por sku o product_key.
 	 *
 	 * GET /v1/products
 	 * @see https://fiscalisto.com/docs/api/referencia/productos/list-products
@@ -5809,6 +5933,8 @@ export class ProductsResource {
 	/**
 	 * Ver un producto
 	 *
+	 * Un producto del catálogo.
+	 *
 	 * GET /v1/products/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/productos/get-product
 	 */
@@ -5819,6 +5945,8 @@ export class ProductsResource {
 	/**
 	 * Actualizar un producto
 	 *
+	 * Cambia solo los campos que manda. Las facturas ya timbradas no cambian.
+	 *
 	 * POST /v1/products/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/productos/update-product
 	 */
@@ -5828,6 +5956,8 @@ export class ProductsResource {
 
 	/**
 	 * Borrar un producto
+	 *
+	 * Lo quita del catálogo. Las facturas que lo usaron siguen igual.
 	 *
 	 * DELETE /v1/products/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/productos/delete-product
@@ -5911,6 +6041,8 @@ export class SatDownloadsResource {
 	/**
 	 * Listar descargas del SAT
 	 *
+	 * Las descargas pedidas al SAT, las más recientes primero, con su estado.
+	 *
 	 * GET /v1/sat_downloads
 	 * @see https://fiscalisto.com/docs/api/referencia/descargas-del-sat/list-sat-downloads
 	 */
@@ -5920,6 +6052,8 @@ export class SatDownloadsResource {
 
 	/**
 	 * Ver una descarga del SAT
+	 *
+	 * Una descarga del SAT: su periodo, su estado y cuántos CFDI trajo. Al terminar llega sat_download.completed.
 	 *
 	 * GET /v1/sat_downloads/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/descargas-del-sat/get-sat-download
@@ -5950,6 +6084,8 @@ export class SatInvoicesResource {
 
 	/**
 	 * Ver una factura del SAT
+	 *
+	 * Un CFDI que trajo una descarga del SAT, con sus importes y su estado ante el SAT.
 	 *
 	 * GET /v1/sat_invoices/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/descargas-del-sat/get-sat-invoice
@@ -6003,7 +6139,21 @@ export class SatDeclarationsResource {
 	}
 
 	/**
+	 * Ver el año mes por mes
+	 *
+	 * Cada mes del ejercicio con sus obligaciones: presentada (con sus declaraciones), falta (venció y no la encontramos) o por presentar, con el día en que vence (el 17 del mes siguiente, o el día hábil siguiente, más los días por el sexto dígito del RFC). Se arma con lo que trajeron sus consultas; no usa timbres.
+	 *
+	 * GET /v1/sat_declarations/calendar
+	 * @see https://fiscalisto.com/docs/api/referencia/declaraciones-del-sat/get-sat-declaration-calendar
+	 */
+	calendar(params?: GetSatDeclarationCalendarParams, options?: RequestOptions): Promise<SatDeclarationCalendar> {
+		return this.#client.request({ method: "GET", path: "/v1/sat_declarations/calendar", query: params }, options);
+	}
+
+	/**
 	 * Ver una declaración del SAT
+	 *
+	 * Una declaración presentada al SAT, con sus cifras en summary y si ya están su PDF y su acuse.
 	 *
 	 * GET /v1/sat_declarations/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/declaraciones-del-sat/get-sat-declaration
@@ -6082,6 +6232,8 @@ export class TicketsResource {
 
 	/**
 	 * Ver un ticket
+	 *
+	 * Un ticket de autofactura: si ya se facturó (invoice) o entró en la factura global (global_invoice).
 	 *
 	 * GET /v1/tickets/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/autofactura/get-ticket
@@ -6241,6 +6393,8 @@ export class StoreConnectionsResource {
 	/**
 	 * Ver una tienda
 	 *
+	 * Una tienda conectada (Shopify, Mercado Libre o WooCommerce), su estado y lo último que importó.
+	 *
 	 * GET /v1/store_connections/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/tiendas-en-linea/get-store-connection
 	 */
@@ -6318,6 +6472,8 @@ export class RecurringInvoicesResource {
 
 	/**
 	 * Ver una factura recurrente
+	 *
+	 * Una factura recurrente: su calendario, la próxima fecha, la última factura que timbró y, si falló, por qué en last_error.
 	 *
 	 * GET /v1/recurring_invoices/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/facturas-recurrentes/get-recurring-invoice
@@ -6513,6 +6669,8 @@ export class WebhookEndpointsResource {
 	/**
 	 * Listar webhooks
 	 *
+	 * Los webhooks del modo de la llave. Hasta 16 por modo.
+	 *
 	 * GET /v1/webhook_endpoints
 	 * @see https://fiscalisto.com/docs/api/referencia/webhooks/list-webhook-endpoints
 	 */
@@ -6522,6 +6680,8 @@ export class WebhookEndpointsResource {
 
 	/**
 	 * Ver un webhook
+	 *
+	 * Un webhook: su dirección, los eventos que recibe y si sus entregas fallan. El secreto solo viene al crearlo.
 	 *
 	 * GET /v1/webhook_endpoints/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/webhooks/get-webhook-endpoint
@@ -6533,6 +6693,8 @@ export class WebhookEndpointsResource {
 	/**
 	 * Actualizar un webhook
 	 *
+	 * Cambia su dirección, sus eventos, su descripción o su versión de la API; con disabled: false vuelve a encender uno que se apagó.
+	 *
 	 * POST /v1/webhook_endpoints/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/webhooks/update-webhook-endpoint
 	 */
@@ -6542,6 +6704,8 @@ export class WebhookEndpointsResource {
 
 	/**
 	 * Borrar un webhook
+	 *
+	 * Deja de mandar eventos a esa dirección. Los eventos siguen en GET /v1/events.
 	 *
 	 * DELETE /v1/webhook_endpoints/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/webhooks/delete-webhook-endpoint
@@ -6596,6 +6760,8 @@ export class EventsResource {
 
 	/**
 	 * Ver un evento
+	 *
+	 * Un evento de los últimos 30 días, con el objeto como estaba cuando pasó.
 	 *
 	 * GET /v1/events/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/eventos/get-event
