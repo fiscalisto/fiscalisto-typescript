@@ -43,10 +43,19 @@ function print(value: unknown, human?: () => void) {
 
 const line = (s = "") => process.stdout.write(`${s}\n`);
 const note = (s: string) => process.stderr.write(`${s}\n`);
-const money = (n: unknown, currency = "MXN") =>
-	typeof n === "number"
-		? `${n.toLocaleString("es-MX", { style: "currency", currency: currency === "XXX" ? "MXN" : currency })}${currency !== "MXN" ? ` ${currency}` : ""}`
-		: "";
+const money = (n: unknown, currency = "MXN") => {
+	if (typeof n !== "number") return "";
+	const amount = n.toLocaleString("es-MX", {
+		minimumFractionDigits: 2,
+		maximumFractionDigits: 2,
+	});
+	return currency === "MXN" || currency === "XXX" ? `$${amount}` : `${amount} ${currency}`;
+};
+/** What a document is worth in a list: a payment complement's total is 0, so its amount paid. */
+const worth = (i: Invoice) => {
+	const paid = (i as { payment?: { amount?: number; currency?: string } | null }).payment;
+	return i.type === "P" && paid ? money(paid.amount, paid.currency) : money(i.total, i.currency);
+};
 
 // ── Configuración ──────────────────────────────────────────────────────────
 
@@ -707,9 +716,7 @@ const status = (s: string, width = 0) => {
 };
 
 function showInvoice(i: Invoice) {
-	line(
-		`${bold(`${i.series ?? ""}${i.folio ?? ""}` || i.id)} ${status(i.status)} ${money(i.total, i.currency)}`,
-	);
+	line(`${bold(`${i.series ?? ""}${i.folio ?? ""}` || i.id)} ${status(i.status)} ${worth(i)}`);
 	line(`  ${i.customer.legal_name ?? ""} ${dim(i.customer.tax_id)}`);
 	if (i.uuid) line(`  UUID ${i.uuid}`);
 	line(`  ${dim(i.id)}`);
@@ -759,7 +766,11 @@ async function invoices(args: string[], g: Globals) {
 			if (!body) {
 				if (!values.customer || !values.item?.length)
 					throw new UsageError(
-						'Pase --data (JSON, @archivo o -), --example, o --customer RFC --name "NOMBRE" --regime 601 --zip 12345 --item "Descripción|clave|precio".',
+						'Pase --data (JSON, @archivo o -), --example, o --customer RFC --name "NOMBRE" --regime 601 --zip 12345 --item "Descripción|clave|precio" --payment-form 03.',
+					);
+				if (!values["payment-form"] && values["payment-method"] !== "PPD")
+					throw new UsageError(
+						"Falta --payment-form: 03 transferencia, 01 efectivo, 04 tarjeta de crédito, 28 de débito (o --payment-method PPD si se la pagan después).",
 					);
 				body = {
 					customer: {
@@ -813,7 +824,7 @@ async function invoices(args: string[], g: Globals) {
 				if (!page.data.length) return line(dim("Sin facturas."));
 				for (const i of page.data)
 					line(
-						`${(`${i.series ?? ""}${i.folio ?? ""}` || "—").padEnd(8)} ${status(i.status, 10)} ${money(i.total, i.currency).padStart(14)}  ${(i.customer.legal_name ?? "").slice(0, 32).padEnd(32)} ${dim(i.id)}`,
+						`${(`${i.series ?? ""}${i.folio ?? ""}` || "—").padEnd(8)} ${status(i.status, 10)} ${worth(i).padStart(14)}  ${(i.customer.legal_name ?? "").slice(0, 32).padEnd(32)} ${dim(i.id)}`,
 					);
 				if (page.has_more) line(dim(`… hay más: --limit ${Number(values.limit) * 2}`));
 			});
@@ -926,11 +937,26 @@ async function simpleList(
 async function issuers(args: string[], g: Globals) {
 	const api = await client(g);
 	if (args[0] === "get") {
-		const issuer = await api.request({
+		const issuer = await api.request<Record<string, unknown>>({
 			method: "GET",
 			path: `/v1/issuers/${need(args[1], "fiscalisto issuers get iss_…")}`,
 		});
-		return print(issuer);
+		return print(issuer, () => {
+			line(
+				`${bold(String(issuer.legal_name ?? issuer.tax_id))} ${dim(String(issuer.tax_id))}`,
+			);
+			line(`  Estado     ${String(issuer.status)}`);
+			for (const [label, key] of [
+				["Régimen", "tax_system"],
+				["C.P.", "zip"],
+				["Modo", "livemode"],
+			] as const)
+				if (issuer[key] !== undefined && issuer[key] !== null)
+					line(
+						`  ${label.padEnd(10)} ${key === "livemode" ? (issuer[key] ? "producción" : "pruebas") : String(issuer[key])}`,
+					);
+			line(dim(`  ${String(issuer.id)}`));
+		});
 	}
 	if (args[0] && args[0] !== "list") throw new UsageError("fiscalisto issuers list|get");
 	await simpleList(
@@ -968,13 +994,19 @@ async function events(args: string[], g: Globals) {
 		options: {
 			type: { type: "string" },
 			object: { type: "string" },
+			failed: { type: "boolean" },
 			limit: { type: "string", default: "20" },
 		},
 	});
 	await simpleList(
 		api,
 		"/v1/events",
-		{ type: values.type, object: values.object, limit: values.limit },
+		{
+			type: values.type,
+			object: values.object,
+			delivery_success: values.failed ? "false" : undefined,
+			limit: values.limit,
+		},
 		(e) => {
 			const o = (e.data as { object: { id: string } }).object;
 			return `${dim(String(e.created_at))} ${String(e.type).padEnd(30)} ${o.id} ${dim(String(e.id))}`;
@@ -1319,7 +1351,11 @@ async function trigger(args: string[], g: Globals) {
 		case "invoice.failed":
 			made = await stamp({
 				...EXAMPLE_INVOICE,
-				customer: { ...EXAMPLE_INVOICE.customer, tax_id: "NOM010101FK9" },
+				customer: {
+					...EXAMPLE_INVOICE.customer,
+					tax_id: "NOM010101FK9",
+					legal_name: "CLIENTE DE PRUEBA RECHAZADO",
+				},
 			}).catch((e) => {
 				if (e instanceof FiscalistoError && e.code === "invoice_rejected") return e.raw;
 				throw e;
@@ -1472,7 +1508,7 @@ ${bold("Empezar")}
 
 ${bold("Facturas")}
   invoices create --example     Timbra una factura de prueba
-  invoices create --data @f.json | --customer RFC --name … --regime 601 --zip … --item "Desc|clave|precio"
+  invoices create --data @f.json | --customer RFC --name … --regime 601 --zip … --item "Desc|clave|precio" --payment-form 03 [--payment-method PPD] [--use G03]
   invoices list [--status valid] [--customer RFC]
   invoices get|pdf|xml|send <inv_…>
   invoices cancel <inv_…> [--motive 02] [--substitution inv_…]
@@ -1482,7 +1518,8 @@ ${bold("Webhooks")}
   listen [--forward-to URL]     Reenvía los eventos a su computadora, firmados
   trigger <evento>              Crea en pruebas lo que manda ese evento (invoice.stamped, invoice.failed…)
   webhooks list|create|delete|test
-  events list|get
+  events list [--type invoice.*] [--failed]   Los últimos 30 días; --failed: los que algún webhook no recibió
+  events get <evt_…>
 
 ${bold("Otros")}
   issuers list|get              Sus emisores
@@ -1512,6 +1549,15 @@ export async function main(argv: string[]) {
 		else rest.push(a);
 	}
 	const [command, ...args] = rest;
+	// «fiscalisto invoices create --help»: the help, not «Unknown option».
+	if (command && args.some((a) => a === "--help" || a === "-h")) {
+		const lines = HELP.split("\n").filter(
+			(l) => l.trimStart().startsWith(`${command} `) || l.trimStart() === command,
+		);
+		line(lines.length ? lines.join("\n") : HELP);
+		line(dim("\nDocumentación: https://fiscalisto.com/docs/api/cli"));
+		return;
+	}
 	try {
 		switch (command) {
 			case "login":
