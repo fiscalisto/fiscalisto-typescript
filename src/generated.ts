@@ -2125,7 +2125,7 @@ export interface CrossCheckCfdi {
 		/** El folio fiscal (UUID) del CFDI; el de la factura PPD en un pago. */
 		uuid: string | null;
 		/** invoice (factura de ingreso, PUE), credit_note (nota de crédito: resta) o payment (lo pagado en el mes de una factura PPD). */
-		type: "invoice" | "credit_note" | "payment";
+		type: "invoice" | "credit_note" | "payment" | "withholding_certificate";
 		/** La fecha del CFDI, o la del pago (AAAA-MM-DD). */
 		date: string | null;
 		/** El RFC de la contraparte: el cliente en lo emitido, el proveedor en lo recibido. */
