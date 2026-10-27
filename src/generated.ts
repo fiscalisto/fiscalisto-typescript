@@ -4,7 +4,7 @@ import { type Client, Core, type List, type RequestOptions } from "./core.js";
 
 /** La cuenta API de la llave que hizo la solicitud. */
 export interface Account {
-	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 	id: string;
 	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
 	livemode: boolean;
@@ -69,7 +69,7 @@ export interface Balance {
 
 /** Un emisor: un RFC que timbra desde su cuenta API. */
 export interface Issuer {
-	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 	id: string;
 	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
 	livemode: boolean;
@@ -127,7 +127,7 @@ export type InvoiceItem = Record<string, unknown>;
 
 /** Un CFDI 4.0 emitido: factura de ingreso o global, traslado, nota de crédito (E), complemento de pago (P) o recibo de nómina (N). */
 export interface Invoice {
-	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 	id: string;
 	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
 	livemode: boolean;
@@ -135,6 +135,8 @@ export interface Invoice {
 	object: "invoice";
 	/** El emisor (iss_…). */
 	issuer: string;
+	/** La sucursal (brn_…) desde donde se timbró, o null (el domicilio fiscal del emisor). Sus pagos y notas de crédito la siguen. */
+	branch: string | null;
 	/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
 	type: "I" | "E" | "P" | "T" | "N";
 	/** processing: el PAC no ha contestado (se resuelve sola; escuche invoice.stamped). valid: timbrada. pending: timbrada con una cancelación en espera del cliente. rejected: el SAT o el PAC no la aceptaron (ver error). canceled: cancelada. */
@@ -259,7 +261,7 @@ export interface Invoice {
 		};
 		/** El empleado (emp_…). */
 		employee: {
-			/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+			/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 			id: string | null;
 			/** Número de empleado (NumEmpleado). */
 			number: string;
@@ -399,7 +401,7 @@ export interface Invoice {
 
 /** Una constancia de retenciones e información de pagos (CFDI de retenciones 2.0). */
 export interface Retention {
-	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 	id: string;
 	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
 	livemode: boolean;
@@ -508,7 +510,7 @@ export interface Retention {
 
 /** Un cliente del catálogo de un emisor. */
 export interface Customer {
-	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 	id: string;
 	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
 	livemode: boolean;
@@ -545,7 +547,7 @@ export interface Customer {
 
 /** Un producto o servicio del catálogo de un emisor. */
 export interface Product {
-	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 	id: string;
 	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
 	livemode: boolean;
@@ -590,6 +592,14 @@ export interface Product {
 		/** Tasa en por ciento (TasadeTraslado o TasadeRetencion). */
 		rate: number;
 	}[];
+	/** true si lleva existencias (Inventario). */
+	track_stock: boolean;
+	/** Su costo por unidad en pesos sin IVA, o null. */
+	cost: number | null;
+	/** Su código de barras, o null. */
+	barcode: string | null;
+	/** Su existencia mínima, o null. */
+	min_stock: number | null;
 	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
 	created_at: string;
 	/** Cuándo cambió por última vez, ISO 8601 (-06:00). */
@@ -598,7 +608,7 @@ export interface Product {
 
 /** Un empleado de un emisor, para sus recibos de nómina. */
 export interface Employee {
-	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 	id: string;
 	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
 	livemode: boolean;
@@ -788,7 +798,7 @@ export interface Advance {
 
 /** Un lote de hasta 1,000 facturas timbradas en segundo plano. */
 export interface InvoiceBatch {
-	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 	id: string;
 	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
 	livemode: boolean;
@@ -921,7 +931,7 @@ export interface TaxIdValidation {
 
 /** Una liga para que un cliente dé sus datos fiscales. */
 export interface CustomerDataRequest {
-	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 	id: string;
 	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
 	livemode: boolean;
@@ -986,7 +996,7 @@ export interface TestDataReset {
 
 /** Un entorno de prueba: el modo de pruebas propio de una persona, con su emisor, llaves, webhooks y eventos aparte. */
 export interface Sandbox {
-	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 	id: string;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "sandbox";
@@ -1046,7 +1056,7 @@ export interface TestClock {
 
 /** Una solicitud al SAT de las facturas emitidas o recibidas de un emisor en un periodo. */
 export interface SatDownload {
-	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 	id: string;
 	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
 	livemode: boolean;
@@ -1080,7 +1090,7 @@ export interface SatDownload {
 
 /** Una factura que el SAT tiene del emisor, emitida o recibida, traída con una descarga. */
 export interface SatInvoice {
-	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 	id: string;
 	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
 	livemode: boolean;
@@ -1155,7 +1165,7 @@ export interface SatInvoice {
 
 /** Una declaración que el emisor presentó ante el SAT (provisional o definitiva, anual o del servicio anterior Declaraciones y pagos), con sus cifras y sus archivos. */
 export interface SatDeclaration {
-	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 	id: string;
 	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
 	livemode: boolean;
@@ -1312,9 +1322,318 @@ export interface SatDeclarationCalendar {
 	}[];
 }
 
+/** Una sucursal del emisor: otro lugar desde donde factura, con su código postal (LugarExpedicion), su dirección en el PDF y sus series. */
+export interface Branch {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "branch";
+	/** El emisor de la sucursal. */
+	issuer: string;
+	/** Cómo la llama su equipo; va en el PDF. */
+	name: string;
+	/** Su código postal: el LugarExpedicion de sus CFDI. */
+	zip: string;
+	/** Su dirección, en el PDF de sus facturas. */
+	address: {
+		/** Calle (Calle). */
+		street: string | null;
+		/** Número exterior (NumeroExterior). */
+		exterior: string | null;
+		/** Número interior (NumeroInterior). */
+		interior: string | null;
+		/** Colonia. */
+		neighborhood: string | null;
+		/** Municipio o alcaldía. */
+		city: string | null;
+		/** Estado (Estado): en el extranjero c_Estado para USA y CAN, o texto. */
+		state: string | null;
+	};
+	/** Teléfono, en el PDF, o null. */
+	phone: string | null;
+	/** Correo, en el PDF, o null. */
+	email: string | null;
+	/** La serie de cada tipo de CFDI que se timbra desde ella; null usa la del emisor. */
+	series: {
+		/** Serie de sus facturas (tipo I); null, la del emisor. */
+		invoice: string | null;
+		/** Serie de sus notas de crédito (tipo E); null, la del emisor. */
+		credit_note: string | null;
+		/** Serie de sus complementos de pago (tipo P); null, la del emisor. */
+		payment: string | null;
+		/** Serie de sus traslados (tipo T); null, la del emisor. */
+		transfer: string | null;
+	};
+	/** true si está archivada: ya no se factura desde ella. */
+	archived: boolean;
+	/** Cuándo se creó. */
+	created_at: string | null;
+	/** Cuándo cambió por última vez. */
+	updated_at: string | null;
+}
+
+/** Un almacén del emisor: el de la Matriz y uno por sucursal se crean solos; cada factura saca existencias del de su sucursal. */
+export interface Warehouse {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "warehouse";
+	/** El emisor del almacén. */
+	issuer: string;
+	/** Su nombre («Matriz», el de su sucursal, o el que le dieron en la app). */
+	name: string;
+	/** Su clave corta, o null. */
+	code: string | null;
+	/** warehouse (almacén propio) o consignment (mercancía en consignación con un cliente, todavía suya). */
+	type: "warehouse" | "consignment";
+	/** Su sucursal (brn_…), o null si es de la Matriz. */
+	branch: string | null;
+	/** true si es el almacén del que vende y recibe su sucursal. */
+	default: boolean;
+	/** true si está archivado. */
+	archived: boolean;
+	/** Cuándo se creó. */
+	created_at: string | null;
+}
+
+/** Lo que hay de un producto en un almacén, y lo que vale. */
+export interface StockLevel {
+	/** Su id (stl_…): el producto en ese almacén. Sirve como starting_after. */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "stock_level";
+	/** El producto (prd_…). */
+	product: string;
+	/** El almacén (whs_…). */
+	warehouse: string;
+	/** Lo que hay, en la unidad del producto (todos sus lotes). */
+	on_hand: number;
+	/** Lo apartado por cotizaciones aceptadas que no se han facturado. */
+	reserved: number;
+	/** on_hand menos reserved: lo que se puede vender. */
+	available: number;
+	/** Lo que valen esas existencias a su costo, en pesos sin IVA. */
+	value: number;
+	/** value / on_hand: el costo por unidad, o null sin existencias. */
+	average_cost: number | null;
+}
+
+/** Una entrada o salida de existencias (el kárdex): una venta, una compra, un ajuste, un traspaso… */
+export interface StockMovement {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "stock_movement";
+	/** El emisor. */
+	issuer: string;
+	/** El producto (prd_…). */
+	product: string;
+	/** El almacén (whs_…). */
+	warehouse: string;
+	/** sale (una factura), purchase (una compra), customer_return, supplier_return, adjustment, count (conteo físico), transfer_out, transfer_in, initial, cost (un ajuste de costo) o reversal (deshace otro, como una factura cancelada). */
+	type: "sale" | "purchase" | "customer_return" | "supplier_return" | "adjustment" | "count" | "transfer_out" | "transfer_in" | "initial" | "cost" | "reversal";
+	/** Cuánto entró (positivo) o salió (negativo). */
+	quantity: number;
+	/** El costo por unidad con que entró o salió, en pesos sin IVA. */
+	unit_cost: number;
+	/** quantity × unit_cost: lo que cambió el valor del inventario. */
+	value: number;
+	/** El lote o número de serie, o null. */
+	lot: string | null;
+	/** Lo que lo causó: type invoice (id es el UUID del CFDI), adjustment (adj_…), receipt, transfer, count o ticket. */
+	source: {
+		/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
+		type: string;
+		/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+		id: string;
+	};
+	/** El motivo de un ajuste, o null. */
+	reason: string | null;
+	/** Cuándo pasó, hora de la Ciudad de México (la Fecha del CFDI en una venta). */
+	date: string | null;
+	/** true si un movimiento posterior lo deshizo. */
+	reversed: boolean;
+	/** Cuándo se registró. */
+	created_at: string | null;
+}
+
+/** Un ajuste de existencias: lo que entró o salió de un almacén por inventario inicial, merma, robo, conteo… */
+export interface StockAdjustment {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "stock_adjustment";
+	/** El emisor. */
+	issuer: string;
+	/** El almacén (whs_…). */
+	warehouse: string;
+	/** El motivo (ver POST /v1/stock_adjustments). */
+	reason: "shrinkage" | "theft" | "damage" | "expiration" | "internal_use" | "gift" | "initial" | "surplus" | "count" | "other";
+	/** Su nota, o null. */
+	note: string | null;
+	/** applied (ya movió existencias), pending (espera aprobación en la app), rejected o reversed (se deshizo). */
+	status: "applied" | "pending" | "rejected" | "reversed";
+	/** Lo que vale lo que movió, en pesos sin IVA. */
+	value: number;
+	/** Lo que entró o salió de cada producto. */
+	lines: {
+		/** Un producto de su catálogo (prd_…): toma su clave, unidad, precio e impuestos. */
+		product: string;
+		/** Cantidad (Cantidad). Por omisión 1. */
+		quantity: number;
+		/** El costo por unidad que se dio al ajuste, en pesos sin IVA, o null (el costo promedio). */
+		unit_cost: number | null;
+		/** Lote del medicamento (LoteMedicamento). */
+		lot: string | null;
+	}[];
+	/** Cuándo se hizo. */
+	created_at: string | null;
+}
+
+/** La opinión de cumplimiento de obligaciones fiscales (32-D) más reciente del emisor, como la dio el SAT. */
+export interface ComplianceOpinion {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "compliance_opinion";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** positive, negative, no_obligations (inscrito sin obligaciones) o suspended (en suspensión de actividades); null si no se ha consultado. */
+	result: "positive" | "negative" | "no_obligations" | "suspended" | null;
+	/** El día que la emitió el SAT (AAAA-MM-DD), o null. */
+	date: string | null;
+	/** Su folio, o null. */
+	folio: string | null;
+	/** Si es negativa, lo que el SAT marca como pendiente. */
+	reasons: string[];
+	/** true si su PDF está en GET /v1/issuers/{id}/compliance_opinion/pdf. */
+	pdf: boolean;
+	/** Cuándo se consultó por última vez, o null. */
+	checked_at: string | null;
+	/** Por qué falló la última consulta, o null. */
+	last_error: string | null;
+}
+
+/** La constancia de situación fiscal más reciente del emisor, generada en el SAT con su e.firma. */
+export interface TaxStatusCertificate {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "tax_status_certificate";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El día que la emitió el SAT (AAAA-MM-DD), o null. */
+	issued_on: string | null;
+	/** Su idCIF, o null. */
+	id_cif: string | null;
+	/** El RFC. */
+	tax_id: string;
+	/** Nombre o razón social como la tiene el SAT, o null. */
+	legal_name: string | null;
+	/** Sus regímenes fiscales (clave de c_RegimenFiscal y nombre). */
+	tax_systems: {
+		/** Clave de la retención (CveRetenc), c_CveRetenc: 01 servicios profesionales, 05 arrendamiento, 14 dividendos, 16 intereses, 18 pagos al extranjero… */
+		code: string;
+		/** Nombre. */
+		name: string;
+	}[];
+	/** El código postal de su domicilio fiscal, o null. */
+	zip: string | null;
+	/** Estatus en el padrón (ACTIVO, SUSPENDIDO…), o null. */
+	status: string | null;
+	/** true si su PDF está en GET /v1/issuers/{id}/tax_status_certificate/pdf. */
+	pdf: boolean;
+	/** Cuándo se generó. */
+	created_at: string | null;
+}
+
+/** Un aviso del buzón tributario del SAT del emisor. */
+export interface SatMailboxMessage {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "sat_mailbox_message";
+	/** El emisor. */
+	issuer: string;
+	/** Su asunto. */
+	subject: string;
+	/** Su texto, resumido, o null. */
+	summary: string | null;
+	/** mailbox (el buzón del portal) o email (un aviso que el SAT mandó por correo). */
+	source: "mailbox" | "email";
+	/** true si no se ha leído en el SAT. */
+	unread: boolean;
+	/** urgent (un requerimiento, un plazo), attention o informational. */
+	urgency: "urgent" | "attention" | "informational";
+	/** Qué es: requerimiento, carta invitación, informativo… */
+	kind: string;
+	/** true si pide hacer algo. */
+	action_required: boolean;
+	/** Cuándo llegó, como lo dice el SAT. */
+	received_at: string | null;
+	/** Cuándo lo trajo Fiscalisto. */
+	created_at: string | null;
+}
+
+/** Una consulta al SAT de un documento del emisor: si ya terminó y dónde leerlo. */
+export interface SatRefresh {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "sat_refresh";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** Qué se consultó. */
+	document: "compliance_opinion" | "tax_status_certificate" | "sat_mailbox";
+	/** completed (ya está en url) o processing (el SAT tarda; llega a url en unos minutos). */
+	status: "completed" | "processing";
+	/** Cuándo se pidió. */
+	refreshed_at: string | null;
+	/** Desde cuándo se puede pedir otra vez. */
+	next_refresh_at: string | null;
+	/** Dónde leer lo que trajo. */
+	url: string;
+}
+
+/** Un tipo de hallazgo en los CFDI del emisor (un proveedor en la lista 69-B, un CFDI cancelado, un pago en efectivo de más de $2,000…), con cuántos CFDI lo tienen. */
+export interface SatFinding {
+	/** El código del hallazgo (el mismo que code). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "sat_finding";
+	/** El emisor. */
+	issuer: string;
+	/** El código del hallazgo, estable (por ejemplo efos_definitivo). */
+	code: string;
+	/** critical (grave), warning (revisar) o info. */
+	severity: "critical" | "warning" | "info";
+	/** Qué es, en palabras. */
+	title: string;
+	/** Por qué importa y qué hacer, o null. */
+	explanation: string | null;
+	/** Cuántos CFDI lo tienen, sin revisar. */
+	invoices: number;
+	/** La suma de sus totales. */
+	amount: number;
+}
+
 /** Una venta que su comprador puede facturar él mismo en el portal del emisor (autofactura). */
 export interface Ticket {
-	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 	id: string;
 	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
 	livemode: boolean;
@@ -1379,7 +1698,7 @@ export interface SelfInvoicing {
 
 /** Una factura que el emisor timbra solo, cada mes, semana o día. */
 export interface RecurringInvoice {
-	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 	id: string;
 	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
 	livemode: boolean;
@@ -1881,7 +2200,7 @@ export interface Diot {
 
 /** Una tienda de Shopify o Mercado Libre cuyos pedidos pagados se vuelven tickets de autofactura del emisor. */
 export interface StoreConnection {
-	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 	id: string;
 	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
 	livemode: boolean;
@@ -1956,7 +2275,7 @@ export interface StoreImport {
 
 /** Una cotización: su cliente la ve en una liga, la acepta, pide cambios o la rechaza, y se factura. */
 export interface Quote {
-	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 	id: string;
 	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
 	livemode: boolean;
@@ -2053,7 +2372,7 @@ export interface Receivable {
 
 /** Un depósito de la cuenta del emisor, y las facturas que pagó. */
 export interface BankTransaction {
-	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 	id: string;
 	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
 	livemode: boolean;
@@ -2136,7 +2455,7 @@ export interface IssuerOnboardingLink {
 
 /** Una dirección de su servidor que recibe eventos. */
 export interface WebhookEndpoint {
-	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 	id: string;
 	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
 	livemode: boolean;
@@ -2192,7 +2511,7 @@ export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled
 
 /** Algo que pasó en su cuenta: el objeto completo como quedó. Se manda a sus webhooks firmado (Standard Webhooks). */
 export interface EventBase<T extends EventType = EventType, O = unknown> {
-	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 	id: string;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "event";
@@ -2239,7 +2558,7 @@ export type Event =
 
 /** Confirmación de que se borró. */
 export interface Deleted {
-	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, evt_, whe_). */
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 	id: string;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: string;
@@ -2369,6 +2688,17 @@ export interface InvoiceBatchList {
 	url: string;
 }
 
+export interface BranchList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: Branch[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
 export interface CustomerList {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "list";
@@ -2396,6 +2726,72 @@ export interface ProductList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: Product[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface SatMailboxMessageList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: SatMailboxMessage[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface SatFindingList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: SatFinding[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface WarehouseList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: Warehouse[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface StockLevelList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: StockLevel[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface StockMovementList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: StockMovement[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface StockAdjustmentList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: StockAdjustment[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -2549,6 +2945,10 @@ export interface EventList {
 export interface InvoiceCreate {
 	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
 	issuer?: string;
+	/** Sucursal (brn_…) desde donde se factura: su código postal va en LugarExpedicion, su dirección en el PDF y, si las tiene, sus series. Sin ella, el domicilio fiscal del emisor (la Matriz). */
+	branch?: string;
+	/** Almacén (whs_…) de donde salen sus productos con track_stock. Por omisión, el de su sucursal (o el de la Matriz). */
+	warehouse?: string;
 	/** Cliente (Receptor): el id de uno de su catálogo (cus_…) o sus datos en un objeto. */
 	customer: string | {
 		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
@@ -4018,6 +4418,98 @@ export interface ValidateTaxIdParams {
 	cif_id?: string;
 }
 
+export interface CreateBranchParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** Cómo la llama su equipo, por ejemplo «Sucursal Monterrey». Va en el PDF. */
+	name: string;
+	/** Su código postal (LugarExpedicion de sus CFDI): uno por sucursal, distinto del domicilio fiscal del emisor. */
+	zip: string;
+	/** La dirección que va en el PDF de sus facturas. */
+	address?: {
+		/** Calle. */
+		street?: string | null;
+		/** Número exterior. */
+		exterior?: string | null;
+		/** Número interior. */
+		interior?: string | null;
+		/** Colonia. */
+		neighborhood?: string | null;
+		/** Municipio o alcaldía. */
+		city?: string | null;
+		/** Estado; por omisión, el de su código postal. */
+		state?: string | null;
+	};
+	/** Teléfono, para el PDF. */
+	phone?: string | null;
+	/** Correo, para el PDF. */
+	email?: string | null;
+	/** Serie (Serie), hasta 25 caracteres. Cada serie lleva sus propios folios. */
+	series?: {
+		/** Serie de sus facturas (tipo I); sin ella, la del emisor. */
+		invoice?: string | null;
+		/** Serie de sus notas de crédito (tipo E); sin ella, la del emisor. */
+		credit_note?: string | null;
+		/** Serie de sus complementos de pago (tipo P); sin ella, la del emisor. */
+		payment?: string | null;
+		/** Serie de sus traslados (tipo T); sin ella, la del emisor. */
+		transfer?: string | null;
+	};
+}
+
+/** Los parámetros de GET /v1/branches. */
+export interface ListBranchesParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** true para incluir las archivadas. */
+	include_archived?: boolean;
+	/** Solo la de este código postal. */
+	zip?: string;
+}
+
+export interface UpdateBranchParams {
+	/** Cómo la llama su equipo, por ejemplo «Sucursal Monterrey». Va en el PDF. */
+	name?: string;
+	/** Su código postal (LugarExpedicion de sus CFDI): uno por sucursal, distinto del domicilio fiscal del emisor. */
+	zip?: string;
+	/** La dirección que va en el PDF de sus facturas. */
+	address?: {
+		/** Calle. */
+		street?: string | null;
+		/** Número exterior. */
+		exterior?: string | null;
+		/** Número interior. */
+		interior?: string | null;
+		/** Colonia. */
+		neighborhood?: string | null;
+		/** Municipio o alcaldía. */
+		city?: string | null;
+		/** Estado; por omisión, el de su código postal. */
+		state?: string | null;
+	};
+	/** Teléfono, para el PDF. */
+	phone?: string | null;
+	/** Correo, para el PDF. */
+	email?: string | null;
+	/** Serie (Serie), hasta 25 caracteres. Cada serie lleva sus propios folios. */
+	series?: {
+		/** Serie de sus facturas (tipo I); sin ella, la del emisor. */
+		invoice?: string | null;
+		/** Serie de sus notas de crédito (tipo E); sin ella, la del emisor. */
+		credit_note?: string | null;
+		/** Serie de sus complementos de pago (tipo P); sin ella, la del emisor. */
+		payment?: string | null;
+		/** Serie de sus traslados (tipo T); sin ella, la del emisor. */
+		transfer?: string | null;
+	};
+	/** true la archiva: ya no se puede facturar desde ella, y sus facturas la siguen nombrando. false la restaura. */
+	archived?: boolean;
+}
+
 export interface CreateCustomerParams {
 	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
 	issuer?: string;
@@ -4141,6 +4633,14 @@ export interface CreateProductParams {
 		/** Tasa en por ciento (TasadeTraslado o TasadeRetencion). */
 		rate: number;
 	}[];
+	/** Lleva existencias (Inventario): cada factura que lo vende las saca del almacén de su sucursal, y una cancelada las regresa. Ver GET /v1/products/{id}/stock. */
+	track_stock?: boolean;
+	/** Su costo por unidad en pesos sin IVA, hasta que sus compras den otro: vale las existencias que entran sin unit_cost. */
+	cost?: number | null;
+	/** Código de barras (EAN, UPC o el suyo). Una factura cuyo concepto lo trae como NoIdentificacion saca existencias de este producto. */
+	barcode?: string | null;
+	/** Existencia mínima: por debajo, el aviso de existencias bajas lo incluye. */
+	min_stock?: number | null;
 }
 
 /** Los parámetros de GET /v1/products. */
@@ -4195,6 +4695,114 @@ export interface UpdateProductParams {
 		/** Tasa en por ciento (TasadeTraslado o TasadeRetencion). */
 		rate: number;
 	}[];
+	/** Lleva existencias (Inventario): cada factura que lo vende las saca del almacén de su sucursal, y una cancelada las regresa. Ver GET /v1/products/{id}/stock. */
+	track_stock?: boolean;
+	/** Su costo por unidad en pesos sin IVA, hasta que sus compras den otro: vale las existencias que entran sin unit_cost. */
+	cost?: number | null;
+	/** Código de barras (EAN, UPC o el suyo). Una factura cuyo concepto lo trae como NoIdentificacion saca existencias de este producto. */
+	barcode?: string | null;
+	/** Existencia mínima: por debajo, el aviso de existencias bajas lo incluye. */
+	min_stock?: number | null;
+}
+
+/** Los parámetros de GET /v1/sat_mailbox_messages. */
+export interface ListSatMailboxMessagesParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** true para solo los no leídos en el SAT, false para los leídos. */
+	unread?: boolean;
+}
+
+/** Los parámetros de GET /v1/sat_findings. */
+export interface ListSatFindingsParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** issued (emitidos) o received (recibidos); sin él, los dos. */
+	direction?: "issued" | "received";
+	/** CFDI desde este día (AAAA-MM-DD). */
+	date_gte?: string;
+	/** CFDI hasta este día (AAAA-MM-DD, completo). */
+	date_lte?: string;
+}
+
+/** Los parámetros de GET /v1/warehouses. */
+export interface ListWarehousesParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** true para incluir los archivados. */
+	include_archived?: boolean;
+}
+
+/** Los parámetros de GET /v1/warehouses/{id}/stock. */
+export interface ListWarehouseStockParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** true para incluir los productos con track_stock que están en 0. */
+	include_empty?: boolean;
+}
+
+/** Los parámetros de GET /v1/stock_movements. */
+export interface ListStockMovementsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Solo los de este producto (prd_…). */
+	product?: string;
+	/** Solo los de este almacén (whs_…). */
+	warehouse?: string;
+	/** Solo los de este tipo. */
+	type?: "sale" | "purchase" | "customer_return" | "supplier_return" | "adjustment" | "count" | "transfer_out" | "transfer_in" | "initial" | "cost" | "reversal";
+	/** Desde este día (AAAA-MM-DD) u hora (AAAA-MM-DDTHH:MM:SS) de la Ciudad de México. */
+	date_gte?: string;
+	/** Hasta este día (completo) u hora de la Ciudad de México. */
+	date_lte?: string;
+}
+
+export interface CreateStockAdjustmentParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** El almacén (whs_…). Por omisión, el de la Matriz. */
+	warehouse?: string;
+	/** Por qué: shrinkage (merma), theft (robo o extravío), damage (daño), expiration (caducidad), internal_use (uso interno), gift (muestra o regalo), initial (inventario inicial), surplus (sobrante), count (conteo físico) u other. */
+	reason: "shrinkage" | "theft" | "damage" | "expiration" | "internal_use" | "gift" | "initial" | "surplus" | "count" | "other";
+	/** Una nota, para el kárdex. */
+	note?: string | null;
+	/** Lo que entra o sale de cada producto, hasta 500 líneas. */
+	lines: {
+		/** El producto (prd_…), con track_stock: true. */
+		product: string;
+		/** Cuánto entra (positivo) o sale (negativo), en la unidad del producto. */
+		quantity: number;
+		/** Lo que costó cada unidad que entra, en pesos sin IVA; sin él, el costo promedio de hoy. */
+		unit_cost?: number;
+		/** El lote o número de serie, si el producto los lleva. */
+		lot?: string;
+		/** La caducidad de un lote nuevo (AAAA-MM-DD). */
+		expires_on?: string;
+	}[];
+}
+
+/** Los parámetros de GET /v1/stock_adjustments. */
+export interface ListStockAdjustmentsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Solo los de este almacén (whs_…). */
+	warehouse?: string;
+	/** applied, pending, rejected o reversed. */
+	status?: "applied" | "pending" | "rejected" | "reversed";
 }
 
 /** Los parámetros de GET /v1/sat_catalogs/{name}. */
@@ -5236,6 +5844,90 @@ export class IssuersResource {
 	}
 
 	/**
+	 * Ver la opinión de cumplimiento (32-D)
+	 *
+	 * La última opinión que trajo del SAT: positiva, negativa (con sus motivos), sin obligaciones o en suspensión. result es null hasta la primera consulta. No usa timbres.
+	 *
+	 * GET /v1/issuers/{id}/compliance_opinion
+	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/get-compliance-opinion
+	 */
+	complianceOpinion(id: string, options?: RequestOptions): Promise<ComplianceOpinion> {
+		return this.#client.request({ method: "GET", path: `/v1/issuers/${encodeURIComponent(id)}/compliance_opinion` }, options);
+	}
+
+	/**
+	 * Pedir la opinión de cumplimiento al SAT
+	 *
+	 * La pide al SAT ahora con la e.firma guardada del emisor (POST /v1/issuers/{id}/efirma con keep_for_downloads: true). 1 timbre en producción, una vez cada 10 minutos; regresa si el SAT no contesta. Si el SAT tarda, contesta status processing y el resultado llega a GET /v1/issuers/{id}/compliance_opinion. En pruebas da una positiva de ejemplo.
+	 *
+	 * POST /v1/issuers/{id}/compliance_opinion/refresh
+	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/refresh-compliance-opinion
+	 */
+	refreshComplianceOpinion(id: string, options?: RequestOptions): Promise<SatRefresh> {
+		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}/compliance_opinion/refresh`, idempotent: true }, options);
+	}
+
+	/**
+	 * Descargar el PDF de la opinión de cumplimiento
+	 *
+	 * El PDF de la última opinión, como lo da el SAT. No usa timbres.
+	 *
+	 * GET /v1/issuers/{id}/compliance_opinion/pdf
+	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/get-compliance-opinion-pdf
+	 */
+	complianceOpinionPdf(id: string, options?: RequestOptions): Promise<Uint8Array> {
+		return this.#client.request({ method: "GET", path: `/v1/issuers/${encodeURIComponent(id)}/compliance_opinion/pdf`, as: "bytes" }, options);
+	}
+
+	/**
+	 * Ver la constancia de situación fiscal
+	 *
+	 * Lo que dice la última constancia generada: razón social, regímenes, código postal, estatus en el padrón e idCIF. No usa timbres.
+	 *
+	 * GET /v1/issuers/{id}/tax_status_certificate
+	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/get-tax-status-certificate
+	 */
+	taxStatusCertificate(id: string, options?: RequestOptions): Promise<TaxStatusCertificate> {
+		return this.#client.request({ method: "GET", path: `/v1/issuers/${encodeURIComponent(id)}/tax_status_certificate` }, options);
+	}
+
+	/**
+	 * Generar la constancia de situación fiscal en el SAT
+	 *
+	 * Genera una constancia nueva con la e.firma guardada del emisor. 1 timbre en producción, una vez cada 10 minutos; regresa si el SAT no contesta. En pruebas hace una con los datos del emisor.
+	 *
+	 * POST /v1/issuers/{id}/tax_status_certificate/refresh
+	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/refresh-tax-status-certificate
+	 */
+	refreshTaxStatusCertificate(id: string, options?: RequestOptions): Promise<SatRefresh> {
+		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}/tax_status_certificate/refresh`, idempotent: true }, options);
+	}
+
+	/**
+	 * Descargar el PDF de la constancia
+	 *
+	 * El PDF de la última constancia, como lo da el SAT. No usa timbres.
+	 *
+	 * GET /v1/issuers/{id}/tax_status_certificate/pdf
+	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/get-tax-status-certificate-pdf
+	 */
+	taxStatusCertificatePdf(id: string, options?: RequestOptions): Promise<Uint8Array> {
+		return this.#client.request({ method: "GET", path: `/v1/issuers/${encodeURIComponent(id)}/tax_status_certificate/pdf`, as: "bytes" }, options);
+	}
+
+	/**
+	 * Revisar el buzón tributario en el SAT
+	 *
+	 * Lee los avisos del buzón tributario del emisor ahora, con su e.firma guardada; nunca abre notificaciones (abrirlas firma el acuse y corren los plazos). 1 timbre en producción, una vez cada 10 minutos. En pruebas deja dos avisos de ejemplo.
+	 *
+	 * POST /v1/issuers/{id}/sat_mailbox/refresh
+	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/refresh-sat-mailbox
+	 */
+	refreshSatMailbox(id: string, options?: RequestOptions): Promise<SatRefresh> {
+		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}/sat_mailbox/refresh`, idempotent: true }, options);
+	}
+
+	/**
 	 * Ver el portal de autofactura de un emisor
 	 *
 	 * El portal de autofactura del emisor: su dirección, hasta cuándo se puede facturar un ticket y cómo se arma la factura global.
@@ -5828,6 +6520,74 @@ export class TaxIdsResource {
 	}
 }
 
+/** Sucursales: fiscalisto.branches. */
+export class BranchesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Crear una sucursal
+	 *
+	 * Otro lugar desde donde factura el emisor, con su propio código postal: sus facturas llevan ese CP en LugarExpedicion (y su zona horaria en la Fecha, y el IVA 8 % si es de la franja fronteriza), su dirección en el PDF y, si las da, sus propias series. Un CP que ya tiene otra sucursal contesta branch_exists; el del domicilio fiscal del emisor no es sucursal (es la Matriz). Hasta 200 por emisor.
+	 *
+	 * POST /v1/branches
+	 * @see https://fiscalisto.com/docs/api/referencia/sucursales/create-branch
+	 */
+	create(params: CreateBranchParams, options?: RequestOptions): Promise<Branch> {
+		return this.#client.request({ method: "POST", path: "/v1/branches", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar sucursales
+	 *
+	 * Las sucursales del emisor, las más recientes primero. Las archivadas solo con include_archived=true.
+	 *
+	 * GET /v1/branches
+	 * @see https://fiscalisto.com/docs/api/referencia/sucursales/list-branches
+	 */
+	list(params?: ListBranchesParams, options?: RequestOptions): List<Branch> {
+		return this.#client.list({ path: "/v1/branches", query: params }, options);
+	}
+
+	/**
+	 * Ver una sucursal
+	 *
+	 * Una sucursal del emisor.
+	 *
+	 * GET /v1/branches/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/sucursales/get-branch
+	 */
+	get(id: string, options?: RequestOptions): Promise<Branch> {
+		return this.#client.request({ method: "GET", path: `/v1/branches/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Actualizar una sucursal
+	 *
+	 * Cambia solo los campos que manda; una serie en null vuelve a la del emisor. archived: true la archiva (ya no se factura desde ella y sus facturas la siguen nombrando), false la restaura. El código postal de una sucursal que ya facturó no cambia: si se mudó, archívela y cree otra.
+	 *
+	 * POST /v1/branches/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/sucursales/update-branch
+	 */
+	update(id: string, params?: UpdateBranchParams, options?: RequestOptions): Promise<Branch> {
+		return this.#client.request({ method: "POST", path: `/v1/branches/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Borrar una sucursal
+	 *
+	 * Solo una que nunca facturó; con facturas contesta branch_has_invoices: archívela con archived: true.
+	 *
+	 * DELETE /v1/branches/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/sucursales/delete-branch
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/branches/${encodeURIComponent(id)}` }, options);
+	}
+}
+
 /** Clientes: fiscalisto.customers. */
 export class CustomersResource {
 	readonly #client: Client;
@@ -6017,6 +6777,190 @@ export class ProductsResource {
 	 */
 	delete(id: string, options?: RequestOptions): Promise<Deleted> {
 		return this.#client.request({ method: "DELETE", path: `/v1/products/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Ver las existencias de un producto
+	 *
+	 * Lo que hay del producto en cada almacén del emisor (también en 0), apartado por cotizaciones y disponible.
+	 *
+	 * GET /v1/products/{id}/stock
+	 * @see https://fiscalisto.com/docs/api/referencia/inventario/get-product-stock
+	 */
+	stock(id: string, options?: RequestOptions): Promise<StockLevelList> {
+		return this.#client.request({ method: "GET", path: `/v1/products/${encodeURIComponent(id)}/stock` }, options);
+	}
+}
+
+/** Cumplimiento SAT: fiscalisto.satMailboxMessages. */
+export class SatMailboxMessagesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar avisos del buzón tributario
+	 *
+	 * Los avisos que trajo del buzón del emisor, los más recientes primero. No usa timbres.
+	 *
+	 * GET /v1/sat_mailbox_messages
+	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/list-sat-mailbox-messages
+	 */
+	list(params?: ListSatMailboxMessagesParams, options?: RequestOptions): List<SatMailboxMessage> {
+		return this.#client.list({ path: "/v1/sat_mailbox_messages", query: params }, options);
+	}
+
+	/**
+	 * Ver un aviso del buzón tributario
+	 *
+	 * Un aviso del buzón, con su urgencia y si pide hacer algo.
+	 *
+	 * GET /v1/sat_mailbox_messages/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/get-sat-mailbox-message
+	 */
+	get(id: string, options?: RequestOptions): Promise<SatMailboxMessage> {
+		return this.#client.request({ method: "GET", path: `/v1/sat_mailbox_messages/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Cumplimiento SAT: fiscalisto.satFindings. */
+export class SatFindingsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar hallazgos en los CFDI
+	 *
+	 * Lo que Fiscalisto encontró en los CFDI del emisor (los suyos y los descargados del SAT) y nadie ha revisado, por tipo y del más grave al más leve: proveedores en la lista 69-B, CFDI cancelados, pagos en efectivo de más de $2,000, errores de CFDI 4.0. Todos en una página. No usa timbres.
+	 *
+	 * GET /v1/sat_findings
+	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/list-sat-findings
+	 */
+	list(params?: ListSatFindingsParams, options?: RequestOptions): Promise<SatFindingList> {
+		return this.#client.request({ method: "GET", path: "/v1/sat_findings", query: params }, options);
+	}
+}
+
+/** Inventario: fiscalisto.warehouses. */
+export class WarehousesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar almacenes
+	 *
+	 * Los almacenes del emisor, los más recientes primero: el de la Matriz y uno por sucursal se crean solos. Todos en una página.
+	 *
+	 * GET /v1/warehouses
+	 * @see https://fiscalisto.com/docs/api/referencia/inventario/list-warehouses
+	 */
+	list(params?: ListWarehousesParams, options?: RequestOptions): Promise<WarehouseList> {
+		return this.#client.request({ method: "GET", path: "/v1/warehouses", query: params }, options);
+	}
+
+	/**
+	 * Ver un almacén
+	 *
+	 * Un almacén del emisor.
+	 *
+	 * GET /v1/warehouses/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/inventario/get-warehouse
+	 */
+	get(id: string, options?: RequestOptions): Promise<Warehouse> {
+		return this.#client.request({ method: "GET", path: `/v1/warehouses/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Ver las existencias de un almacén
+	 *
+	 * Lo que hay de cada producto en el almacén, el producto más reciente primero. Solo los que tienen existencias, salvo con include_empty=true (todos los que llevan track_stock).
+	 *
+	 * GET /v1/warehouses/{id}/stock
+	 * @see https://fiscalisto.com/docs/api/referencia/inventario/list-warehouse-stock
+	 */
+	stock(id: string, params?: ListWarehouseStockParams, options?: RequestOptions): List<StockLevel> {
+		return this.#client.list({ path: `/v1/warehouses/${encodeURIComponent(id)}/stock`, query: params }, options);
+	}
+}
+
+/** Inventario: fiscalisto.stockMovements. */
+export class StockMovementsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar movimientos (kárdex)
+	 *
+	 * Cada entrada y salida de existencias, la más reciente primero: ventas (de sus facturas), compras, ajustes, traspasos y lo que deshizo una cancelación.
+	 *
+	 * GET /v1/stock_movements
+	 * @see https://fiscalisto.com/docs/api/referencia/inventario/list-stock-movements
+	 */
+	list(params?: ListStockMovementsParams, options?: RequestOptions): List<StockMovement> {
+		return this.#client.list({ path: "/v1/stock_movements", query: params }, options);
+	}
+
+	/**
+	 * Ver un movimiento
+	 *
+	 * Una entrada o salida de existencias, con lo que la causó (source).
+	 *
+	 * GET /v1/stock_movements/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/inventario/get-stock-movement
+	 */
+	get(id: string, options?: RequestOptions): Promise<StockMovement> {
+		return this.#client.request({ method: "GET", path: `/v1/stock_movements/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Inventario: fiscalisto.stockAdjustments. */
+export class StockAdjustmentsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ajustar existencias
+	 *
+	 * Mete o saca existencias de un almacén con su motivo: el inventario inicial, una merma, un robo, un sobrante. Las entradas valen su unit_cost (o el costo promedio), las salidas el costo del emisor (promedio o PEPS). Los productos deben llevar track_stock: true. Se aplica al momento (status applied).
+	 *
+	 * POST /v1/stock_adjustments
+	 * @see https://fiscalisto.com/docs/api/referencia/inventario/create-stock-adjustment
+	 */
+	create(params: CreateStockAdjustmentParams, options?: RequestOptions): Promise<StockAdjustment> {
+		return this.#client.request({ method: "POST", path: "/v1/stock_adjustments", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar ajustes
+	 *
+	 * Los ajustes del emisor, los más recientes primero.
+	 *
+	 * GET /v1/stock_adjustments
+	 * @see https://fiscalisto.com/docs/api/referencia/inventario/list-stock-adjustments
+	 */
+	list(params?: ListStockAdjustmentsParams, options?: RequestOptions): List<StockAdjustment> {
+		return this.#client.list({ path: "/v1/stock_adjustments", query: params }, options);
+	}
+
+	/**
+	 * Ver un ajuste
+	 *
+	 * Un ajuste de existencias, con sus líneas.
+	 *
+	 * GET /v1/stock_adjustments/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/inventario/get-stock-adjustment
+	 */
+	get(id: string, options?: RequestOptions): Promise<StockAdjustment> {
+		return this.#client.request({ method: "GET", path: `/v1/stock_adjustments/${encodeURIComponent(id)}` }, options);
 	}
 }
 
@@ -6855,9 +7799,15 @@ export class FiscalistoApi extends Core {
 	readonly payrollReceipts = new PayrollReceiptsResource(this);
 	readonly invoiceBatches = new InvoiceBatchesResource(this);
 	readonly taxIds = new TaxIdsResource(this);
+	readonly branches = new BranchesResource(this);
 	readonly customers = new CustomersResource(this);
 	readonly customerDataRequests = new CustomerDataRequestsResource(this);
 	readonly products = new ProductsResource(this);
+	readonly satMailboxMessages = new SatMailboxMessagesResource(this);
+	readonly satFindings = new SatFindingsResource(this);
+	readonly warehouses = new WarehousesResource(this);
+	readonly stockMovements = new StockMovementsResource(this);
+	readonly stockAdjustments = new StockAdjustmentsResource(this);
 	readonly satCatalogs = new SatCatalogsResource(this);
 	readonly satLists = new SatListsResource(this);
 	readonly satDownloads = new SatDownloadsResource(this);

@@ -13,6 +13,10 @@ export const ErrorCode = {
 	BatchInvalid: "batch_invalid",
 	/** El cuerpo pasa de 10 MB. Divida el trabajo en varios lotes. */
 	BodyTooLarge: "body_too_large",
+	/** El emisor ya tiene una sucursal con ese código postal (cada una lleva el suyo); el mensaje dice cuál. Si está archivada, restáurela con archived: false. */
+	BranchExists: "branch_exists",
+	/** La sucursal ya facturó, así que no se borra: archívela con archived: true y sus facturas la siguen nombrando. */
+	BranchHasInvoices: "branch_has_invoices",
 	/** La API se llama desde su servidor, nunca desde el navegador: la llave secreta quedaría expuesta. */
 	BrowserNotSupported: "browser_not_supported",
 	/** El SAT no aceptó la solicitud de cancelación; message dice por qué. */
@@ -61,6 +65,8 @@ export const ErrorCode = {
 	InvalidJson: "invalid_json",
 	/** La respuesta no se pudo leer (api_error): no es el JSON de la API, sino la página de un proxy o de un portal de la red. status dice qué contestó. */
 	InvalidResponse: "invalid_response",
+	/** Inventario no lo permite: el mensaje dice por qué (un lote que no es de ese producto, otro ajuste del mismo almacén en curso). */
+	InventoryRefused: "inventory_refused",
 	/** La factura no cumple una regla del SAT que Fiscalisto revisa antes de mandarla al PAC (uso contra régimen, totales, complementos…). No se usó ningún timbre. */
 	InvoiceInvalid: "invoice_invalid",
 	/** Solo una factura de ingreso PUE vigente se marca pagada o por cobrar; una PPD se paga con su complemento de pago (type P). */
