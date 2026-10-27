@@ -15,6 +15,7 @@ import { homedir, hostname } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
+import { AGENT_SKILL } from "./agent-guide.js";
 import { FiscalistoError, VERSION } from "./core.js";
 import { Fiscalisto } from "./index.js";
 import { createMock } from "./mock.js";
@@ -557,14 +558,18 @@ const AGENTS_SECTION = `
 ## Facturación (Fiscalisto)
 
 Facturas electrónicas (CFDI 4.0) con la API de Fiscalisto. La llave está en \`FISCALISTO_API_KEY\`
-(\`.env\`; \`fk_test_\` timbra en pruebas sin costo). Documentación completa para agentes:
-https://fiscalisto.com/docs/api/llms.txt y la referencia en https://api.fiscalisto.com/v1/openapi.json.
+(\`.env\`; \`fk_test_\` timbra en pruebas sin costo). La guía de integración completa está en
+\`.claude/skills/fiscalisto/SKILL.md\` (también en https://fiscalisto.com/docs/api/SKILL.md); el índice de la
+documentación en https://fiscalisto.com/docs/api/llms.txt y el servidor MCP de la documentación, sin llave,
+en https://fiscalisto.com/docs/api/mcp (empiece con get_started).
 
 - Use el SDK \`fiscalisto\` (npm, PyPI, Packagist, Go, Maven, NuGet). Cada timbrado lleva una Idempotency-Key
   (el id del pedido): repetirla nunca timbra dos veces.
 - El cliente va con su RFC, nombre, régimen y código postal exactamente como en su constancia.
+- Llame a la API solo desde el servidor; verifique cada webhook con \`verifyWebhook\` y su secreto \`whsec_\`.
 - Para probar rechazos del SAT use los RFC de prueba (NOM010101FK9 y otros, ver "Pruebas y producción").
-- El CLI hace todo desde la terminal: \`npx fiscalisto --help\` (\`--json\` para leerlo).
+- Sin internet o sin llave: \`npx fiscalisto mock\`. El CLI hace todo desde la terminal: \`npx fiscalisto --help\`
+  (\`--json\` para leerlo).
 `;
 
 async function init(args: string[], g: Globals) {
@@ -669,6 +674,12 @@ async function init(args: string[], g: Globals) {
 		if (!text.includes("## Facturación (Fiscalisto)")) {
 			await appendFile(agentsPath, AGENTS_SECTION);
 			done.push(`${agentsPath.slice(dir.length + 1)}: cómo facturar, para su agente`);
+		}
+		const skillPath = join(dir, ".claude", "skills", "fiscalisto", "SKILL.md");
+		if (!existsSync(skillPath)) {
+			await mkdir(dirname(skillPath), { recursive: true });
+			await writeFile(skillPath, AGENT_SKILL);
+			done.push(".claude/skills/fiscalisto/SKILL.md: la guía completa, para su agente");
 		}
 	}
 
@@ -1502,7 +1513,7 @@ const HELP = `${bold("fiscalisto")} ${dim(VERSION)} · facturación electrónica
 
 ${bold("Empezar")}
   login [--live] [--key fk_…]   Inicia sesión por el navegador y guarda su llave de pruebas
-  init [--lang node|python|php|go|dotnet|java] Deja el SDK, la llave en .env y un ejemplo en su proyecto (--agents: AGENTS.md)
+  init [--lang node|python|php|go|dotnet|java] Deja el SDK, la llave en .env y un ejemplo en su proyecto (--agents: AGENTS.md y la guía para su agente)
   whoami                        Cuenta, modo, timbres y emisores
   logout                        Olvida las llaves en esta computadora
 

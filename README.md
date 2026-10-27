@@ -30,6 +30,18 @@ const invoice = await fiscalisto.invoices.create(
 console.log(invoice.uuid, invoice.total);
 ```
 
+## Con agentes de IA
+
+Para que Claude Code, Cursor, Codex u otro agente integre Fiscalisto, conecte el servidor MCP de la documentación (sin llave) y pídale que empiece con `get_started`:
+
+`npx fiscalisto init --agents` deja además la guía en `.claude/skills/fiscalisto/SKILL.md` y una sección en su `AGENTS.md`. Para conectar la documentación:
+
+```bash
+claude mcp add --transport http fiscalisto-docs https://fiscalisto.com/docs/api/mcp
+```
+
+La guía de integración en una página está en [fiscalisto.com/docs/api/SKILL.md](https://fiscalisto.com/docs/api/SKILL.md) y el índice de la documentación para agentes en [llms.txt](https://fiscalisto.com/docs/api/llms.txt). Otros clientes y más: [fiscalisto.com/docs/api/agentes](https://fiscalisto.com/docs/api/agentes).
+
 ## CLI
 
 El mismo paquete trae el CLI: `npx fiscalisto login` inicia sesión por el navegador, `npx fiscalisto init` deja el SDK y su llave en su proyecto, y `npx fiscalisto listen --forward-to http://localhost:3000/webhooks` le manda los webhooks de pruebas a su computadora. Con `--json`, para agentes y scripts. Vea [fiscalisto.com/docs/api/cli](https://fiscalisto.com/docs/api/cli).
