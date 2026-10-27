@@ -419,7 +419,7 @@ export interface Retention {
 	internal_folio: string | null;
 	/** Fecha de emisión (Fecha), hora de la Ciudad de México. */
 	date: string | null;
-	/** Clave de la retención (CveRetenc), c_CveRetenc: 01 servicios profesionales, 05 arrendamiento, 14 dividendos, 16 intereses, 18 pagos al extranjero… */
+	/** Clave de la retención (CveRetenc), c_CveRetenc: 01 servicios profesionales, 05 arrendamiento, 14 dividendos, 16 intereses, 18 pagos al extranjero… Las claves 14, 16, 17 y 18 a 24 llevan su complemento (dividends, interest, trust_lease, foreign_payment, share_sale, prize, trust, retirement_plan, mortgage_interest, financial_derivatives); la 26 (plataformas tecnológicas) aún no se puede emitir. */
 	code: string;
 	/** Descripción de la retención (DescRetenc). */
 	description: string | null;
@@ -473,6 +473,20 @@ export interface Retention {
 	interest?: Record<string, unknown>;
 	/** Complemento de pagos a extranjeros. */
 	foreign_payment?: Record<string, unknown>;
+	/** Complemento de arrendamiento en fideicomiso (Arrendamientoenfideicomiso 1.0), obligatorio con code 17. */
+	trust_lease?: Record<string, unknown>;
+	/** Complemento de enajenación de acciones u operaciones de valores (EnajenaciondeAcciones 1.0), obligatorio con code 19. */
+	share_sale?: Record<string, unknown>;
+	/** Complemento de premios (Premios 1.0), obligatorio con code 20. Sus montos son los de totals. */
+	prize?: Record<string, unknown>;
+	/** Complemento de fideicomisos que no realizan actividades empresariales (Fideicomisonoempresarial 1.0), obligatorio con code 21. */
+	trust?: Record<string, unknown>;
+	/** Complemento de planes personales de retiro (Planesderetiro 1.1), obligatorio con code 22: lo del año anterior. */
+	retirement_plan?: Record<string, unknown>;
+	/** Complemento de intereses reales deducibles por créditos hipotecarios (Intereseshipotecarios 1.0), obligatorio con code 23. */
+	mortgage_interest?: Record<string, unknown>;
+	/** Complemento de operaciones financieras derivadas de capital (Operacionesconderivados 1.0), obligatorio con code 24. */
+	financial_derivatives?: Record<string, unknown>;
 	/** La cancelación, si se pidió: estado, motivo, sustituto y cuándo. */
 	cancellation: {
 		/** pending (espera la respuesta del cliente), accepted (cancelada), rejected (el cliente la rechazó) o lapsed (venció; puede pedirla otra vez). */
@@ -1542,9 +1556,9 @@ export interface TaxStatusCertificate {
 	legal_name: string | null;
 	/** Sus regímenes fiscales (clave de c_RegimenFiscal y nombre). */
 	tax_systems: {
-		/** Clave de la retención (CveRetenc), c_CveRetenc: 01 servicios profesionales, 05 arrendamiento, 14 dividendos, 16 intereses, 18 pagos al extranjero… */
+		/** Clave del régimen fiscal (c_RegimenFiscal): 601, 612, 626… */
 		code: string;
-		/** Nombre. */
+		/** Nombre del régimen fiscal, como lo escribe el SAT. */
 		name: string;
 	}[];
 	/** El código postal de su domicilio fiscal, o null. */
@@ -4092,7 +4106,7 @@ export type ApplyAdvanceParams = {
 export interface CreateRetentionParams {
 	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
 	issuer?: string;
-	/** Clave de la retención (CveRetenc), c_CveRetenc: 01 servicios profesionales, 05 arrendamiento, 14 dividendos, 16 intereses, 18 pagos al extranjero… */
+	/** Clave de la retención (CveRetenc), c_CveRetenc: 01 servicios profesionales, 05 arrendamiento, 14 dividendos, 16 intereses, 18 pagos al extranjero… Las claves 14, 16, 17 y 18 a 24 llevan su complemento (dividends, interest, trust_lease, foreign_payment, share_sale, prize, trust, retirement_plan, mortgage_interest, financial_derivatives); la 26 (plataformas tecnológicas) aún no se puede emitir. */
 	code: string;
 	/** Descripción de la retención (DescRetenc); obligatoria con la clave 25 (otro tipo). */
 	description?: string | null;
@@ -4190,6 +4204,125 @@ export interface CreateRetentionParams {
 		beneficiary_curp?: string | null;
 		/** Nombre o razón social del beneficiario (NomDenRazSocB). */
 		beneficiary_name?: string | null;
+	};
+	/** Complemento de arrendamiento en fideicomiso (Arrendamientoenfideicomiso 1.0), obligatorio con code 17. */
+	trust_lease?: {
+		/** Pago provisional que el fiduciario efectuó al arrendador en el periodo (PagProvEfecPorFiduc). */
+		trustee_payment: number;
+		/** Rendimientos del periodo por el arrendamiento de los bienes (RendimFideicom). */
+		income: number;
+		/** Deducciones del arrendamiento en el periodo (DeduccCorresp). */
+		deductions: number;
+		/** Monto total retenido del arrendamiento en el periodo (MontTotRet). */
+		withheld_total?: number | null;
+		/** Resultado fiscal distribuido por FIBRAS (MontResFiscDistFibras). */
+		fibra_result?: number | null;
+		/** Monto de otros conceptos distribuidos (MontOtrosConceptDistr). */
+		other_amount?: number | null;
+		/** Qué son los otros conceptos distribuidos (DescrMontOtrosConceptDistr); obligatoria con other_amount. */
+		other_description?: string | null;
+	};
+	/** Complemento de enajenación de acciones u operaciones de valores (EnajenaciondeAcciones 1.0), obligatorio con code 19. */
+	share_sale?: {
+		/** Descripción del contrato de intermediación (ContratoIntermediacion). */
+		contract: string;
+		/** Ganancia obtenida (Ganancia). */
+		gain: number;
+		/** Pérdida (Perdida). */
+		loss: number;
+	};
+	/** Complemento de premios (Premios 1.0), obligatorio con code 20. Sus montos son los de totals. */
+	prize?: {
+		/** Entidad federativa donde se paga el premio (EntidadFederativa), c_EntidadesFederativas de catRetenciones: 01 Aguascalientes … 09 Ciudad de México … 32 Zacatecas. */
+		state: string;
+	};
+	/** Complemento de fideicomisos que no realizan actividades empresariales (Fideicomisonoempresarial 1.0), obligatorio con code 21. */
+	trust?: {
+		/** Ingresos o entradas del fideicomiso en el periodo (IngresosOEntradas) y la parte del receptor. */
+		income: {
+			/** Concepto de los ingresos (IntegracIngresos/Concepto), hasta 100 caracteres. */
+			concept: string;
+			/** Ingresos totales del fideicomiso en el periodo (MontTotEntradasPeriodo). */
+			total: number;
+			/** Parte proporcional de los ingresos acumulables del receptor (PartPropAcumDelFideicom). */
+			share: number;
+			/** Proporción de participación del receptor según el contrato (PropDelMontTot). */
+			proportion: number;
+		};
+		/** Deducciones o salidas del fideicomiso en el periodo (DeduccOSalidas) y la parte del receptor. */
+		deductions: {
+			/** Concepto de los egresos (IntegracEgresos/ConceptoS), hasta 100 caracteres. */
+			concept: string;
+			/** Egresos totales del fideicomiso en el periodo (MontTotEgresPeriodo). */
+			total: number;
+			/** Parte proporcional de las deducciones autorizadas del receptor (PartPropDelFideicom). */
+			share: number;
+			/** Proporción de participación del receptor según el contrato (PropDelMontTot). */
+			proportion: number;
+		};
+		/** Retención efectuada al fideicomiso (RetEfectFideicomiso). */
+		withholding: {
+			/** Monto de la retención (MontRetRelPagFideic). */
+			amount: number;
+			/** Descripción de la retención (DescRetRelPagFideic), hasta 100 caracteres. */
+			description: string;
+		};
+	};
+	/** Complemento de planes personales de retiro (Planesderetiro 1.1), obligatorio con code 22: lo del año anterior. */
+	retirement_plan?: {
+		/** true si el plan es del sistema financiero (SistemaFinanc). */
+		financial_system: boolean;
+		/** Aportaciones actualizadas del año anterior (MontTotAportAnioInmAnterior). */
+		contributions_last_year?: number | null;
+		/** Intereses reales devengados o percibidos el año anterior (MontIntRealesDevengAniooInmAnt). */
+		real_interest: number;
+		/** true si hubo retiros antes de cumplir los requisitos de permanencia (HuboRetirosAnioInmAntPer). */
+		early_withdrawals: boolean;
+		/** Monto retirado antes de cumplir la permanencia (MontTotRetiradoAnioInmAntPer); obligatorio con early_withdrawals. */
+		early_withdrawn?: number | null;
+		/** Monto exento de lo retirado el año anterior (MontTotExentRetiradoAnioInmAnt). */
+		exempt_withdrawn?: number | null;
+		/** Excedente del monto exento de lo retirado el año anterior (MontTotExedenteAnioInmAnt). */
+		excess_withdrawn?: number | null;
+		/** true si hubo retiros el año anterior (HuboRetirosAnioInmAnt). */
+		withdrawals: boolean;
+		/** Monto retirado el año anterior (MontTotRetiradoAnioInmAnt); obligatorio con withdrawals. */
+		withdrawn?: number | null;
+		/** Número de referencia, contrato o cuenta del cliente (NumReferencia). */
+		reference?: string | null;
+		/** Aportaciones o depósitos (AportacionesODepositos), uno por tipo y hasta tres. */
+		contributions?: {
+			/** Tipo de aportación (TipoAportacionODeposito): a (art. 151 fracc. V LISR), b (art. 185 LISR) o c (art. 258 RLISR, con trustee_rfc). */
+			type: "a" | "b" | "c";
+			/** Monto de la aportación o depósito (MontAportODep). */
+			amount: number;
+			/** RFC de la fiduciaria que administra el plan (RFCFiduciaria); obligatorio con el tipo c. */
+			trustee_rfc?: string | null;
+		}[];
+	};
+	/** Complemento de intereses reales deducibles por créditos hipotecarios (Intereseshipotecarios 1.0), obligatorio con code 23. */
+	mortgage_interest?: {
+		/** true si el crédito lo otorgó una institución financiera (CreditoDeInstFinanc). */
+		financial_institution: boolean;
+		/** Saldo insoluto al 31 de diciembre del año anterior, o a la fecha del contrato si es de este año (SaldoInsoluto). */
+		outstanding_balance: number;
+		/** Proporción deducible del crédito sobre los intereses reales devengados y pagados (PropDeducDelCredit). */
+		deductible_proportion?: number | null;
+		/** Intereses nominales devengados (MontTotIntNominalesDev). */
+		nominal_accrued?: number | null;
+		/** Intereses nominales devengados y pagados (MontTotIntNominalesDevYPag). */
+		nominal_accrued_paid?: number | null;
+		/** Intereses reales pagados deducibles (MontTotIntRealPagDeduc). */
+		real_deductible?: number | null;
+		/** Número de contrato del crédito hipotecario (NumContrato). */
+		contract?: string | null;
+	};
+	/** Complemento de operaciones financieras derivadas de capital (Operacionesconderivados 1.0), obligatorio con code 24. */
+	financial_derivatives?: {
+		/** Ganancia acumulable (MontGanAcum). */
+		gain: number;
+		/** Pérdida deducible (MontPerdDed). */
+		loss: number;
 	};
 	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
 	send_email?: boolean;
