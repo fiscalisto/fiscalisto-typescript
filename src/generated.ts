@@ -2052,9 +2052,11 @@ export interface CrossChecks {
 			status: "matches" | "differs" | "not_filed" | "unreadable";
 			/** Lo declarado, en pesos; null si no hay declaración o no se pudo leer. */
 			declared: number | null;
+			/** De declared, lo que la propia declaración dice que no salió de facturas: en isr_income los ingresos nominales adicionales (cobrado sin factura, intereses) y en vat_charged el IVA al 16% por encima de la precarga del SAT. Se compara aparte; 0 si no hay. */
+			declared_without_cfdi: number;
 			/** Lo que dicen los CFDI del mes, con los mismos cálculos de Impuestos. */
 			invoiced: number;
-			/** declared menos invoiced; null si declared es null. */
+			/** declared menos declared_without_cfdi menos invoiced; null si declared es null. */
 			difference: number | null;
 			/** El número de operación de la declaración de donde salió la cifra. */
 			operation_number: string | null;
@@ -2114,9 +2116,11 @@ export interface CrossCheckCfdi {
 	status: "matches" | "differs" | "not_filed" | "unreadable";
 	/** Lo declarado, en pesos; null si no hay declaración o no se pudo leer. */
 	declared: number | null;
+	/** De declared, lo que la propia declaración dice que no salió de facturas (ingresos nominales adicionales en isr_income, IVA al 16% sobre la precarga del SAT en vat_charged); 0 si no hay. */
+	declared_without_cfdi: number;
 	/** Lo que dicen los CFDI del mes: la suma de cfdi más adjustment. */
 	invoiced: number;
-	/** declared menos invoiced; null si declared es null. */
+	/** declared menos declared_without_cfdi menos invoiced; null si declared es null. */
 	difference: number | null;
 	/** El número de operación de la declaración de donde salió la cifra. */
 	operation_number: string | null;
@@ -2467,7 +2471,7 @@ export interface WebhookEndpoint {
 	url: string;
 	/** Para qué es, para usted. */
 	description: string | null;
-	/** Eventos que quiere recibir, o ["*"] para todos (por omisión). Ver la lista en Webhooks. */
+	/** Eventos que quiere recibir, o ["*"] para todos (por omisión). La lista con cuándo llega cada uno: [Tipos de evento](https://fiscalisto.com/docs/api/webhooks#tipos-de-evento). */
 	events: string[];
 	/** enabled: entregando. failing: sus entregas fallan (se apaga tras 5 días así). disabled: apagado. */
 	status: "enabled" | "failing" | "disabled";
@@ -5491,7 +5495,7 @@ export interface SendQuoteParams {
 export interface CreateWebhookEndpointParams {
 	/** Dirección https de su servidor que recibe los avisos. */
 	url: string;
-	/** Eventos que quiere recibir, o ["*"] para todos (por omisión). Ver la lista en Webhooks. */
+	/** Eventos que quiere recibir, o ["*"] para todos (por omisión). La lista con cuándo llega cada uno: [Tipos de evento](https://fiscalisto.com/docs/api/webhooks#tipos-de-evento). */
 	events?: string[] | null;
 	/** Para qué es, para usted (no se manda en los eventos). */
 	description?: string | null;
@@ -5510,7 +5514,7 @@ export interface ListWebhookEndpointsParams {
 export interface UpdateWebhookEndpointParams {
 	/** Dirección https de su servidor que recibe los avisos. */
 	url?: string;
-	/** Eventos que quiere recibir, o ["*"] para todos (por omisión). Ver la lista en Webhooks. */
+	/** Eventos que quiere recibir, o ["*"] para todos (por omisión). La lista con cuándo llega cada uno: [Tipos de evento](https://fiscalisto.com/docs/api/webhooks#tipos-de-evento). */
 	events?: string[] | null;
 	/** Para qué es, para usted (no se manda en los eventos). */
 	description?: string | null;
