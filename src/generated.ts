@@ -873,8 +873,10 @@ export interface SatListCheck {
 	name: string | null;
 	/** true si el RFC aparece en alguna lista, aunque haya desvirtuado. */
 	listed: boolean;
-	/** high: 69-B o 69-B Bis como presunto o definitivo (el SAT dice que simula operaciones; sus facturas no se pueden deducir). medium: una lista del art. 69 (no localizado, créditos firmes o exigibles, cancelados, sentencias, CSD sin efectos). none: no aparece, o ya desvirtuó o tiene sentencia favorable. */
-	risk: "high" | "medium" | "none";
+	/** high: 69-B o 69-B Bis como presunto o definitivo (el SAT dice que simula operaciones; sus facturas no se pueden deducir). medium: una lista del art. 69 (no localizado, créditos firmes o exigibles, cancelados, sentencias, CSD sin efectos). none: no aparece en ninguna, con todas las listas al día, o ya desvirtuó o tiene sentencia favorable. unknown: no aparece, pero alguna lista no se pudo actualizar (vea lists_unavailable): no lo dé por limpio. */
+	risk: "high" | "medium" | "none" | "unknown";
+	/** true si todas las listas se leyeron con éxito en los últimos dos días. Con false, que no aparezca no significa que esté limpio. */
+	verified: boolean;
 	/** Cada lista en que aparece; vacía si no aparece en ninguna. */
 	lists: {
 		/** 69b: art. 69-B (operaciones simuladas). 69b_bis: art. 69-B Bis (pérdidas fiscales). 69: art. 69 (no localizados, adeudos, cancelados). */
@@ -892,6 +894,8 @@ export interface SatListCheck {
 	}[];
 	/** Cuándo se actualizaron las listas por última vez (cada día a las 00:00 de la Ciudad de México). */
 	lists_updated_at: string | null;
+	/** Las listas que no se pudieron confirmar (su última actualización falló, falta o tiene más de dos días). Vacía si todas están al día. */
+	lists_unavailable: string[];
 }
 
 /** Si los datos fiscales de un cliente van a pasar el SAT. */
@@ -5264,7 +5268,7 @@ export interface CreateRecurringInvoiceParams {
 		/** La zona de esa hora. Por omisión America/Mexico_City. */
 		time_zone?: "America/Mexico_City" | "America/Cancun" | "America/Mazatlan" | "America/Hermosillo" | "America/Tijuana" | "America/Ciudad_Juarez";
 	};
-	/** La factura que se repite: el cuerpo de POST /v1/invoices, sin issuer, folio, date, global ni metadata. En description puede usar {mes}, {mes anterior}, {mes siguiente}, {año}, {año anterior}, {año siguiente} y {periodo}: cada factura los llena con su fecha. */
+	/** La factura que se repite: el cuerpo de POST /v1/invoices, sin issuer, folio, date, global ni metadata. En description puede usar {mes}, {mes anterior}, {mes siguiente}, {año}, {año anterior}, {año siguiente} y {periodo}: cada factura los llena con su fecha. Como se escriben es como salen: {mes} «noviembre», {Mes} «Noviembre», {MES} «NOVIEMBRE». */
 	invoice: InvoiceCreate;
 	/** Mandar cada factura al correo del cliente (customer.email o el del catálogo). Por omisión true. */
 	send_email?: boolean;
