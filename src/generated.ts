@@ -478,6 +478,25 @@ export interface Invoice {
 		cc: string | null;
 		/** Cuándo se envió. */
 		sent_at: string | null;
+		/** Lo que pasó con el último envío: el peor de sus destinatarios (bounced o complained pesan más que opened o delivered). sent hasta que el servidor del cliente conteste. */
+		status: "sent" | "delayed" | "delivered" | "opened" | "bounced" | "complained";
+		/** Cada dirección del envío (para y copia), con su entrega. */
+		recipients: {
+			/** La dirección de correo del destinatario. */
+			address: string;
+			/** Estado del objeto. */
+			status: "sent" | "delayed" | "delivered" | "opened" | "bounced" | "complained";
+			/** Cuando el servidor del destinatario lo aceptó. */
+			delivered_at: string | null;
+			/** La primera vez que se abrió (aproximado: algunos correos cargan las imágenes solos o no las cargan). */
+			opened_at: string | null;
+			/** Cuando rebotó. */
+			bounced_at: string | null;
+			/** Por qué rebotó, en español: «buzón no existe», «buzón lleno»… */
+			bounce_reason: string | null;
+			/** Cuando el destinatario lo marcó como spam. */
+			complained_at: string | null;
+		}[];
 	} | null;
 	/** Por qué el SAT o el PAC no lo aceptaron: mensaje, código del SAT y texto original. */
 	error: {
@@ -2790,7 +2809,7 @@ export interface WebhookTest {
 }
 
 /** Lo que puede pasar: el tipo de cada evento. */
-export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready";
+export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready";
 
 /** Algo que pasó en su cuenta: el objeto completo como quedó. Se manda a sus webhooks firmado (Standard Webhooks). */
 export interface EventBase<T extends EventType = EventType, O = unknown> {
@@ -2819,6 +2838,8 @@ export type Event =
 	| EventBase<"invoice.cancellation_rejected", Invoice>
 	| EventBase<"invoice.paid", Invoice>
 	| EventBase<"invoice.partially_paid", Invoice>
+	| EventBase<"invoice.email_bounced", Invoice>
+	| EventBase<"invoice.email_complained", Invoice>
 	| EventBase<"retention.stamped", Retention>
 	| EventBase<"retention.failed", Retention>
 	| EventBase<"retention.canceled", Retention>
@@ -6222,7 +6243,7 @@ export interface RollWebhookSecretParams {
 
 export interface TestWebhookEndpointParams {
 	/** El evento a mandar. Por omisión invoice.stamped. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready";
 }
 
 /** Los parámetros de GET /v1/events. */
@@ -6232,7 +6253,7 @@ export interface ListEventsParams {
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
 	/** Solo de este tipo (invoice.stamped), o todos los de un recurso con un comodín (invoice.*). */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready" | "invoice.*" | "invoice_batch.*" | "payroll_batch.*" | "recurring_invoice.*" | "quote.*" | "ticket.*" | "retention.*" | "customer_data_request.*" | "sat_download.*" | "sat_declaration.*" | "issuer.*" | "balance.*" | "test_clock.*";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready" | "invoice.*" | "invoice_batch.*" | "payroll_batch.*" | "recurring_invoice.*" | "quote.*" | "ticket.*" | "retention.*" | "customer_data_request.*" | "sat_download.*" | "sat_declaration.*" | "issuer.*" | "balance.*" | "test_clock.*";
 	/** Solo los de este objeto (inv_…, ret_…, bat_…). */
 	object?: string;
 	/** false: los que algún webhook no recibió (su último intento falló). true: los que recibieron todos los webhooks a los que se mandaron. */
