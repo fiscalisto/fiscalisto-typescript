@@ -1145,12 +1145,14 @@ async function satLists(args: string[], g: Globals) {
  * «fiscalisto payroll preview|create --data @recibo.json [--external]»: a recibo de nómina.
  * Without --external Fiscalisto calculates it from the employee (emp_…) and the period; with it,
  * the amounts your payroll system calculated are checked and stamped exactly as sent.
+ * «fiscalisto payroll batch --data @nomina.json»: a whole payroll run (POST /v1/payroll_batches).
  */
 async function payroll(args: string[], g: Globals) {
 	const [sub, ...rest] = args;
+	if (sub === "batch") return payrollBatch(rest, g);
 	if (sub !== "preview" && sub !== "create")
 		throw new UsageError(
-			"Uso: fiscalisto payroll preview|create --data @recibo.json [--external] [--idempotency-key …]",
+			"Uso: fiscalisto payroll preview|create --data @recibo.json [--external] [--idempotency-key …]\n     fiscalisto payroll batch --data @nomina.json [--idempotency-key …]",
 		);
 	const { values } = parseArgs({
 		args: rest,
@@ -1210,6 +1212,34 @@ async function payroll(args: string[], g: Globals) {
 	});
 }
 
+/** A whole payroll run in one request: stamped in the background, each employee's result. */
+async function payrollBatch(args: string[], g: Globals) {
+	const { values } = parseArgs({
+		args,
+		options: {
+			data: { type: "string", short: "d" },
+			"idempotency-key": { type: "string" },
+		},
+	});
+	const body = await readData(values.data);
+	if (!body)
+		throw new UsageError(
+			'Pase --data con el lote (JSON, @archivo o -): {"period": {…}, "receipts": [{"employee": "emp_…"}, …]} o {"external_receipts": [{…}, …]}.',
+		);
+	const api = await client(g);
+	await confirmLive(api, g, "Timbrar");
+	const batch = await api.request<{ id: string; total: number; status: string }>(
+		{ method: "POST", path: "/v1/payroll_batches", body, idempotent: true },
+		{ idempotencyKey: values["idempotency-key"] },
+	);
+	return print(batch, () => {
+		line(
+			`${green("✓")} ${bold(batch.id)}: ${batch.total} recibos, timbrándose en segundo plano.`,
+		);
+		line(dim(`  Resultado de cada empleado: fiscalisto api /v1/payroll_batches/${batch.id}`));
+	});
+}
+
 // ── api ────────────────────────────────────────────────────────────────────
 
 async function rawApi(args: string[], g: Globals) {
@@ -1227,7 +1257,7 @@ async function rawApi(args: string[], g: Globals) {
 	const body = await readData(values.data);
 	const stamps =
 		method === "POST" &&
-		/^\/v1\/(invoices|payments|credit_notes|advances|retentions|payroll_receipts(\/external)?|invoice_batches)(\/[^/]+\/substitute)?$/.test(
+		/^\/v1\/(invoices|payments|credit_notes|advances|retentions|payroll_receipts(\/external)?|invoice_batches|payroll_batches)(\/[^/]+\/substitute)?$/.test(
 			path.split("?")[0] ?? "",
 		);
 	if (stamps) await confirmLive(api, g, "Timbrar");
@@ -1598,6 +1628,7 @@ ${bold("Facturas")}
 ${bold("Nómina")}
   payroll preview|create --data @recibo.json             Fiscalisto calcula el recibo del empleado (emp_…)
   payroll preview|create --external --data @recibo.json  Timbra tal cual los importes que calculó su sistema
+  payroll batch --data @nomina.json                      Toda la nómina (hasta 1,000 recibos) en una solicitud
 
 ${bold("Webhooks")}
   listen [--forward-to URL]     Reenvía los eventos a su computadora, firmados

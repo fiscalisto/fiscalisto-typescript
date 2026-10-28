@@ -1058,6 +1058,64 @@ export interface InvoiceBatch {
 	}[];
 }
 
+/** Una nómina completa (hasta 1,000 recibos) timbrada en segundo plano. */
+export interface PayrollBatch {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "payroll_batch";
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Nombre del lote, para usted. */
+	name: string;
+	/** fiscalisto: Fiscalisto calculó cada recibo (receipts); external: se timbraron los importes de su sistema (external_receipts). */
+	calculation: "fiscalisto" | "external";
+	/** processing: timbrando. completed: ya no queda ningún recibo por timbrar. */
+	status: "processing" | "completed";
+	/** Cuántos recibos tiene el lote. */
+	total: number;
+	/** Cuántos recibos se timbraron. */
+	stamped: number;
+	/** Cuántos no se timbraron (cada uno con su error). */
+	failed: number;
+	/** Cuántos faltan por timbrar. */
+	processing: number;
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string | null;
+	/** Cuándo terminó. */
+	completed_at: string | null;
+	/** El recibo de cada empleado, en el orden en que los mandó (no viene en listas). */
+	receipts?: {
+		/** Su posición en receipts (o external_receipts), desde 0. */
+		index: number;
+		/** Su identificador de esta factura (su número de pedido), hasta 100 caracteres. */
+		reference: string | null;
+		/** El empleado (emp_…), cuando Fiscalisto calculó el recibo. */
+		employee: string | null;
+		/** El RFC del empleado. */
+		tax_id: string;
+		/** Nombre. */
+		name: string | null;
+		/** Estado del objeto. */
+		status: "processing" | "valid" | "failed";
+		/** El recibo (inv_…, una factura tipo N); también el que el SAT rechazó. */
+		invoice: string | null;
+		/** Folio fiscal que asigna el SAT (UUID del Timbre Fiscal Digital), en mayúsculas. */
+		uuid: string | null;
+		/** El neto del recibo timbrado. */
+		total: number | null;
+		/** Por qué no se timbró este recibo: su código y su mensaje. */
+		error: {
+			/** payroll_invalid, payroll_period_overlap, payroll_receipt_exists, invoice_rejected, invoice_invalid, insufficient_balance… */
+			code: string;
+			/** Qué pasó y cómo corregirlo, para una persona. */
+			message: string;
+		} | null;
+	}[];
+}
+
 /** Una clave de un catálogo del SAT. */
 export interface SatCatalogEntry {
 	/** La clave en el catálogo del SAT. */
@@ -2732,7 +2790,7 @@ export interface WebhookTest {
 }
 
 /** Lo que puede pasar: el tipo de cada evento. */
-export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready";
+export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready";
 
 /** Algo que pasó en su cuenta: el objeto completo como quedó. Se manda a sus webhooks firmado (Standard Webhooks). */
 export interface EventBase<T extends EventType = EventType, O = unknown> {
@@ -2740,7 +2798,7 @@ export interface EventBase<T extends EventType = EventType, O = unknown> {
 	id: string;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "event";
-	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, invoice.paid, invoice.partially_paid, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, sat_declaration.created, sat_declaration.updated, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, issuer.ready, balance.low o test_clock.ready. */
+	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, invoice.paid, invoice.partially_paid, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, payroll_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, sat_declaration.created, sat_declaration.updated, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, issuer.ready, balance.low o test_clock.ready. */
 	type: T;
 	/** Versión de la API con que se armó el objeto. */
 	api_version: string;
@@ -2765,6 +2823,7 @@ export type Event =
 	| EventBase<"retention.failed", Retention>
 	| EventBase<"retention.canceled", Retention>
 	| EventBase<"invoice_batch.completed", InvoiceBatch>
+	| EventBase<"payroll_batch.completed", PayrollBatch>
 	| EventBase<"customer_data_request.completed", CustomerDataRequest>
 	| EventBase<"sat_download.completed", SatDownload>
 	| EventBase<"sat_download.failed", SatDownload>
@@ -2896,6 +2955,17 @@ export interface EmployeeList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: Employee[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface PayrollBatchList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: PayrollBatch[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -4953,6 +5023,59 @@ export interface PreviewPayrollReceiptParams {
 	metadata?: Record<string, string>;
 }
 
+export interface CreatePayrollBatchParams {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** Nombre del lote, para usted (Quincena 20). */
+	name?: string;
+	/** El periodo de pago: primer y último día (FechaInicialPago, FechaFinalPago) y, si no es el último, el día de pago (FechaPago). Va para todos los recibos de receipts que no traen el suyo. */
+	period?: {
+		/** Primer día pagado (FechaInicialPago). */
+		start: string;
+		/** Último día pagado (FechaFinalPago). */
+		end: string;
+		/** Día de pago (FechaPago); sin él, el último día del periodo. */
+		payment_date?: string;
+	};
+	/** Mandar a cada empleado su recibo por correo (a los que tienen correo). Solo con receipts. */
+	send_email?: boolean;
+	/** Los recibos que Fiscalisto calcula: un empleado (emp_…) en cada uno, como en POST /v1/payroll_receipts. */
+	receipts?: {
+		/** El empleado (emp_…) del emisor del lote. */
+		employee: string;
+		/** Su periodo de pago (FechaInicialPago, FechaFinalPago y FechaPago), si no es el del lote (period). */
+		period?: {
+			/** Primer día pagado (FechaInicialPago). */
+			start: string;
+			/** Último día pagado (FechaFinalPago). */
+			end: string;
+			/** Día de pago (FechaPago); sin él, el último día del periodo. */
+			payment_date?: string;
+		};
+		/** Días pagados; sin él, todos los días que le tocan del periodo. */
+		days?: number;
+		/** Mandarle su recibo por correo; sin él, lo que diga send_email del lote. Con true el empleado debe tener correo. */
+		send_email?: boolean;
+		/** Su identificador de este recibo, hasta 100 caracteres. */
+		reference?: string;
+	}[];
+	/** Los recibos que calculó su sistema de nómina, timbrados tal cual. En lugar de receipts. */
+	external_receipts?: (ExternalPayrollReceiptCreate & {
+		/** Su identificador de este recibo, hasta 100 caracteres. */
+		reference?: string;
+	})[];
+}
+
+/** Los parámetros de GET /v1/payroll_batches. */
+export interface ListPayrollBatchesParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
 export interface CreateInvoiceBatchParams {
 	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
 	issuer?: string;
@@ -6099,7 +6222,7 @@ export interface RollWebhookSecretParams {
 
 export interface TestWebhookEndpointParams {
 	/** El evento a mandar. Por omisión invoice.stamped. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready";
 }
 
 /** Los parámetros de GET /v1/events. */
@@ -6109,7 +6232,7 @@ export interface ListEventsParams {
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
 	/** Solo de este tipo (invoice.stamped), o todos los de un recurso con un comodín (invoice.*). */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready" | "invoice.*" | "invoice_batch.*" | "recurring_invoice.*" | "quote.*" | "ticket.*" | "retention.*" | "customer_data_request.*" | "sat_download.*" | "sat_declaration.*" | "issuer.*" | "balance.*" | "test_clock.*";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready" | "invoice.*" | "invoice_batch.*" | "payroll_batch.*" | "recurring_invoice.*" | "quote.*" | "ticket.*" | "retention.*" | "customer_data_request.*" | "sat_download.*" | "sat_declaration.*" | "issuer.*" | "balance.*" | "test_clock.*";
 	/** Solo los de este objeto (inv_…, ret_…, bat_…). */
 	object?: string;
 	/** false: los que algún webhook no recibió (su último intento falló). true: los que recibieron todos los webhooks a los que se mandaron. */
@@ -7049,6 +7172,50 @@ export class PayrollReceiptsResource {
 	 */
 	previewExternal(params: ExternalPayrollReceiptCreate, options?: RequestOptions): Promise<ExternalPayrollReceiptPreview> {
 		return this.#client.request({ method: "POST", path: "/v1/payroll_receipts/external/preview", body: params, idempotent: true }, options);
+	}
+}
+
+/** Nómina: fiscalisto.payrollBatches. */
+export class PayrollBatchesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Timbrar una nómina completa (lote)
+	 *
+	 * Toda una corrida de nómina en una solicitud: hasta 1,000 recibos de un emisor, timbrados en segundo plano uno tras otro, sin el límite de timbres por segundo de una sola solicitud. De una de dos formas, nunca mezcladas: receipts (ids de empleado; Fiscalisto calcula cada recibo con el periodo del lote) o external_receipts (los recibos que calculó su sistema, como en POST /v1/payroll_receipts/external, con reference en lugar de metadata). Todo lo que se puede revisar antes se revisa antes: si algo falla, no se timbra ninguno y el error dice qué recibo (param receipts.3.employee). Lo que solo se sabe al timbrar (un periodo ya pagado, el SAT que rechaza un RFC) queda en ese recibo, con su error. Un recibo por empleado y periodo: mandar la corrida otra vez, aun con otra Idempotency-Key, devuelve los recibos que ya tiene. Responde 202; escuche payroll_batch.completed o consulte el lote.
+	 *
+	 * POST /v1/payroll_batches
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-payroll-batch
+	 */
+	create(params?: CreatePayrollBatchParams, options?: RequestOptions): Promise<PayrollBatch> {
+		return this.#client.request({ method: "POST", path: "/v1/payroll_batches", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar lotes de nómina
+	 *
+	 * Los lotes de nómina, los más recientes primero, con cuántos recibos se timbraron y cuántos no.
+	 *
+	 * GET /v1/payroll_batches
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/list-payroll-batches
+	 */
+	list(params?: ListPayrollBatchesParams, options?: RequestOptions): List<PayrollBatch> {
+		return this.#client.list({ path: "/v1/payroll_batches", query: params }, options);
+	}
+
+	/**
+	 * Ver un lote de nómina
+	 *
+	 * Con el recibo de cada empleado: timbrado (su factura y UUID) o por qué no (error.code y error.message).
+	 *
+	 * GET /v1/payroll_batches/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-payroll-batch
+	 */
+	get(id: string, options?: RequestOptions): Promise<PayrollBatch> {
+		return this.#client.request({ method: "GET", path: `/v1/payroll_batches/${encodeURIComponent(id)}` }, options);
 	}
 }
 
@@ -8393,6 +8560,7 @@ export class FiscalistoApi extends Core {
 	readonly retentions = new RetentionsResource(this);
 	readonly employees = new EmployeesResource(this);
 	readonly payrollReceipts = new PayrollReceiptsResource(this);
+	readonly payrollBatches = new PayrollBatchesResource(this);
 	readonly invoiceBatches = new InvoiceBatchesResource(this);
 	readonly taxIds = new TaxIdsResource(this);
 	readonly branches = new BranchesResource(this);

@@ -83,8 +83,9 @@ const invoice = await fiscalisto.invoices.create(
 - **A crédito (PPD):** \`payment_method: "PPD"\`, \`payment_form: "99"\`; cada cobro lleva su
   complemento de pago (\`POST /v1/payments\`) a más tardar el día 5 del mes siguiente.
 - Otros comprobantes: notas de crédito (\`/v1/credit_notes\`), anticipos (\`/v1/advances\`), nómina
-  (\`/v1/payroll_receipts\`), retenciones (\`/v1/retentions\`), lotes de hasta 1,000
-  (\`/v1/invoice_batches\`), factura global y autofactura por ticket (\`/v1/tickets\`).
+  (\`/v1/payroll_receipts\`; toda la nómina en una solicitud con \`/v1/payroll_batches\`),
+  retenciones (\`/v1/retentions\`), lotes de hasta 1,000 (\`/v1/invoice_batches\`), factura global
+  y autofactura por ticket (\`/v1/tickets\`).
 
 ## Errores
 
