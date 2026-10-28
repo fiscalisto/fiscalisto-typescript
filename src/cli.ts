@@ -15,7 +15,7 @@ import { homedir, hostname } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
-import { AGENT_SKILL } from "./agent-guide.js";
+import { AGENT_GUIDE, AGENT_SKILL } from "./agent-guide.js";
 import { FiscalistoError, VERSION } from "./core.js";
 import { Fiscalisto } from "./index.js";
 import { createMock } from "./mock.js";
@@ -1139,6 +1139,77 @@ async function satLists(args: string[], g: Globals) {
 	});
 }
 
+// ── payroll ────────────────────────────────────────────────────────────────
+
+/**
+ * «fiscalisto payroll preview|create --data @recibo.json [--external]»: a recibo de nómina.
+ * Without --external Fiscalisto calculates it from the employee (emp_…) and the period; with it,
+ * the amounts your payroll system calculated are checked and stamped exactly as sent.
+ */
+async function payroll(args: string[], g: Globals) {
+	const [sub, ...rest] = args;
+	if (sub !== "preview" && sub !== "create")
+		throw new UsageError(
+			"Uso: fiscalisto payroll preview|create --data @recibo.json [--external] [--idempotency-key …]",
+		);
+	const { values } = parseArgs({
+		args: rest,
+		options: {
+			data: { type: "string", short: "d" },
+			external: { type: "boolean" },
+			"idempotency-key": { type: "string" },
+		},
+	});
+	const body = await readData(values.data);
+	if (!body)
+		throw new UsageError(
+			values.external
+				? "Pase --data con el recibo que calculó su sistema (JSON, @archivo o -): employee, perceptions, deductions, other_payments y totals."
+				: 'Pase --data (JSON, @archivo o -): {"employee": "emp_…", "period": {…}}.',
+		);
+	const path = `/v1/payroll_receipts${values.external ? "/external" : ""}`;
+	const api = await client(g);
+	if (sub === "preview") {
+		const preview = await api.request<{
+			total: number;
+			payroll?: {
+				totals?: { perceptions: number; deductions: number; other_payments: number };
+			};
+			totals?: {
+				perceptions: number;
+				deductions: number;
+				other_payments: number;
+				net: number;
+			};
+			warnings?: (string | { param?: string; message: string })[];
+		}>({ method: "POST", path: `${path}/preview`, body });
+		return print(preview, () => {
+			const t = preview.payroll?.totals ?? preview.totals;
+			line(
+				`${bold("Recibo de nómina")} ${dim("(sin timbrar)")} neto ${preview.total.toFixed(2)}`,
+			);
+			if (t)
+				line(
+					`  percepciones ${t.perceptions.toFixed(2)} · otros pagos ${t.other_payments.toFixed(2)} · deducciones ${t.deductions.toFixed(2)}`,
+				);
+			for (const w of preview.warnings ?? [])
+				line(
+					`  ${yellow("!")} ${typeof w === "string" ? w : `${w.param ? `${w.param}: ` : ""}${w.message}`}`,
+				);
+		});
+	}
+	await confirmLive(api, g, "Timbrar");
+	const invoice = await api.request<Invoice & { warnings?: string[] }>(
+		{ method: "POST", path, body, idempotent: true },
+		{ idempotencyKey: values["idempotency-key"] },
+	);
+	return print(invoice, () => {
+		showInvoice(invoice);
+		for (const w of invoice.warnings ?? []) line(`  ${yellow("!")} ${w}`);
+		line(dim(`  PDF: fiscalisto invoices pdf ${invoice.id}`));
+	});
+}
+
 // ── api ────────────────────────────────────────────────────────────────────
 
 async function rawApi(args: string[], g: Globals) {
@@ -1156,7 +1227,7 @@ async function rawApi(args: string[], g: Globals) {
 	const body = await readData(values.data);
 	const stamps =
 		method === "POST" &&
-		/^\/v1\/(invoices|payments|credit_notes|advances|retentions|payroll_receipts|invoice_batches)(\/[^/]+\/substitute)?$/.test(
+		/^\/v1\/(invoices|payments|credit_notes|advances|retentions|payroll_receipts(\/external)?|invoice_batches)(\/[^/]+\/substitute)?$/.test(
 			path.split("?")[0] ?? "",
 		);
 	if (stamps) await confirmLive(api, g, "Timbrar");
@@ -1434,11 +1505,10 @@ function openPlace(args: string[]) {
 	print({ url }, () => line(url));
 }
 
+/** The integration guide (the docs MCP's get_started), from the package: no network needed. */
 async function docs() {
-	const url = `${APP_URL()}/docs/api/llms.txt`;
-	const r = await fetch(url);
-	if (!r.ok) throw new Error(`No se pudo leer la documentación (${r.status}).`);
-	const text = await r.text();
+	const url = `${APP_URL()}/docs/api/SKILL.md`;
+	const text = `${AGENT_GUIDE}\nÍndice de toda la documentación: ${APP_URL()}/docs/api/llms.txt\n`;
 	if (json) print({ url, text });
 	else process.stdout.write(text);
 }
@@ -1525,6 +1595,10 @@ ${bold("Facturas")}
   invoices cancel <inv_…> [--motive 02] [--substitution inv_…]
   sat-lists check RFC [RFC…]    ¿Está en la lista 69-B del SAT?
 
+${bold("Nómina")}
+  payroll preview|create --data @recibo.json             Fiscalisto calcula el recibo del empleado (emp_…)
+  payroll preview|create --external --data @recibo.json  Timbra tal cual los importes que calculó su sistema
+
 ${bold("Webhooks")}
   listen [--forward-to URL]     Reenvía los eventos a su computadora, firmados
   trigger <evento>              Crea en pruebas lo que manda ese evento (invoice.stamped, invoice.failed…)
@@ -1537,7 +1611,7 @@ ${bold("Otros")}
   api [METHOD] /v1/… [--data]   Cualquier ruta de la API con su llave
   mock [--port 12111]           La API en su computadora, sin internet, para desarrollar y probar
   open [panel|facturas|llaves|webhooks|eventos|docs]
-  docs                          La guía completa para agentes (llms.txt)
+  docs                          La guía de integración para agentes (la de get_started y SKILL.md)
 
 ${bold("Opciones")}
   --json          Respuesta en JSON (para scripts y agentes)
@@ -1591,6 +1665,9 @@ export async function main(argv: string[]) {
 				return await webhooks(args, globals);
 			case "sat-lists":
 				return await satLists(args, globals);
+			case "payroll":
+			case "nomina":
+				return await payroll(args, globals);
 			case "api":
 				return await rawApi(args, globals);
 			case "listen":

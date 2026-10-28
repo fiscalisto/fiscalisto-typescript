@@ -125,6 +125,224 @@ export interface Issuer {
 /** Un concepto, con los mismos campos con que se mandó. */
 export type InvoiceItem = Record<string, unknown>;
 
+/** El complemento de nómina 1.2 como se timbró: tipo, periodo, patrón, empleado, percepciones, deducciones, otros pagos, sus nodos y los totales. */
+export interface InvoicePayroll {
+	/** TipoNomina: O ordinaria, E extraordinaria. */
+	type: "O" | "E";
+	/** fiscalisto: lo calculó Fiscalisto (POST /v1/payroll_receipts); external: lo calculó su sistema de nómina y se timbró tal cual (POST /v1/payroll_receipts/external). */
+	calculation: "fiscalisto" | "external";
+	/** Periodicidad del pago (PeriodicidadPago): 02 semanal, 03 catorcenal, 04 quincenal (por omisión), 05 mensual. */
+	periodicity: string;
+	/** Periodo pagado: FechaInicialPago, FechaFinalPago y FechaPago. */
+	period: {
+		/** Primer día del periodo (FechaInicialPago), AAAA-MM-DD. */
+		start: string;
+		/** Último día del periodo (FechaFinalPago), AAAA-MM-DD. */
+		end: string;
+		/** Fecha de pago (FechaPago), AAAA-MM-DD. Por omisión el último día del periodo. */
+		payment_date: string;
+	};
+	/** Días pagados (NumDiasPagados). Por omisión, todos los del periodo que le tocan. */
+	days: number;
+	/** Los ids de su sistema de nómina (solo en recibos external). */
+	references: {
+		/** El id del empleado en su sistema de nómina. */
+		employee_id: string | null;
+		/** El id de la corrida de nómina en su sistema. */
+		payroll_run_id: string | null;
+	} | null;
+	/** El patrón (Emisor del complemento): registro patronal y CURP si es persona física. */
+	employer: {
+		/** Registro patronal ante el IMSS (RegistroPatronal), 11 caracteres. Necesario para timbrar nómina. */
+		employer_registration: string | null;
+		/** CURP, 18 caracteres. */
+		curp: string | null;
+		/** RFC del patrón de origen (RfcPatronOrigen). */
+		origin_tax_id?: string;
+		/** Entidad del SNCF (EntidadSNCF). */
+		sncf?: {
+			/** Origen del recurso (OrigenRecurso): IP, IF o IM. */
+			resource_origin: string;
+			/** Monto de recursos propios (MontoRecursoPropio), con IM. */
+			own_resource_amount: number | null;
+		};
+	};
+	/** El empleado (Nomina/Receptor), como se timbró. */
+	employee: {
+		/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+		id: string | null;
+		/** Número de empleado (NumEmpleado). */
+		number: string;
+		/** CURP, 18 caracteres. */
+		curp: string;
+		/** Número de seguridad social (NumSeguridadSocial), 11 dígitos. */
+		social_security_number: string | null;
+		/** Fecha de inicio de la relación laboral (FechaInicioRelLaboral), AAAA-MM-DD. */
+		start_date: string | null;
+		/** Antigüedad (P52W, P1Y2M3D). */
+		seniority: string | null;
+		/** Tipo de contrato (TipoContrato), c_TipoContrato. Por omisión 01, por tiempo indeterminado. */
+		contract_type: string;
+		/** true si es sindicalizado (Sindicalizado). */
+		unionized: boolean | null;
+		/** Tipo de jornada (TipoJornada), c_TipoJornada. Por omisión 01, diurna. */
+		workday_type: string | null;
+		/** Tipo de régimen (TipoRegimen): 02 sueldos y salarios. */
+		regime_type: string;
+		/** Departamento (Departamento). */
+		department: string | null;
+		/** Puesto (Puesto). */
+		position: string | null;
+		/** Clase de riesgo del puesto ante el IMSS (RiesgoPuesto), 1 a 5. Por omisión 1. */
+		risk_class: string | null;
+		/** Salario base de cotización (SalarioBaseCotApor). */
+		contribution_base_salary: number | null;
+		/** Salario diario integrado (SalarioDiarioIntegrado): no menor al salario diario. */
+		integrated_daily_salary: number | null;
+		/** Entidad federativa donde trabaja (ClaveEntFed): JAL, CMX, NLE… */
+		state: string;
+		/** Banco (Banco), c_Banco. */
+		bank?: string;
+		/** Cuenta bancaria o CLABE (CuentaBancaria). */
+		bank_account?: string;
+		/** Subcontratación (SubContratacion). */
+		subcontracting?: {
+			/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+			tax_id: string;
+			/** Porcentaje de tiempo (PorcentajeTiempo). */
+			percentage: number;
+		}[];
+	};
+	/** Percepciones (Percepcion): sueldo y demás, gravado y exento. */
+	perceptions: {
+		/** Tipo de percepción (TipoPercepcion), c_TipoPercepcion: 001 sueldos… */
+		type: string;
+		/** Clave del patrón (Clave). */
+		key: string;
+		/** Concepto (Concepto). */
+		concept: string;
+		/** Importe gravado (ImporteGravado). */
+		taxed: number;
+		/** Importe exento (ImporteExento). */
+		exempt: number;
+		/** Horas extra (HorasExtra), con la percepción 019. */
+		overtime?: {
+			/** Días con horas extra (Dias). */
+			days: number;
+			/** c_TipoHoras: 01 dobles, 02 triples, 03 simples. */
+			hours_type: string;
+			/** Horas extra (HorasExtra). */
+			hours: number;
+			/** Importe pagado (ImportePagado). */
+			amount_paid: number;
+		}[];
+		/** Acciones o títulos (AccionesOTitulos), con la percepción 045. */
+		stock_options?: {
+			/** Valor de mercado (ValorMercado). */
+			market_value: number;
+			/** Precio al otorgarse (PrecioAlOtorgarse). */
+			grant_price: number;
+		};
+	}[];
+	/** Deducciones (Deduccion): ISR, cuotas IMSS y demás. */
+	deductions: {
+		/** Tipo de deducción (TipoDeduccion), c_TipoDeduccion: 001 IMSS, 002 ISR… */
+		type: string;
+		/** Clave del patrón (Clave). */
+		key: string;
+		/** Concepto (Concepto). */
+		concept: string;
+		/** Importe (Importe). */
+		amount: number;
+	}[];
+	/** Otros pagos (OtroPago): subsidio para el empleo. */
+	other_payments: {
+		/** Tipo de otro pago (TipoOtroPago), c_TipoOtroPago: 002 subsidio para el empleo. */
+		type: string;
+		/** Clave del patrón (Clave). */
+		key: string;
+		/** Concepto (Concepto). */
+		concept: string;
+		/** Importe pagado (Importe). */
+		amount: number;
+		/** Subsidio causado (SubsidioCausado). */
+		subsidy_caused?: number;
+		/** Del subsidio causado, el ISR que evitó (no va en el XML). */
+		subsidy_applied?: number;
+		/** Compensación del saldo a favor (CompensacionSaldosAFavor), con el 004. */
+		balance_compensation?: {
+			/** Saldo a favor (SaldoAFavor). */
+			balance: number;
+			/** Año del saldo a favor (Año). */
+			year: number;
+			/** Remanente del saldo a favor (RemanenteSalFav). */
+			remaining: number;
+		};
+	}[];
+	/** SeparacionIndemnizacion (percepciones 022, 023, 025). */
+	separation?: {
+		/** Total pagado (TotalPagado). */
+		total_paid: number;
+		/** Años de servicio (NumAñosServicio). */
+		years_of_service: number;
+		/** Último sueldo mensual ordinario (UltimoSueldoMensOrd). */
+		last_monthly_salary: number;
+		/** Ingreso acumulable (IngresoAcumulable). */
+		accumulable_income: number;
+		/** Ingreso no acumulable (IngresoNoAcumulable). */
+		non_accumulable_income: number;
+	};
+	/** JubilacionPensionRetiro (percepciones 039, 044). */
+	retirement?: {
+		/** Total en una exhibición (TotalUnaExhibicion). */
+		total_one_payment?: number;
+		/** Total en parcialidades (TotalParcialidad). */
+		total_installment?: number;
+		/** Monto diario (MontoDiario). */
+		daily_amount?: number;
+		/** Ingreso acumulable (IngresoAcumulable). */
+		accumulable_income: number;
+		/** Ingreso no acumulable (IngresoNoAcumulable). */
+		non_accumulable_income: number;
+	};
+	/** Incapacidades (percepción 014 o deducción 006). */
+	disabilities?: {
+		/** Días pagados (NumDiasPagados). Por omisión, todos los del periodo que le tocan. */
+		days: number;
+		/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
+		type: string;
+		/** Importe. */
+		amount: number | null;
+	}[];
+	/** Totales: percepciones, deducciones, otros pagos y el neto a pagar. */
+	totals: {
+		/** Total de sueldos, salarios y asimilados (TotalSueldos). */
+		salaries: number;
+		/** Total gravado (TotalGravado). */
+		taxed: number;
+		/** Total exento (TotalExento). */
+		exempt: number;
+		/** Total de separación e indemnización (TotalSeparacionIndemnizacion). */
+		separation: number;
+		/** Total de jubilación, pensión o retiro (TotalJubilacionPensionRetiro). */
+		retirement: number;
+		/** Total de percepciones (TotalPercepciones). */
+		perceptions: number;
+		/** Otras deducciones (TotalOtrasDeducciones). */
+		other_deductions: number;
+		/** Impuestos retenidos (TotalImpuestosRetenidos). */
+		taxes_withheld: number;
+		/** Total de deducciones (TotalDeducciones). */
+		deductions: number;
+		/** Total de otros pagos (TotalOtrosPagos). */
+		other_payments: number;
+		/** Subtotal del comprobante: percepciones más otros pagos. */
+		subtotal: number;
+		/** Neto a pagar al empleado. */
+		net: number;
+	};
+}
+
 /** Un CFDI 4.0 emitido: factura de ingreso o global, traslado, nota de crédito (E), complemento de pago (P) o recibo de nómina (N). */
 export interface Invoice {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
@@ -143,13 +361,13 @@ export interface Invoice {
 	status: "processing" | "pending" | "valid" | "rejected" | "canceled";
 	/** Folio fiscal que asigna el SAT (UUID del Timbre Fiscal Digital), en mayúsculas. */
 	uuid: string | null;
-	/** Serie (Serie), hasta 25 caracteres. Cada serie lleva sus propios folios. */
+	/** La serie (Serie) con que se timbró, o null. */
 	series: string | null;
-	/** Folio (Folio). Fiscalisto asigna el siguiente de la serie; mande uno solo si debe ser ese. */
+	/** El folio (Folio) que se le asignó, o null. */
 	folio: string | null;
 	/** Fecha de emisión (Fecha), hora de la Ciudad de México. */
 	date: string | null;
-	/** Cliente (Receptor): el id de uno de su catálogo (cus_…) o sus datos en un objeto. */
+	/** El cliente (Receptor) como quedó en el CFDI: RFC, nombre, régimen fiscal y código postal (y foreign si es extranjero). */
 	customer: {
 		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
 		tax_id: string | null;
@@ -178,7 +396,7 @@ export interface Invoice {
 	subtotal: number | null;
 	/** Descuento (Descuento). */
 	discount: number | null;
-	/** Impuestos del comprobante, por tipo. */
+	/** Los impuestos del comprobante sumados por tipo: IVA e IEPS trasladados, IVA e ISR retenidos e impuestos locales; null en un complemento de pago. */
 	taxes: {
 		/** IVA trasladado. */
 		iva: number | null;
@@ -238,100 +456,7 @@ export interface Invoice {
 		}[];
 	} | null;
 	/** Solo en un recibo de nómina (type N). */
-	payroll?: {
-		/** Periodicidad del pago (PeriodicidadPago): 02 semanal, 03 catorcenal, 04 quincenal (por omisión), 05 mensual. */
-		periodicity: string;
-		/** Periodo (Periodo): mes inicial, mes final y año. */
-		period: {
-			/** Primer día del periodo (FechaInicialPago), AAAA-MM-DD. */
-			start: string;
-			/** Último día del periodo (FechaFinalPago), AAAA-MM-DD. */
-			end: string;
-			/** Fecha de pago (FechaPago), AAAA-MM-DD. Por omisión el último día del periodo. */
-			payment_date: string;
-		};
-		/** Días pagados (NumDiasPagados). Por omisión, todos los del periodo que le tocan. */
-		days: number;
-		/** El patrón (Emisor del complemento): registro patronal y CURP si es persona física. */
-		employer: {
-			/** Registro patronal ante el IMSS (RegistroPatronal), 11 caracteres. Necesario para timbrar nómina. */
-			employer_registration: string | null;
-			/** CURP, 18 caracteres. */
-			curp: string | null;
-		};
-		/** El empleado (emp_…). */
-		employee: {
-			/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
-			id: string | null;
-			/** Número de empleado (NumEmpleado). */
-			number: string;
-			/** CURP, 18 caracteres. */
-			curp: string;
-			/** Número de seguridad social (NumSeguridadSocial), 11 dígitos. */
-			social_security_number: string | null;
-			/** Fecha de inicio de la relación laboral (FechaInicioRelLaboral), AAAA-MM-DD. */
-			start_date: string;
-			/** Tipo de contrato (TipoContrato), c_TipoContrato. Por omisión 01, por tiempo indeterminado. */
-			contract_type: string;
-			/** true si es sindicalizado (Sindicalizado). */
-			unionized: boolean;
-			/** Tipo de jornada (TipoJornada), c_TipoJornada. Por omisión 01, diurna. */
-			workday_type: string;
-			/** Tipo de régimen (TipoRegimen): 02 sueldos y salarios. */
-			regime_type: string;
-			/** Departamento (Departamento). */
-			department?: string | null;
-			/** Puesto (Puesto). */
-			position?: string | null;
-			/** Clase de riesgo del puesto ante el IMSS (RiesgoPuesto), 1 a 5. Por omisión 1. */
-			risk_class: string | null;
-			/** Salario base de cotización (SalarioBaseCotApor). */
-			contribution_base_salary: number | null;
-			/** Salario diario integrado (SalarioDiarioIntegrado): no menor al salario diario. */
-			integrated_daily_salary: number | null;
-			/** Entidad federativa donde trabaja (ClaveEntFed): JAL, CMX, NLE… */
-			state: string;
-		};
-		/** Percepciones (Percepcion): sueldo y demás, gravado y exento. */
-		perceptions: {
-			/** Tipo de percepción (TipoPercepcion), c_TipoPercepcion: 001 sueldos… */
-			type: string;
-			/** Clave del patrón (Clave). */
-			key: string;
-			/** Concepto (Concepto). */
-			concept: string;
-			/** Importe gravado (ImporteGravado). */
-			taxed: number;
-			/** Importe exento (ImporteExento). */
-			exempt: number;
-		}[];
-		/** Deducciones (Deduccion): ISR, cuotas IMSS y demás. */
-		deductions: {
-			/** Tipo de deducción (TipoDeduccion), c_TipoDeduccion: 001 IMSS, 002 ISR… */
-			type: string;
-			/** Clave del patrón (Clave). */
-			key: string;
-			/** Concepto (Concepto). */
-			concept: string;
-			/** Importe (Importe). */
-			amount: number;
-		}[];
-		/** Otros pagos (OtroPago): subsidio para el empleo. */
-		other_payments: {
-			/** Tipo de otro pago (TipoOtroPago), c_TipoOtroPago: 002 subsidio para el empleo. */
-			type: string;
-			/** Clave del patrón (Clave). */
-			key: string;
-			/** Concepto (Concepto). */
-			concept: string;
-			/** Importe pagado (Importe). */
-			amount: number;
-			/** Subsidio causado (SubsidioCausado). */
-			subsidy_caused?: number;
-			/** Del subsidio causado, el ISR que evitó (no va en el XML). */
-			subsidy_applied?: number;
-		}[];
-	};
+	payroll?: InvoicePayroll;
 	/** Solo en una factura global. */
 	global?: Record<string, unknown>;
 	/** La cancelación, si se pidió: estado, motivo, sustituto y cuándo. */
@@ -413,7 +538,7 @@ export interface Retention {
 	status: "processing" | "valid" | "rejected" | "canceled";
 	/** Folio fiscal que asigna el SAT (UUID del Timbre Fiscal Digital), en mayúsculas. */
 	uuid: string | null;
-	/** Folio (Folio). Fiscalisto asigna el siguiente de la serie; mande uno solo si debe ser ese. */
+	/** El número de la constancia en la serie del emisor (internal_folio es el que se imprime, RET1…). */
 	folio: number | null;
 	/** Folio interno (FolioInt): RET1, RET2… */
 	internal_folio: string | null;
@@ -686,7 +811,7 @@ export interface PayrollReceiptPreview {
 	employee: string;
 	/** Periodicidad del pago (PeriodicidadPago): 02 semanal, 03 catorcenal, 04 quincenal (por omisión), 05 mensual. */
 	periodicity: string;
-	/** Periodo (Periodo): mes inicial, mes final y año. */
+	/** El periodo de pago: primer y último día y el día de pago (FechaInicialPago, FechaFinalPago y FechaPago). */
 	period: {
 		/** Primer día del periodo (FechaInicialPago), AAAA-MM-DD. */
 		start: string;
@@ -711,6 +836,24 @@ export interface PayrollReceiptPreview {
 		taxed: number;
 		/** Importe exento (ImporteExento). */
 		exempt: number;
+		/** Horas extra (HorasExtra), con la percepción 019. */
+		overtime?: {
+			/** Días con horas extra (Dias). */
+			days: number;
+			/** c_TipoHoras: 01 dobles, 02 triples, 03 simples. */
+			hours_type: string;
+			/** Horas extra (HorasExtra). */
+			hours: number;
+			/** Importe pagado (ImportePagado). */
+			amount_paid: number;
+		}[];
+		/** Acciones o títulos (AccionesOTitulos), con la percepción 045. */
+		stock_options?: {
+			/** Valor de mercado (ValorMercado). */
+			market_value: number;
+			/** Precio al otorgarse (PrecioAlOtorgarse). */
+			grant_price: number;
+		};
 	}[];
 	/** Deducciones (Deduccion): ISR, cuotas IMSS y demás. */
 	deductions: {
@@ -737,6 +880,15 @@ export interface PayrollReceiptPreview {
 		subsidy_caused?: number;
 		/** Del subsidio causado, el ISR que evitó (no va en el XML). */
 		subsidy_applied?: number;
+		/** Compensación del saldo a favor (CompensacionSaldosAFavor), con el 004. */
+		balance_compensation?: {
+			/** Saldo a favor (SaldoAFavor). */
+			balance: number;
+			/** Año del saldo a favor (Año). */
+			year: number;
+			/** Remanente del saldo a favor (RemanenteSalFav). */
+			remaining: number;
+		};
 	}[];
 	/** El cálculo del ISR del periodo: base, tarifa, subsidio y resultado. */
 	isr: {
@@ -750,9 +902,9 @@ export interface PayrollReceiptPreview {
 		exempt_minimum: boolean;
 		/** El ajuste de fin de mes: subsidio revertido y el ISR que retiene. */
 		adjustment?: {
-			/** Subsidio causado antes en el mes que se revierte. */
+			/** El subsidio para el empleo que se revierte en el ajuste. */
 			reversed: number;
-			/** El cálculo del ISR del periodo: base, tarifa, subsidio y resultado. */
+			/** El ISR que se retiene después del ajuste. */
 			isr: number;
 		};
 	};
@@ -764,6 +916,10 @@ export interface PayrollReceiptPreview {
 		taxed: number;
 		/** Total exento (TotalExento). */
 		exempt: number;
+		/** Total de separación e indemnización (TotalSeparacionIndemnizacion). */
+		separation: number;
+		/** Total de jubilación, pensión o retiro (TotalJubilacionPensionRetiro). */
+		retirement: number;
 		/** Total de percepciones (TotalPercepciones). */
 		perceptions: number;
 		/** Otras deducciones (TotalOtrasDeducciones). */
@@ -781,6 +937,44 @@ export interface PayrollReceiptPreview {
 	};
 }
 
+/** Un recibo calculado por su sistema, revisado y sin timbrar: lo que se timbraría, tal cual. */
+export interface ExternalPayrollReceiptPreview {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "payroll_receipt_preview";
+	/** external: los importes son los que calculó su sistema. */
+	calculation: "external";
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** El empleado como receptor del CFDI (Receptor). */
+	customer: {
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string;
+		/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+		legal_name: string;
+		/** Código postal del domicilio fiscal del cliente (DomicilioFiscalReceptor), 5 dígitos. */
+		zip: string;
+	};
+	/** El recibo de nómina 1.2: empleado, periodo, percepciones, deducciones y otros pagos. */
+	payroll: InvoicePayroll;
+	/** SubTotal: percepciones más otros pagos. */
+	subtotal: number;
+	/** Descuento: las deducciones. */
+	discount: number;
+	/** Total: el neto a pagar. */
+	total: number;
+	/** Lo que el SAT podría observar; no impide timbrar. */
+	warnings: {
+		/** El campo de la solicitud. */
+		param: string;
+		/** Clave de la retención (CveRetenc), c_CveRetenc: 01 servicios profesionales, 05 arrendamiento, 14 dividendos, 16 intereses, 18 pagos al extranjero… Las claves 14, 16, 17 y 18 a 24 llevan su complemento (dividends, interest, trust_lease, foreign_payment, share_sale, prize, trust, retirement_plan, mortgage_interest, financial_derivatives); la 26 (plataformas tecnológicas) aún no se puede emitir. */
+		code: string;
+		/** Qué pasó y cómo corregirlo, para una persona. */
+		message: string;
+	}[];
+	/** El XML que se mandaría al PAC, sin sello ni timbre: sus importes son exactamente los que mandó. */
+	unsigned_xml: string;
+}
+
 /** Un anticipo timbrado que aún no se aplica. */
 export interface Advance {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -789,11 +983,11 @@ export interface Advance {
 	uuid: string;
 	/** Fecha de emisión (Fecha), hora de la Ciudad de México. */
 	date: string;
-	/** Serie (Serie), hasta 25 caracteres. Cada serie lleva sus propios folios. */
+	/** La serie (Serie) del anticipo, o null. */
 	series: string | null;
-	/** Folio (Folio). Fiscalisto asigna el siguiente de la serie; mande uno solo si debe ser ese. */
+	/** El folio (Folio) del anticipo, o null. */
 	folio: string | null;
-	/** Cliente (Receptor): el id de uno de su catálogo (cus_…) o sus datos en un objeto. */
+	/** El cliente del anticipo: RFC y nombre. */
 	customer: {
 		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
 		tax_id: string;
@@ -1225,7 +1419,7 @@ export interface SatDeclaration {
 		fields: {
 			/** El renglón como lo imprime el SAT. */
 			label: string;
-			/** Valor de la mercancía (ValorMercancia); obligatorio en transporte aéreo. */
+			/** El valor del renglón como lo trae la declaración (número o texto). */
 			value: number | string;
 		}[];
 	}[];
@@ -1233,7 +1427,7 @@ export interface SatDeclaration {
 	receipt: {
 		/** Cada impuesto del acuse. */
 		concepts: {
-			/** Concepto del pago (ConceptoPago), c_TipoContribuyenteSujetoRetencion. */
+			/** El concepto de la línea de captura (ISR, IVA…) como lo da el SAT. */
 			concept: string;
 			/** Lo que resultó a cargo. */
 			due: number | null;
@@ -1468,7 +1662,7 @@ export interface StockMovement {
 	lot: string | null;
 	/** Lo que lo causó: type invoice (id es el UUID del CFDI), adjustment (adj_…), receipt, transfer, count o ticket. */
 	source: {
-		/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
+		/** Qué lo movió: invoice (una factura; id es su UUID), adjustment (un ajuste, adj_…), count (un conteo) u otro origen. */
 		type: string;
 		/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 		id: string;
@@ -1899,7 +2093,7 @@ export interface FinancialStatements {
 		month: {
 			/** Ingresos, costos, gastos, financiamiento y otros, cada uno con su total. */
 			sections: {
-				/** El archivo .key en base64 (puede traer el prefijo data:). */
+				/** La sección: ingresos, costos, gastos, financiamiento u otros. */
 				key: "ingresos" | "costos" | "gastos" | "financiamiento" | "otros";
 				/** Nombre. */
 				name: string;
@@ -1931,7 +2125,7 @@ export interface FinancialStatements {
 		year_to_date: {
 			/** Ingresos, costos, gastos, financiamiento y otros, cada uno con su total. */
 			sections: {
-				/** El archivo .key en base64 (puede traer el prefijo data:). */
+				/** La sección: ingresos, costos, gastos, financiamiento u otros. */
 				key: "ingresos" | "costos" | "gastos" | "financiamiento" | "otros";
 				/** Nombre. */
 				name: string;
@@ -2430,7 +2624,7 @@ export interface BankTransaction {
 		invoices: string[];
 		/** Lo que el depósito pagaría de cada factura (por inv_…). */
 		amounts: Record<string, number>;
-		/** egreso (la factura completa y después una nota de crédito por el anticipo, opción A) o remanente (la factura solo por lo que falta, opción B). */
+		/** PUE: facturas por cobrar que quedan pagadas al conciliar; PPD: se pagan con su complemento de pago (POST /v1/payments). */
 		method: "PPD" | "PUE";
 		/** high (el monto y además el RFC, el nombre o el folio coinciden) o medium (revíselo antes). */
 		confidence: "high" | "medium";
@@ -2590,7 +2784,7 @@ export interface Deleted {
 
 /** Todos los errores tienen esta forma. */
 export interface ApiError {
-	/** Por qué el SAT o el PAC no lo aceptaron: mensaje, código del SAT y texto original. */
+	/** El error: type, code, message (en el idioma pedido), param (el campo a corregir), doc_url y request_id. */
 	error: {
 		/** La familia del error: invalid_request_error, authentication_error, permission_error, not_found_error, idempotency_error, rate_limit_error, invoice_error, balance_error o api_error. */
 		type: "invalid_request_error" | "authentication_error" | "permission_error" | "not_found_error" | "idempotency_error" | "rate_limit_error" | "invoice_error" | "balance_error" | "api_error";
@@ -3772,6 +3966,232 @@ export interface InvoiceCreate {
 	metadata?: Record<string, string>;
 }
 
+/** Un recibo de nómina que calculó su sistema, con todos sus conceptos e importes: se timbra tal cual. */
+export interface ExternalPayrollReceiptCreate {
+	/** El emisor (patrón) del recibo; sin él, el único emisor de su cuenta en este modo. */
+	issuer?: string;
+	/** TipoNomina: O ordinaria (periodicidad 01–10) o E extraordinaria (periodicidad 99). */
+	type: "O" | "E";
+	/** PeriodicidadPago (c_PeriodicidadPago). */
+	periodicity: string;
+	/** FechaInicialPago, FechaFinalPago y FechaPago. */
+	period: {
+		/** Primer día del periodo (FechaInicialPago), AAAA-MM-DD. */
+		start: string;
+		/** Último día del periodo (FechaFinalPago), AAAA-MM-DD. */
+		end: string;
+		/** Fecha de pago (FechaPago), AAAA-MM-DD. Por omisión el último día del periodo. */
+		payment_date: string;
+	};
+	/** NumDiasPagados: de 0.001 a 36160, hasta 3 decimales. */
+	days: number;
+	/** El patrón (Emisor del complemento): registro patronal y CURP si es persona física. */
+	employer?: {
+		/** Registro patronal. Sin el campo: el del emisor cuando el contrato es 01–08. null: sin registro patronal. */
+		registration?: string | null;
+		/** CURP del patrón persona física. Sin el campo: la guardada en el emisor. */
+		curp?: string | null;
+		/** RfcPatronOrigen. */
+		origin_tax_id?: string;
+		/** EntidadSNCF, solo para entidades adheridas al SNCF. */
+		sncf?: {
+			/** OrigenRecurso: IP, IF o IM. */
+			resource_origin: string;
+			/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+			own_resource_amount?: number;
+		};
+	};
+	/** El empleado (Receptor y Nomina/Receptor) con los datos de su sistema de nómina; no usa ni cambia los empleados de Fiscalisto. */
+	employee: {
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string;
+		/** Nombre. */
+		name: string;
+		/** Código postal del domicilio fiscal, 5 dígitos, como en la constancia de situación fiscal. El de un emisor es el lugar de expedición (LugarExpedicion) de sus comprobantes. */
+		zip: string;
+		/** CURP, 18 caracteres. */
+		curp: string;
+		/** NumEmpleado. */
+		number: string;
+		/** Para send_email; no va en el XML. */
+		email?: string | null;
+		/** Número de seguridad social (NumSeguridadSocial), 11 dígitos. */
+		social_security_number?: string;
+		/** FechaInicioRelLaboral. */
+		start_date?: string;
+		/** Antigüedad (P52W o P1Y2M3D). Sin el campo y con registro patronal: semanas desde start_date hasta el fin del periodo. */
+		seniority?: string;
+		/** Tipo de contrato (TipoContrato), c_TipoContrato. Por omisión 01, por tiempo indeterminado. */
+		contract_type: string;
+		/** Tipo de régimen (TipoRegimen): 02 sueldos y salarios. */
+		regime_type: string;
+		/** true si es sindicalizado (Sindicalizado). */
+		unionized?: boolean;
+		/** Tipo de jornada (TipoJornada), c_TipoJornada. Por omisión 01, diurna. */
+		workday_type?: string;
+		/** Clase de riesgo del puesto ante el IMSS (RiesgoPuesto), 1 a 5. Por omisión 1. */
+		risk_class?: string;
+		/** Departamento (Departamento). */
+		department?: string;
+		/** Puesto (Puesto). */
+		position?: string;
+		/** SalarioBaseCotApor. */
+		contribution_base_salary?: number;
+		/** SalarioDiarioIntegrado. */
+		integrated_daily_salary?: number;
+		/** ClaveEntFed (c_Estado): JAL, CMX, NLE… */
+		state: string;
+		/** Banco (c_Banco); no va con una CLABE. */
+		bank?: string;
+		/** CuentaBancaria: CLABE de 18 dígitos, tarjeta o cuenta. */
+		bank_account?: string;
+		/** SubContratacion: el porcentaje suma 100. */
+		subcontracting?: {
+			/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+			tax_id: string;
+			/** PorcentajeTiempo. */
+			percentage: number;
+		}[];
+	};
+	/** Percepciones (Percepcion): sueldo y demás, gravado y exento. */
+	perceptions?: {
+		/** TipoPercepcion (c_TipoPercepcion): 001 sueldos, 002 aguinaldo… */
+		type: string;
+		/** Clave del patrón (3 a 15 caracteres). */
+		key: string;
+		/** Concepto del pago (ConceptoPago), c_TipoContribuyenteSujetoRetencion. */
+		concept: string;
+		/** ImporteGravado. */
+		taxed: number;
+		/** ImporteExento. */
+		exempt: number;
+		/** HorasExtra: solo con la percepción 019. */
+		overtime?: {
+			/** Días con horas extra (Dias). */
+			days: number;
+			/** c_TipoHoras: 01 dobles, 02 triples, 03 simples. */
+			hours_type: string;
+			/** Horas extra (HorasExtra). */
+			hours: number;
+			/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+			amount_paid: number;
+		}[];
+		/** AccionesOTitulos: solo con la percepción 045. */
+		stock_options?: {
+			/** Valor de mercado (ValorMercado). */
+			market_value: number;
+			/** Precio al otorgarse (PrecioAlOtorgarse). */
+			grant_price: number;
+		};
+	}[];
+	/** SeparacionIndemnizacion: con las percepciones 022, 023 o 025. */
+	separation?: {
+		/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+		total_paid: number;
+		/** NumAñosServicio. */
+		years_of_service: number;
+		/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+		last_monthly_salary: number;
+		/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+		accumulable_income: number;
+		/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+		non_accumulable_income: number;
+	};
+	/** JubilacionPensionRetiro: con las percepciones 039 o 044. */
+	retirement?: {
+		/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+		total_one_payment?: number;
+		/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+		total_installment?: number;
+		/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+		daily_amount?: number;
+		/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+		accumulable_income: number;
+		/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+		non_accumulable_income: number;
+	};
+	/** Deducciones (Deduccion): ISR, cuotas IMSS y demás. */
+	deductions?: {
+		/** TipoDeduccion (c_TipoDeduccion): 001 IMSS, 002 ISR, 010 Infonavit… */
+		type: string;
+		/** El archivo .key en base64 (puede traer el prefijo data:). */
+		key: string;
+		/** Concepto de los egresos (IntegracEgresos/ConceptoS), hasta 100 caracteres. */
+		concept: string;
+		/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+		amount: number;
+	}[];
+	/** Otros pagos (OtroPago): subsidio para el empleo. */
+	other_payments?: {
+		/** TipoOtroPago (c_TipoOtroPago): 002 subsidio para el empleo… */
+		type: string;
+		/** El archivo .key en base64 (puede traer el prefijo data:). */
+		key: string;
+		/** Concepto del pago (ConceptoPago), c_TipoContribuyenteSujetoRetencion. */
+		concept: string;
+		/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+		amount: number;
+		/** SubsidioCausado: solo con el 002. */
+		subsidy_caused?: number;
+		/** CompensacionSaldosAFavor: solo con el 004. */
+		balance_compensation?: {
+			/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+			balance: number;
+			/** Año (Ejercicio). */
+			year: number;
+			/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+			remaining: number;
+		};
+	}[];
+	/** Incapacidades: con la percepción 014 o la deducción 006. */
+	disabilities?: {
+		/** Días pagados (NumDiasPagados). Por omisión, todos los del periodo que le tocan. */
+		days: number;
+		/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
+		type: string;
+		/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+		amount?: number;
+	}[];
+	/** Los totales que calculó su sistema: Fiscalisto los compara al centavo con las líneas y rechaza el recibo si no cuadran. */
+	totals: {
+		/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+		perceptions: number;
+		/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+		deductions: number;
+		/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+		other_payments: number;
+		/** Neto: percepciones más otros pagos menos deducciones. */
+		net: number;
+		/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+		salaries?: number;
+		/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+		separation?: number;
+		/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+		retirement?: number;
+		/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+		taxed?: number;
+		/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+		exempt?: number;
+		/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+		taxes_withheld?: number;
+		/** Pesos con hasta 2 decimales, como se timbran: Fiscalisto no los redondea. */
+		other_deductions?: number;
+	};
+	/** Sus ids: el empleado y la corrida de nómina. payroll_run_id es obligatorio en un recibo extraordinario. */
+	references?: {
+		/** El id del empleado en su sistema. */
+		employee_id?: string;
+		/** El id de la corrida de nómina en su sistema. */
+		payroll_run_id?: string;
+	};
+	/** El recibo vigente (inv_… o UUID) que este sustituye: relación 04 y se cancela con motivo 01. */
+	replaces?: string;
+	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
+	send_email?: boolean;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
+}
+
 export interface UpdateAccountParams {
 	/** La versión de la API de la cuenta: la que reciben sus solicitudes sin Fiscalisto-Version y sus webhooks sin api_version propio. Pruebe antes la nueva con el encabezado. */
 	api_version: string;
@@ -4025,7 +4445,7 @@ export interface CreateCreditNoteParams {
 	description?: string;
 	/** Forma de pago (FormaPago), clave de c_FormaPago: 01 efectivo, 03 transferencia, 04 tarjeta de crédito, 28 débito, 99 por definir… Obligatoria con PUE; con PPD es 99. */
 	payment_form: string;
-	/** Tipo de relación (TipoRelacion): 01 nota de crédito, 03 devolución, 04 sustitución, 07 anticipo… */
+	/** Tipo de relación (TipoRelacion) con la factura: 01 nota de crédito (por omisión) o 03 devolución de mercancía. */
 	relationship?: "01" | "03";
 	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
 	send_email?: boolean;
@@ -4485,7 +4905,7 @@ export interface UpdateEmployeeParams {
 export interface CreatePayrollReceiptParams {
 	/** El empleado (emp_…). */
 	employee: string;
-	/** Periodo (Periodo): mes inicial, mes final y año. */
+	/** El periodo de pago: primer y último día (FechaInicialPago, FechaFinalPago) y, si no es el último, el día de pago (FechaPago). */
 	period: {
 		/** Primer día del periodo (FechaInicialPago), AAAA-MM-DD. */
 		start: string;
@@ -4505,7 +4925,7 @@ export interface CreatePayrollReceiptParams {
 export interface PreviewPayrollReceiptParams {
 	/** El empleado (emp_…). */
 	employee: string;
-	/** Periodo (Periodo): mes inicial, mes final y año. */
+	/** El periodo de pago: primer y último día (FechaInicialPago, FechaFinalPago) y, si no es el último, el día de pago (FechaPago). */
 	period: {
 		/** Primer día del periodo (FechaInicialPago), AAAA-MM-DD. */
 		start: string;
@@ -4585,7 +5005,7 @@ export interface CreateBranchParams {
 	phone?: string | null;
 	/** Correo, para el PDF. */
 	email?: string | null;
-	/** Serie (Serie), hasta 25 caracteres. Cada serie lleva sus propios folios. */
+	/** La serie de cada tipo de CFDI que se timbra desde ella (invoice, credit_note, payment, transfer), hasta 25 caracteres cada una; la que no mande usa la del emisor. */
 	series?: {
 		/** Serie de sus facturas (tipo I); sin ella, la del emisor. */
 		invoice?: string | null;
@@ -4636,7 +5056,7 @@ export interface UpdateBranchParams {
 	phone?: string | null;
 	/** Correo, para el PDF. */
 	email?: string | null;
-	/** Serie (Serie), hasta 25 caracteres. Cada serie lleva sus propios folios. */
+	/** La serie de cada tipo de CFDI que se timbra desde ella (invoice, credit_note, payment, transfer), hasta 25 caracteres cada una; la que no mande usa la del emisor. */
 	series?: {
 		/** Serie de sus facturas (tipo I); sin ella, la del emisor. */
 		invoice?: string | null;
@@ -6594,6 +7014,30 @@ export class PayrollReceiptsResource {
 	 */
 	preview(params: PreviewPayrollReceiptParams, options?: RequestOptions): Promise<PayrollReceiptPreview> {
 		return this.#client.request({ method: "POST", path: "/v1/payroll_receipts/preview", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Timbrar un recibo calculado por su sistema
+	 *
+	 * Para un sistema de nómina que ya calculó el recibo: timbra exactamente sus percepciones (gravado y exento), deducciones, otros pagos, horas extra, incapacidades, separación o jubilación, ordinario (type O) o extraordinario (type E: aguinaldo, PTU, finiquito). Fiscalisto no recalcula ni redondea nada: revisa el XSD, los catálogos del SAT, la Matriz de errores y que sus totales cuadren, y si algo falla responde payroll_invalid con todos los problemas en errors[] (cada uno con su param). Un recibo ordinario por empleado (RFC) y periodo; uno extraordinario por empleado y payroll_run_id. Repetirlo con los mismos importes devuelve el mismo recibo; con otros importes, 409 payroll_receipt_exists (corríjalo con replaces). Queda como factura tipo N.
+	 *
+	 * POST /v1/payroll_receipts/external
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-external-payroll-receipt
+	 */
+	createExternal(params: ExternalPayrollReceiptCreate, options?: RequestOptions): Promise<Invoice> {
+		return this.#client.request({ method: "POST", path: "/v1/payroll_receipts/external", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Revisar un recibo calculado por su sistema, sin timbrar
+	 *
+	 * Las mismas revisiones que al timbrar, sin timbrar ni usar timbres: devuelve el recibo como se timbraría, los avisos y el XML sin sellar (unsigned_xml), con sus importes tal cual. Si algo falla, payroll_invalid con errors[].
+	 *
+	 * POST /v1/payroll_receipts/external/preview
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/preview-external-payroll-receipt
+	 */
+	previewExternal(params: ExternalPayrollReceiptCreate, options?: RequestOptions): Promise<ExternalPayrollReceiptPreview> {
+		return this.#client.request({ method: "POST", path: "/v1/payroll_receipts/external/preview", body: params, idempotent: true }, options);
 	}
 }
 

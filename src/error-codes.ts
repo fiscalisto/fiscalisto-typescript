@@ -19,6 +19,8 @@ export const ErrorCode = {
 	BranchHasInvoices: "branch_has_invoices",
 	/** La API se llama desde su servidor, nunca desde el navegador: la llave secreta quedaría expuesta. */
 	BrowserNotSupported: "browser_not_supported",
+	/** Mezcló las dos formas de emitir un recibo de nómina: POST /v1/payroll_receipts calcula el recibo con los datos del empleado (emp_…); POST /v1/payroll_receipts/external timbra los importes que calculó su sistema. Use el endpoint que corresponde. */
+	CalculationModeAmbiguous: "calculation_mode_ambiguous",
 	/** El SAT no aceptó la solicitud de cancelación; message dice por qué. */
 	CancellationFailed: "cancellation_failed",
 	/** El catálogo del SAT no respondió (503). Reintente en unos segundos. */
@@ -41,7 +43,7 @@ export const ErrorCode = {
 	EfirmaInvalid: "efirma_invalid",
 	/** Para pedirle al SAT las facturas de un emisor en producción, guarde antes su e.firma: POST /v1/issuers/{id}/efirma con keep_for_downloads: true. También si la guardada venció. */
 	EfirmaRequired: "efirma_required",
-	/** No se pudo mandar el correo; el comprobante sí está timbrado. */
+	/** No se pudo mandar el correo; lo demás sí se hizo: el comprobante está timbrado o la cotización quedó enviada (su url funciona). Repita el envío con su ruta /send. */
 	EmailFailed: "email_failed",
 	/** Ya hay un webhook con esa dirección en este modo; el mensaje dice cuál. Cámbielo en vez de crear otro. */
 	EndpointExists: "endpoint_exists",
@@ -105,8 +107,14 @@ export const ErrorCode = {
 	ParameterMissing: "parameter_missing",
 	/** Mandó un campo o un parámetro de la URL que no existe (casi siempre un nombre mal escrito, como legalName en vez de legal_name, o ?statuss= en vez de ?status=). Nunca se ignora en silencio. */
 	ParameterUnknown: "parameter_unknown",
-	/** El recibo de nómina no se puede calcular o timbrar con esos datos (periodo, días, registro patronal del emisor…). */
+	/** El recibo de nómina no se puede calcular o timbrar con esos datos (periodo, días, registro patronal del emisor…). En un recibo calculado por su sistema (/v1/payroll_receipts/external), errors trae todos los problemas, cada uno con su param, code (missing, not_allowed, invalid, catalog, totals_mismatch, rule) y message. No se usó ningún timbre. */
 	PayrollInvalid: "payroll_invalid",
+	/** El empleado ya tiene un recibo ordinario cuyo periodo se cruza con este (invoice). Un pago adicional del periodo va como recibo extraordinario (type E); para corregir aquel, use replaces. */
+	PayrollPeriodOverlap: "payroll_period_overlap",
+	/** El empleado ya tiene un recibo vigente de ese periodo (ordinario) o de esa corrida (payroll_run_id, extraordinario) con otros importes. invoice es ese recibo: corríjalo con replaces o cancélelo antes. Con los mismos importes se devuelve el mismo recibo, sin error. */
+	PayrollReceiptExists: "payroll_receipt_exists",
+	/** replaces no es un recibo de nómina vigente del mismo emisor y del mismo empleado. */
+	PayrollReplacementInvalid: "payroll_replacement_invalid",
 	/** La cotización no tiene los datos fiscales del cliente: agrégueselos con POST /v1/quotes/{id} (customer) o mándela con auto_invoice para que los dé al aceptarla. */
 	QuoteCustomerMissing: "quote_customer_missing",
 	/** La cotización no se pudo guardar o ya no cambia (aceptada, rechazada o facturada), o no se puede mandar así. El mensaje dice por qué. */
@@ -157,7 +165,7 @@ export const ErrorCode = {
 	StoreNotAuthorized: "store_not_authorized",
 	/** Esa plataforma aún no está disponible en Fiscalisto. */
 	StorePlatformUnavailable: "store_platform_unavailable",
-	/** Los complementos de pago y las notas de crédito no se sustituyen: se cancelan y se emite otro. */
+	/** Los complementos de pago y las notas de crédito no se sustituyen: se cancelan y se emite otro. Un recibo de nómina se sustituye con POST /v1/payroll_receipts/external y replaces. */
 	SubstitutionUnsupported: "substitution_unsupported",
 	/** El reloj se está adelantando en otra solicitud (409, con Retry-After). Espere a test_clock.ready y repita. */
 	TestClockAdvancing: "test_clock_advancing",

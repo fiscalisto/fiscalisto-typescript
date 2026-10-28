@@ -132,6 +132,12 @@ cliente). Si el cliente debe aceptar llega
 
 - Las llaves \`fk_test_\` aplican las mismas revisiones del SAT que producción; una cuenta nueva ya
   tiene un emisor de pruebas listo.
+- En pruebas el cliente o empleado debe estar en la lista de RFC de prueba del PAC (si no,
+  \`CFDI40143\`): use \`ICV060329BY0\` INMOBILIARIA CVA, régimen 601, CP 33826 (persona moral) o
+  \`MASO451221PM4\` MARIA OLIVIA MARTINEZ SAGAZ, CP 80290 (persona física y nómina).
+- En pruebas los correos solo llegan a las personas de la cuenta API (a otro, \`send_email\` timbra
+  igual y la respuesta trae \`email_error\`), y cada emisor timbra hasta 5 comprobantes cada 10
+  segundos (\`429\` \`stamp_rate_limit\`: espere \`Retry-After\` y repita con la misma llave).
 - RFC de prueba que provocan cada rechazo del SAT (por ejemplo \`NOM010101FK9\` → \`CFDI40145\`):
   ${DOCS}/pruebas-y-produccion.md#provocar-cada-rechazo-del-sat.
 - \`call_api\` del MCP prueba un cuerpo real con la llave de pruebas antes de escribirlo en código.
