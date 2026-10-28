@@ -807,6 +807,15 @@ export interface Employee {
 export interface PayrollReceiptPreview {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "payroll_receipt_preview";
+	/** Mándelo en POST /v1/payroll_receipts para timbrar exactamente este recibo: si al timbrar se calcula otro, contesta 409 payroll_calculation_changed sin timbrar. */
+	confirmation_token: string;
+	/** Lo que el recibo no incluye o pronto no se podrá calcular; no impide timbrar. */
+	warnings: {
+		/** finiquito_not_included: el empleado se fue en el periodo y el recibo no trae su finiquito; payroll_rates_pending: aún no se cargan los valores (ISR, subsidio, salario mínimo, UMA) de una fecha próxima. */
+		code: string;
+		/** Qué pasó y cómo corregirlo, para una persona. */
+		message: string;
+	}[];
 	/** El empleado (emp_…). */
 	employee: string;
 	/** Periodicidad del pago (PeriodicidadPago): 02 semanal, 03 catorcenal, 04 quincenal (por omisión), 05 mensual. */
@@ -4198,7 +4207,7 @@ export interface UpdateAccountParams {
 }
 
 export interface ResetTestDataParams {
-	/** true (por omisión) para dejarle a cada emisor de pruebas 3 clientes y 3 productos de ejemplo. false para dejarlo vacío. */
+	/** true (por omisión) para dejarle a cada emisor de pruebas 2 clientes y 3 productos de ejemplo. false para dejarlo vacío. */
 	seed?: boolean;
 }
 
@@ -4920,6 +4929,8 @@ export interface CreatePayrollReceiptParams {
 	send_email?: boolean;
 	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
 	metadata?: Record<string, string>;
+	/** El confirmation_token de POST /v1/payroll_receipts/preview: timbra solo si el recibo calculado ahora es exactamente el que revisó (si no, 409 payroll_calculation_changed y no timbra). Sin él, timbra el que calcule en ese momento. */
+	confirmation_token?: string;
 }
 
 export interface PreviewPayrollReceiptParams {
@@ -6147,7 +6158,7 @@ export class TestDataResource {
 	/**
 	 * Reiniciar los datos de prueba
 	 *
-	 * Deja el modo de pruebas como nuevo: cada emisor de pruebas conserva su RFC y su CSD de pruebas pero pierde sus facturas, clientes, productos, lotes, ligas y descargas, y se borran los eventos y el registro de solicitudes de pruebas. Las llaves y los webhooks se quedan. Con seed (por omisión) deja 3 clientes y 3 productos de ejemplo. Solo con una llave fk_test_; producción nunca se toca.
+	 * Deja el modo de pruebas como nuevo: cada emisor de pruebas conserva su RFC y su CSD de pruebas pero pierde sus facturas, clientes, productos, lotes, ligas y descargas, y se borran los eventos y el registro de solicitudes de pruebas. Las llaves y los webhooks se quedan. Con seed (por omisión) deja 2 clientes y 3 productos de ejemplo. Solo con una llave fk_test_; producción nunca se toca.
 	 *
 	 * POST /v1/test_data/reset
 	 * @see https://fiscalisto.com/docs/api/referencia/cuenta/reset-test-data
@@ -6995,7 +7006,7 @@ export class PayrollReceiptsResource {
 	/**
 	 * Timbrar un recibo de nómina
 	 *
-	 * Nómina ordinaria (Nómina 1.2): Fiscalisto calcula sueldo, ISR con subsidio al empleo e IMSS del empleado y el periodo, como la app. Queda como factura tipo N (GET /v1/invoices/{id}). El emisor necesita employer_registration.
+	 * Nómina ordinaria (Nómina 1.2): Fiscalisto calcula sueldo, ISR con subsidio al empleo e IMSS del empleado y el periodo, como la app, y nada más: aguinaldo, PTU, finiquitos, bonos, horas extra, Infonavit o préstamos los calcula su sistema y se timbran con POST /v1/payroll_receipts/external (pedirlos aquí contesta payroll_calculation_unsupported). Revise antes el recibo con POST /v1/payroll_receipts/preview y mande su confirmation_token: así solo se timbra el recibo que revisó (si cambió, 409 payroll_calculation_changed). Queda como factura tipo N (GET /v1/invoices/{id}). El emisor necesita employer_registration.
 	 *
 	 * POST /v1/payroll_receipts
 	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-payroll-receipt
@@ -7007,7 +7018,7 @@ export class PayrollReceiptsResource {
 	/**
 	 * Calcular un recibo sin timbrar
 	 *
-	 * El recibo como se timbraría (percepciones, ISR con el subsidio para el empleo, cuotas IMSS y el neto), sin timbrar ni usar timbres.
+	 * El recibo como se timbraría (percepciones, ISR con el subsidio para el empleo, cuotas IMSS y el neto), sin timbrar ni usar timbres, con el confirmation_token que lo timbra tal cual y los avisos de lo que no incluye (un finiquito, valores del año que aún no se cargan).
 	 *
 	 * POST /v1/payroll_receipts/preview
 	 * @see https://fiscalisto.com/docs/api/referencia/nomina/preview-payroll-receipt
