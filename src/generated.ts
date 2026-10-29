@@ -1945,7 +1945,7 @@ export interface Ticket {
 	code: string;
 	/** pending (se puede facturar), invoiced (su comprador lo facturó: la factura en invoice), global (entró en la factura global del periodo) o cancelled. */
 	status: "pending" | "invoiced" | "global" | "cancelled";
-	/** La página del portal con el código ya escrito: el comprador pone el total y sus datos. Puede incrustarla con fiscalisto.js. null si ya no está pendiente. */
+	/** La página del portal con el código (c) y el total (t) del ticket: el portal lo encuentra solo y el comprador solo da sus datos. Quien tenga la liga puede facturar el ticket: désela solo al comprador (como el ticket impreso). Puede incrustarla con fiscalisto.js. null si ya no está pendiente. */
 	url: string | null;
 	/** Lo que se cobró, impuestos incluidos y sin propina. */
 	total: number;
@@ -2614,8 +2614,8 @@ export interface Quote {
 	number: string;
 	/** Cambiar una ya enviada hace una versión nueva con el mismo número; el id contesta siempre la última. */
 	version: number;
-	/** draft, sent, viewed (el cliente abrió la liga), accepted, rejected, expired (pasó valid_until) o invoiced. */
-	status: "draft" | "sent" | "viewed" | "accepted" | "rejected" | "expired" | "invoiced";
+	/** draft, sent, viewed (el cliente abrió la liga), accepted, rejected, withdrawn (usted la retiró), expired (pasó valid_until) o invoiced. */
+	status: "draft" | "sent" | "viewed" | "accepted" | "rejected" | "withdrawn" | "expired" | "invoiced";
 	/** La liga donde el cliente la ve, descarga su PDF, la acepta, pide cambios o la rechaza; null mientras sea borrador. */
 	url: string | null;
 	/** A quién va: tax_id null si aún no tiene sus datos fiscales; catalog_id es su cliente (cus_…) en su catálogo, o null. */
@@ -2654,15 +2654,19 @@ export interface Quote {
 	notes: string | null;
 	/** Si al aceptarla se timbra la factura sola. */
 	auto_invoice: boolean;
-	/** Lo que escribió el cliente al pedir cambios o al rechazarla, o null. */
+	/** Si se le manda un recordatorio por correo 3 días antes de su último día mientras no responda (remind en POST /v1/quotes/{id}/send). */
+	remind: boolean;
+	/** Cuándo se mandó el recordatorio, o null. */
+	reminded_at: string | null;
+	/** Lo que escribió el cliente al pedir cambios o al rechazarla, la nota de usted al retirarla o marcarla rechazada, o null. */
 	customer_comment: string | null;
 	/** Cuándo se envió. */
 	sent_at: string | null;
 	/** Cuándo el cliente abrió la liga por primera vez. */
 	viewed_at: string | null;
-	/** Cuándo se aceptó o rechazó. */
+	/** Cuándo se aceptó, se rechazó o se retiró. */
 	decided_at: string | null;
-	/** customer (en su liga) o user (usted, con POST /v1/quotes/{id}/accept o desde la app). */
+	/** customer (en su liga) o user (usted: POST /v1/quotes/{id}/accept, /reject o /withdraw, o desde la app). */
 	decided_by: "customer" | "user" | null;
 	/** La factura (inv_…) que se timbró de ella, o null. */
 	invoice: string | null;
@@ -2834,7 +2838,7 @@ export interface WebhookTest {
 }
 
 /** Lo que puede pasar: el tipo de cada evento. */
-export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready";
+export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "issuer.ready" | "balance.low" | "test_clock.ready";
 
 /** Algo que pasó en su cuenta: el objeto completo como quedó. Se manda a sus webhooks firmado (Standard Webhooks). */
 export interface EventBase<T extends EventType = EventType, O = unknown> {
@@ -2842,7 +2846,7 @@ export interface EventBase<T extends EventType = EventType, O = unknown> {
 	id: string;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "event";
-	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, invoice.paid, invoice.partially_paid, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, payroll_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, sat_declaration.created, sat_declaration.updated, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, issuer.ready, balance.low o test_clock.ready. */
+	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, invoice.paid, invoice.partially_paid, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, payroll_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, sat_declaration.created, sat_declaration.updated, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, quote.withdrawn, issuer.ready, balance.low o test_clock.ready. */
 	type: T;
 	/** Versión de la API con que se armó el objeto. */
 	api_version: string;
@@ -2882,6 +2886,7 @@ export type Event =
 	| EventBase<"quote.accepted", Quote>
 	| EventBase<"quote.changes_requested", Quote>
 	| EventBase<"quote.rejected", Quote>
+	| EventBase<"quote.withdrawn", Quote>
 	| EventBase<"issuer.ready", Issuer>
 	| EventBase<"balance.low", Balance>
 	| EventBase<"test_clock.ready", TestClock>;
@@ -6097,7 +6102,7 @@ export interface ListQuotesParams {
 	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
 	issuer?: string;
 	/** Solo las que estén en este estado. */
-	status?: "draft" | "sent" | "viewed" | "accepted" | "rejected" | "expired" | "invoiced";
+	status?: "draft" | "sent" | "viewed" | "accepted" | "rejected" | "withdrawn" | "expired" | "invoiced";
 }
 
 export interface UpdateQuoteParams {
@@ -6252,6 +6257,18 @@ export interface SendQuoteParams {
 	message?: string;
 	/** Al aceptarla, timbrar la factura sola (con los datos fiscales del cliente; si no los tiene, la página se los pide primero). Por omisión false: la factura se timbra con POST /v1/quotes/{id}/invoice. */
 	auto_invoice?: boolean;
+	/** Recordarle por correo, a los mismos destinatarios, 3 días antes de su último día si no ha respondido (una vez). Solo al mandarla por correo; por omisión false. */
+	remind?: boolean;
+}
+
+export interface WithdrawQuoteParams {
+	/** Por qué (queda en customer_comment; el cliente no la ve). */
+	note?: string;
+}
+
+export interface RejectQuoteParams {
+	/** Por qué (queda en customer_comment; el cliente no la ve). */
+	note?: string;
 }
 
 export interface CreateWebhookEndpointParams {
@@ -6293,7 +6310,7 @@ export interface RollWebhookSecretParams {
 
 export interface TestWebhookEndpointParams {
 	/** El evento a mandar. Por omisión invoice.stamped. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "issuer.ready" | "balance.low" | "test_clock.ready";
 }
 
 /** Los parámetros de GET /v1/events. */
@@ -6303,7 +6320,7 @@ export interface ListEventsParams {
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
 	/** Solo de este tipo (invoice.stamped), o todos los de un recurso con un comodín (invoice.*). */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "issuer.ready" | "balance.low" | "test_clock.ready" | "invoice.*" | "invoice_batch.*" | "payroll_batch.*" | "recurring_invoice.*" | "quote.*" | "ticket.*" | "retention.*" | "customer_data_request.*" | "sat_download.*" | "sat_declaration.*" | "issuer.*" | "balance.*" | "test_clock.*";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "issuer.ready" | "balance.low" | "test_clock.ready" | "invoice.*" | "invoice_batch.*" | "payroll_batch.*" | "recurring_invoice.*" | "quote.*" | "ticket.*" | "retention.*" | "customer_data_request.*" | "sat_download.*" | "sat_declaration.*" | "issuer.*" | "balance.*" | "test_clock.*";
 	/** Solo los de este objeto (inv_…, ret_…, bat_…). */
 	object?: string;
 	/** false: los que algún webhook no recibió (su último intento falló). true: los que recibieron todos los webhooks a los que se mandaron. */
@@ -8420,7 +8437,7 @@ export class QuotesResource {
 	/**
 	 * Cambiar una cotización
 	 *
-	 * Solo lo que mande cambia. Un borrador cambia ahí mismo; una que ya se envió se vuelve una versión nueva en borrador (mismo número, version + 1) que el cliente ve al mandarla; mientras, su liga muestra la anterior. Una aceptada, rechazada o facturada ya no cambia.
+	 * Solo lo que mande cambia. Un borrador cambia ahí mismo; una que ya se envió (también si venció, se rechazó o se retiró) se vuelve una versión nueva en borrador (mismo número, version + 1) que el cliente ve al mandarla; mientras, su liga muestra la anterior. Una aceptada o facturada ya no cambia.
 	 *
 	 * POST /v1/quotes/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/cotizaciones/update-quote
@@ -8432,7 +8449,7 @@ export class QuotesResource {
 	/**
 	 * Borrar una cotización
 	 *
-	 * Solo una que nunca se envió; si no, 400 quote_not_draft.
+	 * Borra la cotización con todas sus versiones; si ya se envió, su url deja de funcionar. Una aceptada o facturada no se borra: 400 quote_not_deletable. Para cerrarla sin borrarla, POST /v1/quotes/{id}/withdraw.
 	 *
 	 * DELETE /v1/quotes/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/cotizaciones/delete-quote
@@ -8463,6 +8480,30 @@ export class QuotesResource {
 	 */
 	accept(id: string, options?: RequestOptions): Promise<Quote> {
 		return this.#client.request({ method: "POST", path: `/v1/quotes/${encodeURIComponent(id)}/accept`, idempotent: true }, options);
+	}
+
+	/**
+	 * Retirar una cotización
+	 *
+	 * Usted ya no la ofrece: su liga dice que se retiró y el cliente ya no la puede aceptar (status withdrawn, decided_by user). Llega quote.withdrawn. Para ofrecerla de nuevo, cámbiela con POST /v1/quotes/{id} (una versión nueva) y mándela. Una que nunca se envió se borra: 400 quote_not_sent.
+	 *
+	 * POST /v1/quotes/{id}/withdraw
+	 * @see https://fiscalisto.com/docs/api/referencia/cotizaciones/withdraw-quote
+	 */
+	withdraw(id: string, params?: WithdrawQuoteParams, options?: RequestOptions): Promise<Quote> {
+		return this.#client.request({ method: "POST", path: `/v1/quotes/${encodeURIComponent(id)}/withdraw`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Marcar rechazada
+	 *
+	 * El cliente le dijo que no por teléfono, en persona… (status rejected, decided_by user; su nota en customer_comment). Llega quote.rejected. También para una vencida que ya no va a seguir.
+	 *
+	 * POST /v1/quotes/{id}/reject
+	 * @see https://fiscalisto.com/docs/api/referencia/cotizaciones/reject-quote
+	 */
+	reject(id: string, params?: RejectQuoteParams, options?: RequestOptions): Promise<Quote> {
+		return this.#client.request({ method: "POST", path: `/v1/quotes/${encodeURIComponent(id)}/reject`, body: params, idempotent: true }, options);
 	}
 
 	/**

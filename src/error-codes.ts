@@ -123,10 +123,12 @@ export const ErrorCode = {
 	QuoteCustomerMissing: "quote_customer_missing",
 	/** La cotización no se pudo guardar o ya no cambia (aceptada, rechazada o facturada), o no se puede mandar así. El mensaje dice por qué. */
 	QuoteInvalid: "quote_invalid",
-	/** Solo se borra una cotización que nunca se envió. */
-	QuoteNotDraft: "quote_not_draft",
-	/** La cotización se rechazó o venció: no se factura. Si venció, cámbiele valid_until (es una versión nueva). */
+	/** La cotización ya se aceptó o se facturó: no se borra. Para cerrar una que no se aceptó, también puede retirarla (POST /v1/quotes/{id}/withdraw). */
+	QuoteNotDeletable: "quote_not_deletable",
+	/** La cotización se rechazó, se retiró o venció: no se factura. Si venció o se retiró, cámbiela (es una versión nueva) y vuelva a mandarla. */
 	QuoteNotInvoiceable: "quote_not_invoiceable",
+	/** La cotización nunca se envió, así que no se retira ni se marca rechazada: bórrela con DELETE /v1/quotes/{id}. */
+	QuoteNotSent: "quote_not_sent",
 	/** Demasiadas solicitudes con la llave. Espere lo que dice Retry-After y reintente. */
 	RateLimit: "rate_limit",
 	/** La factura recurrente no se pudo guardar: el día, la hora, la zona o la factura no son válidos. El mensaje dice cuál. */
