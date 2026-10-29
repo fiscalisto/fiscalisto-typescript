@@ -2009,6 +2009,8 @@ export interface SelfInvoicing {
 	window_days: number;
 	/** Cada cuánto se timbra sola la factura global con lo que nadie facturó: 01 diaria, 02 semanal, 03 quincenal, 04 mensual. */
 	global_periodicity: "01" | "02" | "03" | "04";
+	/** auto: los tickets que nadie facturó van solos a la factura global de su periodo. off: Fiscalisto no hace factura global de estos tickets (la hace usted en otro lado). */
+	global_invoice: "auto" | "off";
 	/** Si el portal pide el total para encontrar el ticket (true) o solo su código (false). */
 	ask_total: boolean;
 	/** El título del portal, o null para «Facture su ticket». */
@@ -5707,6 +5709,8 @@ export interface UpdateSelfInvoicingParams {
 	window_days?: number;
 	/** c_Periodicidad de la factura global con los tickets que nadie facturó: 01 diaria, 02 semanal, 03 quincenal, 04 mensual. */
 	global_periodicity?: "01" | "02" | "03" | "04";
+	/** `auto` (por omisión): los tickets que nadie facturó van solos a la factura global al terminar su periodo. `off`: Fiscalisto no hace factura global de los tickets (por ejemplo, porque su punto de venta ya la hace); quedan pendientes y usted responde por ellos ante el SAT. */
+	global_invoice?: "auto" | "off";
 	/** `true` (por omisión): el comprador busca su ticket con el código y el total. `false`: solo con el código (sus 4 caracteres al azar; cada ticket se bloquea tras varios intentos fallidos). */
 	ask_total?: boolean;
 	/** El título del portal, en lugar de «Facture su ticket». `null` lo quita. */
