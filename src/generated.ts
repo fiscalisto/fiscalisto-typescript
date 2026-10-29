@@ -1953,10 +1953,27 @@ export interface Ticket {
 	tip: number;
 	/** c_FormaPago de la venta. */
 	payment_form: string;
-	/** El concepto de la factura. */
+	/** El concepto de la factura (el primero, si lleva varios). */
 	description: string;
-	/** c_ClaveProdServ del concepto. */
+	/** c_ClaveProdServ del concepto (el primero, si lleva varios). */
 	product_key: string;
+	/** Sus conceptos, en orden: uno solo si se registró sin lines. Cada uno con su producto (prd_… o null), descripción, claves del SAT, IVA (null si no es objeto de impuesto), unidades y lo que se cobró por él, impuestos incluidos. */
+	lines: {
+		/** Un producto de su catálogo (prd_…): toma su clave, unidad, precio e impuestos. */
+		product: string | null;
+		/** Descripción. */
+		description: string;
+		/** Clave del producto o servicio (ClaveProdServ), 8 dígitos de c_ClaveProdServ. Búsquela con GET /v1/sat_catalogs/product_keys?q=… */
+		product_key: string;
+		/** Clave de unidad (ClaveUnidad) de c_ClaveUnidad: E48 unidad de servicio (por omisión), H87 pieza, ACT actividad… */
+		unit_key: string;
+		/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
+		iva: string | null;
+		/** Cantidad (Cantidad). Por omisión 1. */
+		quantity: number;
+		/** Total en la moneda del comprobante (Total). */
+		total: number;
+	}[];
 	/** Cuándo se vendió. */
 	sold_at: string;
 	/** El último día (AAAA-MM-DD) en que el comprador puede facturarlo; después entra en la factura global. */
@@ -1992,6 +2009,14 @@ export interface SelfInvoicing {
 	window_days: number;
 	/** Cada cuánto se timbra sola la factura global con lo que nadie facturó: 01 diaria, 02 semanal, 03 quincenal, 04 mensual. */
 	global_periodicity: "01" | "02" | "03" | "04";
+	/** Si el portal pide el total para encontrar el ticket (true) o solo su código (false). */
+	ask_total: boolean;
+	/** El título del portal, o null para «Facture su ticket». */
+	portal_title: string | null;
+	/** El mensaje bajo el título, o null. */
+	portal_message: string | null;
+	/** Dónde encuentra el comprador su código, bajo el campo; null para el texto de Fiscalisto. */
+	code_hint: string | null;
 }
 
 /** Una factura que el emisor timbra solo, cada mes, semana o día. */
@@ -5617,8 +5642,8 @@ export interface CreateTicketParams {
 	issuer?: string;
 	/** El folio de la venta en su sistema, único por emisor: letras, números, - _ / y punto. Registrar el mismo folio con el mismo total responde el ticket que ya existe. */
 	folio: string;
-	/** Lo que se cobró, impuestos incluidos y sin propina. */
-	total: number;
+	/** Lo que se cobró, impuestos incluidos y sin propina. Con `lines` puede omitirlo (es su suma); si lo manda, debe ser igual. */
+	total?: number;
 	/** Propina: no va en la factura. El cliente puede escribir el total con ella o sin ella. */
 	tip?: number;
 	/** c_FormaPago de la venta: 01 efectivo, 04 tarjeta de crédito… */
@@ -5635,6 +5660,23 @@ export interface CreateTicketParams {
 	unit_key?: string;
 	/** Tasa de IVA incluida en el total. Por omisión 0.16. */
 	iva?: "0" | "0.16" | "0.08" | "exento";
+	/** Una venta de varios conceptos (el folio de un hotel: noches, desayunos, lavandería), cada uno con su producto o sus claves, sus impuestos y lo que se cobró por él; hasta 200. En lugar de `product`, `description`, `product_key`, `unit_key` e `iva`. La factura del cliente lleva un concepto por línea; la factura global, uno por cada combinación de impuestos del ticket. */
+	lines?: {
+		/** Un producto (prd_…) de su catálogo: sus claves, IVA e impuestos locales. */
+		product?: string;
+		/** El concepto. Con `product`, reemplaza su descripción; sin él, va con `product_key`. */
+		description?: string;
+		/** c_ClaveProdServ (8 dígitos), si no usa `product`. */
+		product_key?: string;
+		/** c_ClaveUnidad. Por omisión, la de la clave del producto. */
+		unit_key?: string;
+		/** Tasa de IVA incluida en su total. Por omisión 0.16. */
+		iva?: "0" | "0.16" | "0.08" | "exento";
+		/** Unidades (noches, piezas). Por omisión 1. */
+		quantity?: number;
+		/** Lo que se cobró por este concepto, impuestos incluidos. */
+		total: number;
+	}[];
 }
 
 /** Los parámetros de GET /v1/tickets. */
@@ -5660,6 +5702,14 @@ export interface UpdateSelfInvoicingParams {
 	window_days?: number;
 	/** c_Periodicidad de la factura global con los tickets que nadie facturó: 01 diaria, 02 semanal, 03 quincenal, 04 mensual. */
 	global_periodicity?: "01" | "02" | "03" | "04";
+	/** `true` (por omisión): el comprador busca su ticket con el código y el total. `false`: solo con el código (sus 4 caracteres al azar; cada ticket se bloquea tras varios intentos fallidos). */
+	ask_total?: boolean;
+	/** El título del portal, en lugar de «Facture su ticket». `null` lo quita. */
+	portal_title?: string | null;
+	/** Un mensaje bajo el título (instrucciones, horario, a quién escribir). `null` lo quita. */
+	portal_message?: string | null;
+	/** Dónde encuentra el comprador su código, bajo el campo («Viene en su correo de salida»). `null` pone el de Fiscalisto. */
+	code_hint?: string | null;
 }
 
 /** Los parámetros de GET /v1/accounting/journal_entries. */
@@ -7990,7 +8040,7 @@ export class TicketsResource {
 	/**
 	 * Registrar un ticket
 	 *
-	 * Una venta que su comprador factura él mismo: con el código (code) y el total en el portal del emisor (url, que puede incrustar en su página con fiscalisto.js), da sus datos fiscales y la factura se timbra al momento con los timbres de su cuenta. Lo que nadie factura entra solo en la factura global del periodo. Registrar otra vez el mismo folio con el mismo total contesta el ticket que ya existe (los reintentos son seguros); con otro total, 409.
+	 * Una venta que su comprador factura él mismo: con el código (code) y el total en el portal del emisor (url, que puede incrustar en su página con fiscalisto.js), da sus datos fiscales y la factura se timbra al momento con los timbres de su cuenta. Lo que nadie factura entra solo en la factura global del periodo. Registrar otra vez el mismo folio con el mismo total contesta el ticket que ya existe (los reintentos son seguros); con otro total, 409. Una venta de varios conceptos (el folio de un hotel) va en lines, cada uno con su clave SAT, descripción, impuestos y monto.
 	 *
 	 * POST /v1/tickets
 	 * @see https://fiscalisto.com/docs/api/referencia/autofactura/create-ticket
