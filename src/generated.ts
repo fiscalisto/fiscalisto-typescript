@@ -1925,8 +1925,47 @@ export interface SatFinding {
 	explanation: string | null;
 	/** Cuántos CFDI lo tienen, sin revisar. */
 	invoices: number;
-	/** La suma de sus totales. */
+	/** De cuántos proveedores o clientes son esos CFDI. */
+	counterparties: number;
+	/** La suma de sus totales, en pesos (los de otra moneda, a su tipo de cambio). */
 	amount: number;
+	/** La fecha del CFDI más reciente que lo tiene (AAAA-MM-DD). */
+	last_date: string | null;
+}
+
+/** Un proveedor o cliente con hallazgos sin revisar en los CFDI del emisor: cuántos CFDI, cuánto suman y qué tipos de hallazgo tiene. */
+export interface SatFindingCounterparty {
+	/** Su RFC (el mismo que rfc). Sirve como starting_after. */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "sat_finding_counterparty";
+	/** El emisor. */
+	issuer: string;
+	/** El RFC del proveedor (en recibidos) o del cliente (en emitidos). */
+	rfc: string;
+	/** Su nombre como viene en el CFDI, o null. */
+	name: string | null;
+	/** Su hallazgo más grave: critical, warning o info. */
+	severity: "critical" | "warning" | "info";
+	/** Cuántos de sus CFDI tienen algún hallazgo sin revisar. */
+	invoices: number;
+	/** La suma de los totales de esos CFDI, en pesos, cada uno una vez aunque tenga varios hallazgos. */
+	amount: number;
+	/** La fecha del más reciente de esos CFDI (AAAA-MM-DD). */
+	last_date: string | null;
+	/** Sus tipos de hallazgo, del más grave al más leve. */
+	findings: {
+		/** El código del hallazgo (el code de GET /v1/sat_findings). */
+		code: string;
+		/** critical (grave), warning (revisar) o info. */
+		severity: "critical" | "warning" | "info";
+		/** Qué es, en palabras. */
+		title: string;
+		/** En cuántos de sus CFDI está, sin revisar. */
+		invoices: number;
+	}[];
 }
 
 /** Una venta que su comprador puede facturar él mismo en el portal del emisor (autofactura). */
@@ -3096,6 +3135,17 @@ export interface SatFindingList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: SatFinding[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface SatFindingCounterpartyList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: SatFindingCounterparty[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -5475,6 +5525,30 @@ export interface ListSatFindingsParams {
 	date_gte?: string;
 	/** CFDI hasta este día (AAAA-MM-DD, completo). */
 	date_lte?: string;
+	/** Solo los de esta gravedad: critical, warning o info. */
+	severity?: "critical" | "warning" | "info";
+	/** Solo los CFDI de este proveedor o cliente (su RFC): qué hallazgos tiene. */
+	counterparty?: string;
+}
+
+/** Los parámetros de GET /v1/sat_finding_counterparties. */
+export interface ListSatFindingCounterpartiesParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** issued (emitidos: clientes) o received (recibidos: proveedores); sin él, los dos. */
+	direction?: "issued" | "received";
+	/** CFDI desde este día (AAAA-MM-DD). */
+	date_gte?: string;
+	/** CFDI hasta este día (AAAA-MM-DD, completo). */
+	date_lte?: string;
+	/** Solo los de esta gravedad: critical, warning o info. */
+	severity?: "critical" | "warning" | "info";
+	/** Solo quienes tienen este hallazgo (efos_definitivo, cancelado, regla_12…; el code de GET /v1/sat_findings). */
+	code?: string;
 }
 
 /** Los parámetros de GET /v1/warehouses. */
@@ -7699,6 +7773,26 @@ export class SatFindingsResource {
 	}
 }
 
+/** Cumplimiento SAT: fiscalisto.satFindingCounterparties. */
+export class SatFindingCounterpartiesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar proveedores y clientes con hallazgos
+	 *
+	 * Los proveedores (en recibidos) y clientes (en emitidos) con hallazgos sin revisar en los CFDI del emisor, del más grave al más leve y después por cuántos CFDI, cada uno con sus tipos de hallazgo. Con code, quién tiene ese hallazgo. No usa timbres.
+	 *
+	 * GET /v1/sat_finding_counterparties
+	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/list-sat-finding-counterparties
+	 */
+	list(params?: ListSatFindingCounterpartiesParams, options?: RequestOptions): List<SatFindingCounterparty> {
+		return this.#client.list({ path: "/v1/sat_finding_counterparties", query: params }, options);
+	}
+}
+
 /** Inventario: fiscalisto.warehouses. */
 export class WarehousesResource {
 	readonly #client: Client;
@@ -8685,6 +8779,7 @@ export class FiscalistoApi extends Core {
 	readonly products = new ProductsResource(this);
 	readonly satMailboxMessages = new SatMailboxMessagesResource(this);
 	readonly satFindings = new SatFindingsResource(this);
+	readonly satFindingCounterparties = new SatFindingCounterpartiesResource(this);
 	readonly warehouses = new WarehousesResource(this);
 	readonly stockMovements = new StockMovementsResource(this);
 	readonly stockAdjustments = new StockAdjustmentsResource(this);
