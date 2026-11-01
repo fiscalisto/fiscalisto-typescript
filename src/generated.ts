@@ -8051,6 +8051,18 @@ export class SatInvoicesResource {
 	xml(id: string, options?: RequestOptions): Promise<string> {
 		return this.#client.request({ method: "GET", path: `/v1/sat_invoices/${encodeURIComponent(id)}/xml`, as: "text" }, options);
 	}
+
+	/**
+	 * Descargar el PDF de una factura del SAT
+	 *
+	 * El CFDI en PDF, como lo ofrece Facturas: si se timbró en Fiscalisto, el mismo que recibió el cliente; si no, dibujado con el diseño de PDF del emisor (el de un proveedor, con su estilo y color, nunca con su logo). El XML es el documento válido ante el SAT.
+	 *
+	 * GET /v1/sat_invoices/{id}/pdf
+	 * @see https://fiscalisto.com/docs/api/referencia/descargas-del-sat/get-sat-invoice-pdf
+	 */
+	pdf(id: string, options?: RequestOptions): Promise<Uint8Array> {
+		return this.#client.request({ method: "GET", path: `/v1/sat_invoices/${encodeURIComponent(id)}/pdf`, as: "bytes" }, options);
+	}
 }
 
 /** Declaraciones del SAT: fiscalisto.satDeclarations. */

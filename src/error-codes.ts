@@ -119,6 +119,8 @@ export const ErrorCode = {
 	PayrollReceiptExists: "payroll_receipt_exists",
 	/** replaces no es un recibo de nómina vigente del mismo emisor y del mismo empleado. */
 	PayrollReplacementInvalid: "payroll_replacement_invalid",
+	/** No se pudo dibujar el PDF de ese CFDI (su XML trae algo que el generador no lee). Descargue el XML: es el documento válido ante el SAT. */
+	PdfUnavailable: "pdf_unavailable",
 	/** La cotización no tiene los datos fiscales del cliente: agrégueselos con POST /v1/quotes/{id} (customer) o mándela con auto_invoice para que los dé al aceptarla. */
 	QuoteCustomerMissing: "quote_customer_missing",
 	/** La cotización no se pudo guardar o ya no cambia (aceptada, rechazada o facturada), o no se puede mandar así. El mensaje dice por qué. */
