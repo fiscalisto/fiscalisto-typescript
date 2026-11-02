@@ -563,7 +563,7 @@ export interface Retention {
 	internal_folio: string | null;
 	/** Fecha de emisión (Fecha), hora de la Ciudad de México. */
 	date: string | null;
-	/** Clave de la retención (CveRetenc), c_CveRetenc: 01 servicios profesionales, 05 arrendamiento, 14 dividendos, 16 intereses, 18 pagos al extranjero… Las claves 14, 16, 17 y 18 a 24 llevan su complemento (dividends, interest, trust_lease, foreign_payment, share_sale, prize, trust, retirement_plan, mortgage_interest, financial_derivatives); la 26 (plataformas tecnológicas) aún no se puede emitir. */
+	/** Clave de la retención (CveRetenc), c_CveRetenc: 01 servicios profesionales, 05 arrendamiento, 14 dividendos, 16 intereses, 18 pagos al extranjero… Las claves 14, 16, 17 y 18 a 24 llevan su complemento (dividends, interest, trust_lease, foreign_payment, share_sale, prize, trust, retirement_plan, mortgage_interest, financial_derivatives); la 26 (plataformas tecnológicas) lleva platform, y sus totals y taxes se calculan de las operaciones. */
 	code: string;
 	/** Descripción de la retención (DescRetenc). */
 	description: string | null;
@@ -631,6 +631,8 @@ export interface Retention {
 	mortgage_interest?: Record<string, unknown>;
 	/** Complemento de operaciones financieras derivadas de capital (Operacionesconderivados 1.0), obligatorio con code 24. */
 	financial_derivatives?: Record<string, unknown>;
+	/** Complemento de servicios de plataformas tecnológicas (ServiciosPlataformasTecnologicas 1.0), obligatorio con code 26: una constancia por mes, receptor y tipo de servicio. totals y taxes se calculan de services con las tasas del SAT (ISR de LISR 113-A y LIF 2026 art. 25; IVA 50% o 100%; IEPS en apuestas); si los manda, deben coincidir. */
+	platform?: Record<string, unknown>;
 	/** La cancelación, si se pidió: estado, motivo, sustituto y cuándo. */
 	cancellation: {
 		/** pending (espera la respuesta del cliente), accepted (cancelada), rejected (el cliente la rechazó) o lapsed (venció; puede pedirla otra vez). */
@@ -994,7 +996,7 @@ export interface ExternalPayrollReceiptPreview {
 	warnings: {
 		/** El campo de la solicitud. */
 		param: string;
-		/** Clave de la retención (CveRetenc), c_CveRetenc: 01 servicios profesionales, 05 arrendamiento, 14 dividendos, 16 intereses, 18 pagos al extranjero… Las claves 14, 16, 17 y 18 a 24 llevan su complemento (dividends, interest, trust_lease, foreign_payment, share_sale, prize, trust, retirement_plan, mortgage_interest, financial_derivatives); la 26 (plataformas tecnológicas) aún no se puede emitir. */
+		/** Clave de la retención (CveRetenc), c_CveRetenc: 01 servicios profesionales, 05 arrendamiento, 14 dividendos, 16 intereses, 18 pagos al extranjero… Las claves 14, 16, 17 y 18 a 24 llevan su complemento (dividends, interest, trust_lease, foreign_payment, share_sale, prize, trust, retirement_plan, mortgage_interest, financial_derivatives); la 26 (plataformas tecnológicas) lleva platform, y sus totals y taxes se calculan de las operaciones. */
 		code: string;
 		/** Qué pasó y cómo corregirlo, para una persona. */
 		message: string;
@@ -4900,7 +4902,7 @@ export type ApplyAdvanceParams = {
 export interface CreateRetentionParams {
 	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
 	issuer?: string;
-	/** Clave de la retención (CveRetenc), c_CveRetenc: 01 servicios profesionales, 05 arrendamiento, 14 dividendos, 16 intereses, 18 pagos al extranjero… Las claves 14, 16, 17 y 18 a 24 llevan su complemento (dividends, interest, trust_lease, foreign_payment, share_sale, prize, trust, retirement_plan, mortgage_interest, financial_derivatives); la 26 (plataformas tecnológicas) aún no se puede emitir. */
+	/** Clave de la retención (CveRetenc), c_CveRetenc: 01 servicios profesionales, 05 arrendamiento, 14 dividendos, 16 intereses, 18 pagos al extranjero… Las claves 14, 16, 17 y 18 a 24 llevan su complemento (dividends, interest, trust_lease, foreign_payment, share_sale, prize, trust, retirement_plan, mortgage_interest, financial_derivatives); la 26 (plataformas tecnológicas) lleva platform, y sus totals y taxes se calculan de las operaciones. */
 	code: string;
 	/** Descripción de la retención (DescRetenc); obligatoria con la clave 25 (otro tipo). */
 	description?: string | null;
@@ -4929,7 +4931,7 @@ export interface CreateRetentionParams {
 		to_month?: number;
 	};
 	/** Totales (Totales). */
-	totals: {
+	totals?: {
 		/** Monto total de la operación (MontoTotOperacion). */
 		operation: number;
 		/** Monto gravado (MontoTotGrav). Por omisión, operation menos exempt. */
@@ -4938,7 +4940,7 @@ export interface CreateRetentionParams {
 		exempt?: number;
 	};
 	/** Impuestos del comprobante, por tipo. */
-	taxes: {
+	taxes?: {
 		/** Impuesto: isr, iva o ieps (ImpuestoRet 001, 002, 003). */
 		tax: string;
 		/** Base del impuesto retenido (BaseRet). */
@@ -4948,6 +4950,46 @@ export interface CreateRetentionParams {
 		/** Tipo de pago de la retención (TipoPagoRet): 01 definitivo IVA, 02 definitivo IEPS, 03 definitivo ISR, 04 provisional ISR. Por omisión el usual de cada impuesto. */
 		payment_type?: string;
 	}[];
+	/** Complemento de servicios de plataformas tecnológicas (ServiciosPlataformasTecnologicas 1.0), obligatorio con code 26: una constancia por mes, receptor y tipo de servicio. totals y taxes se calculan de services con las tasas del SAT (ISR de LISR 113-A y LIF 2026 art. 25; IVA 50% o 100%; IEPS en apuestas); si los manda, deben coincidir. */
+	platform?: {
+		/** Tipo de servicio (TipoDeServ), c_TipoDeServ: 01 transporte de pasajeros, 02 entrega de alimentos, 03 entrega de bienes, 04 hospedaje, 05 comercio de bienes, 06 otros servicios, 07 a 09 servicios digitales de extranjeros, 11 apuestas y sorteos (desde 2026). */
+		type: string;
+		/** Cada cuánto paga la plataforma (Periodicidad): 01 semanal, 02 mensual (por omisión), 03 diaria, 04 quincenal, 05 otra. */
+		periodicity?: string;
+		/** true si la persona física optó por que el ISR retenido sea pago definitivo (LISR 113-B): TipoPagoRet 03 en lugar de 04. */
+		isr_definitive?: boolean;
+		/** true si se le deposita en una cuenta en el extranjero: se retiene el 100% del IVA (LIF 2026 art. 25-IX-c). */
+		foreign_account?: boolean;
+		/** Cada operación (DetallesDelServicio), hasta 5,000. Lo pagado en efectivo (payment_form 01) va en la constancia pero no en las bases. */
+		services: {
+			/** Fecha en que el cliente pagó (FechaServ), AAAA-MM-DD, dentro del mes del periodo. */
+			date: string;
+			/** Forma de pago de la operación (FormaPagoServ), c_FormaPagoServ: 01 efectivo, 02 transferencia, 03 tarjeta de crédito, 04 monedero, 05 dinero electrónico, 06 débito, 07 tarjeta de servicios, 08 intermediario de pagos, 09 premios o bonificaciones. */
+			payment_form: string;
+			/** Precio sin IVA (PrecioServSinIVA). */
+			price: number;
+			/** Tasa del impuesto trasladado (TasaCuota): 0.16 (por omisión), 0.08 o 0 de IVA; 0.5 de IEPS solo con type 11, donde cada jugada va dos veces: una operación con su IVA y otra con su IEPS (el SAT pide un impuesto por operación). Sin tasa en premios (09), que desde 2026 no suman en totals. */
+			rate?: number | string | null;
+			/** Subtipo (SubTipServ), c_SubTipoServ: con type 01, 01 personal (por omisión), 02 compartido, 03 plus o 04 cancelación; con type 11, 08 apuestas (por omisión) o 09 sorteos. */
+			subtype?: string | null;
+			/** RFC (persona física) del tercero autorizado que prestó el servicio (RFCTerceroAutorizado). */
+			authorized_tax_id?: string | null;
+			/** Comisión de la plataforma por la operación (ComisionDelServicio): amount mayor que cero y percent opcional (0.001 a 1). Obligatoria en cada operación con IVA; no va en premios ni en las de IEPS. */
+			commission?: {
+				/** Importe. */
+				amount: number;
+				/** El porcentaje de la comisión sobre el precio, de 0.001 a 1 (0.25 es 25%). Opcional. */
+				percent?: number | null;
+			} | null;
+			/** Contribución gubernamental pagada, como el impuesto sobre hospedaje (ContribucionGubernamental): amount de al menos 1.00 y state (01 a 32). */
+			contribution?: {
+				/** Importe. */
+				amount: number;
+				/** Entidad federativa donde trabaja (ClaveEntFed): JAL, CMX, NLE… */
+				state: string;
+			} | null;
+		}[];
+	};
 	/** Complemento de dividendos. */
 	dividends?: {
 		/** Tipo de dividendo o utilidad distribuida (CveTipDivOUtil), c_TipoDividendoOUtilidadDistribuida. */
