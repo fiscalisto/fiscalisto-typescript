@@ -31,6 +31,10 @@ export const ErrorCode = {
 	CertificateRequired: "certificate_required",
 	/** No se pudo conectar con la API (connection_error). */
 	ConnectionFailed: "connection_failed",
+	/** El emisor ya tiene un centro de costo con ese nombre (sin importar mayúsculas). Si está archivado, restáurelo con archived: false. */
+	CostCenterExists: "cost_center_exists",
+	/** El emisor llegó a 500 centros de costo: archive o borre los que ya no use. */
+	CostCenterLimit: "cost_center_limit",
 	/** Ya hay un cliente con ese RFC en el catálogo del emisor (o un producto con ese SKU). */
 	CustomerExists: "customer_exists",
 	/** Llegó al tope del día de algo que no se paga con timbres: comprobantes en pruebas (1,000), RFC revisados en las listas del SAT o constancias consultadas. Retry-After dice cuántos segundos faltan para la medianoche de la Ciudad de México. */

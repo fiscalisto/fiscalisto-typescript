@@ -355,6 +355,8 @@ export interface Invoice {
 	issuer: string;
 	/** La sucursal (brn_…) desde donde se timbró, o null (el domicilio fiscal del emisor). Sus pagos y notas de crédito la siguen. */
 	branch: string | null;
+	/** Su centro de costo (ccn_…), o null. El que mandó al crearla, o el que le puso o cambió después con POST /v1/invoices/{id}. */
+	cost_center: string | null;
 	/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
 	type: "I" | "E" | "P" | "T" | "N";
 	/** processing: el PAC no ha contestado (se resuelve sola; escuche invoice.stamped). valid: timbrada. pending: timbrada con una cancelación en espera del cliente. rejected: el SAT o el PAC no la aceptaron (ver error). canceled: cancelada. */
@@ -1611,6 +1613,8 @@ export interface SatInvoice {
 	};
 	/** Su estado en el SAT cuando se revisó: active (vigente) o canceled. null si aún no se revisa. */
 	sat_status: "active" | "canceled" | null;
+	/** Su centro de costo (ccn_…), o null. Póngalo o cámbielo con POST /v1/sat_invoices/{id}. */
+	cost_center: string | null;
 	/** La descarga (sdl_…) que la trajo, o null. */
 	sat_download: string | null;
 	/** Cuándo llegó. */
@@ -1822,6 +1826,30 @@ export interface Branch {
 	};
 	/** true si está archivada: ya no se factura desde ella. */
 	archived: boolean;
+	/** Cuándo se creó. */
+	created_at: string | null;
+	/** Cuándo cambió por última vez. */
+	updated_at: string | null;
+}
+
+/** Un centro de costo del emisor: una obra, proyecto, sucursal o área por la que separa sus ingresos y gastos. */
+export interface CostCenter {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "cost_center";
+	/** El emisor del centro de costo. */
+	issuer: string;
+	/** Cómo lo llama su equipo, por ejemplo «Obra Norte». */
+	name: string;
+	/** Su clave (por ejemplo «CC-01»), o null. */
+	code: string | null;
+	/** true si está archivado: ya no se ponen facturas en él, pero las suyas lo conservan. */
+	archived: boolean;
+	/** Cuántas facturas tiene, emitidas y recibidas. */
+	invoices: number;
 	/** Cuándo se creó. */
 	created_at: string | null;
 	/** Cuándo cambió por última vez. */
@@ -3343,6 +3371,17 @@ export interface BranchList {
 	url: string;
 }
 
+export interface CostCenterList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: CostCenter[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
 export interface CustomerList {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "list";
@@ -3602,6 +3641,8 @@ export interface InvoiceCreate {
 	issuer?: string;
 	/** Sucursal (brn_…) desde donde se factura: su código postal va en LugarExpedicion, su dirección en el PDF y, si las tiene, sus series. Sin ella, el domicilio fiscal del emisor (la Matriz). */
 	branch?: string;
+	/** Su centro de costo (ccn_…): la obra, proyecto, sucursal o área a la que pertenece, para ver ingresos y gastos por centro en Reportes. No cambia el CFDI. Sus notas de crédito lo toman solas. */
+	cost_center?: string;
 	/** Almacén (whs_…) de donde salen sus productos con track_stock. Por omisión, el de su sucursal (o el de la Matriz). */
 	warehouse?: string;
 	/** Cliente (Receptor): el id de uno de su catálogo (cus_…) o sus datos en un objeto. */
@@ -4747,6 +4788,8 @@ export interface ListInvoicesParams {
 	created_gte?: string;
 	/** Creadas hasta, en ISO 8601. Un día solo (2026-10-31) incluye el día completo en hora de la Ciudad de México. */
 	created_lte?: string;
+	/** Solo las de este centro de costo (ccn_…), o none para las que no tienen. */
+	cost_center?: string;
 }
 
 /** Los parámetros de GET /v1/invoices/{id}. */
@@ -4755,6 +4798,11 @@ export interface GetInvoiceParams {
 	issuer?: string;
 	/** true para preguntar su estado al SAT ahora (cancelaciones en espera). */
 	refresh?: boolean;
+}
+
+export interface UpdateInvoiceParams {
+	/** Su centro de costo (ccn_…), o null para quitárselo. Solo facturas, notas de crédito y recibos de nómina timbrados. */
+	cost_center?: string | null;
 }
 
 /** Los parámetros de GET /v1/invoices/{id}/pdf. */
@@ -5812,6 +5860,42 @@ export interface UpdateBranchParams {
 	archived?: boolean;
 }
 
+export interface CreateCostCenterParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** Cómo lo llama su equipo, por ejemplo «Obra Norte». No se repite en el emisor (sin importar mayúsculas). */
+	name: string;
+	/** Su clave, si su contabilidad usa claves (por ejemplo «CC-01»). */
+	code?: string | null;
+}
+
+/** Los parámetros de GET /v1/cost_centers. */
+export interface ListCostCentersParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** true para incluir los archivados. */
+	include_archived?: boolean;
+}
+
+export interface UpdateCostCenterParams {
+	/** Cómo lo llama su equipo, por ejemplo «Obra Norte». No se repite en el emisor (sin importar mayúsculas). */
+	name?: string;
+	/** Su clave, si su contabilidad usa claves (por ejemplo «CC-01»). */
+	code?: string | null;
+	/** true lo archiva: ya no se pueden poner facturas en él, pero las suyas lo conservan. false lo restaura. */
+	archived?: boolean;
+}
+
+/** Los parámetros de DELETE /v1/cost_centers/{id}. */
+export interface DeleteCostCenterParams {
+	/** Otro centro de costo (ccn_…) que se queda con sus facturas. */
+	move_to?: string;
+}
+
 export interface CreateCustomerParams {
 	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
 	issuer?: string;
@@ -6189,6 +6273,13 @@ export interface ListSatInvoicesParams {
 	date_gte?: string;
 	/** Con fecha hasta este día (AAAA-MM-DD), incluido. */
 	date_lte?: string;
+	/** Solo las de este centro de costo (ccn_…), o none para las que no tienen. */
+	cost_center?: string;
+}
+
+export interface UpdateSatInvoiceParams {
+	/** Su centro de costo (ccn_…), o null para quitárselo. Los complementos de pago y los traslados no llevan. */
+	cost_center?: string | null;
 }
 
 export interface RefreshSatDeclarationsParams {
@@ -7371,6 +7462,18 @@ export class InvoicesResource {
 	}
 
 	/**
+	 * Actualizar una factura
+	 *
+	 * Lo que se puede cambiar de una factura timbrada sin tocar el CFDI: su centro de costo (cost_center, o null para quitárselo). Los complementos de pago y los traslados no llevan.
+	 *
+	 * POST /v1/invoices/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/facturas/update-invoice
+	 */
+	update(id: string, params?: UpdateInvoiceParams, options?: RequestOptions): Promise<Invoice> {
+		return this.#client.request({ method: "POST", path: `/v1/invoices/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
 	 * Descargar el PDF
 	 *
 	 * La representación impresa del CFDI, como la recibe su cliente. En vez del id puede usar el UUID (con issuer si la cuenta tiene varios emisores).
@@ -8279,6 +8382,74 @@ export class BranchesResource {
 	}
 }
 
+/** Centros de costo: fiscalisto.costCenters. */
+export class CostCentersResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Crear un centro de costo
+	 *
+	 * Una parte del negocio del emisor que quiere ver por separado: una obra, un proyecto, una sucursal, un área. Sus facturas lo toman con cost_center al crearlas, o después con POST /v1/invoices/{id} y POST /v1/sat_invoices/{id}. Un nombre que ya existe contesta cost_center_exists. Hasta 500 por emisor.
+	 *
+	 * POST /v1/cost_centers
+	 * @see https://fiscalisto.com/docs/api/referencia/centros-de-costo/create-cost-center
+	 */
+	create(params: CreateCostCenterParams, options?: RequestOptions): Promise<CostCenter> {
+		return this.#client.request({ method: "POST", path: "/v1/cost_centers", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar centros de costo
+	 *
+	 * Los centros de costo del emisor, los más recientes primero, con cuántas facturas tiene cada uno. Los archivados solo con include_archived=true.
+	 *
+	 * GET /v1/cost_centers
+	 * @see https://fiscalisto.com/docs/api/referencia/centros-de-costo/list-cost-centers
+	 */
+	list(params?: ListCostCentersParams, options?: RequestOptions): List<CostCenter> {
+		return this.#client.list({ path: "/v1/cost_centers", query: params }, options);
+	}
+
+	/**
+	 * Ver un centro de costo
+	 *
+	 * Un centro de costo del emisor.
+	 *
+	 * GET /v1/cost_centers/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/centros-de-costo/get-cost-center
+	 */
+	get(id: string, options?: RequestOptions): Promise<CostCenter> {
+		return this.#client.request({ method: "GET", path: `/v1/cost_centers/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Actualizar un centro de costo
+	 *
+	 * Cambia solo lo que manda. archived: true lo archiva (ya no se ponen facturas en él y las suyas lo conservan), false lo restaura.
+	 *
+	 * POST /v1/cost_centers/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/centros-de-costo/update-cost-center
+	 */
+	update(id: string, params?: UpdateCostCenterParams, options?: RequestOptions): Promise<CostCenter> {
+		return this.#client.request({ method: "POST", path: `/v1/cost_centers/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Borrar un centro de costo
+	 *
+	 * Sus facturas pasan a move_to (así junta dos en uno) o se quedan sin centro de costo. No se puede deshacer; para dejar de usarlo sin tocar sus facturas, archívelo.
+	 *
+	 * DELETE /v1/cost_centers/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/centros-de-costo/delete-cost-center
+	 */
+	delete(id: string, params?: DeleteCostCenterParams, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/cost_centers/${encodeURIComponent(id)}`, query: params }, options);
+	}
+}
+
 /** Clientes: fiscalisto.customers. */
 export class CustomersResource {
 	readonly #client: Client;
@@ -8800,6 +8971,18 @@ export class SatInvoicesResource {
 	 */
 	get(id: string, options?: RequestOptions): Promise<SatInvoice> {
 		return this.#client.request({ method: "GET", path: `/v1/sat_invoices/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Actualizar una factura del SAT
+	 *
+	 * Lo que se puede cambiar de un CFDI del SAT sin tocarlo: su centro de costo (cost_center, o null para quitárselo), para ver sus gastos por obra, proyecto o área.
+	 *
+	 * POST /v1/sat_invoices/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/descargas-del-sat/update-sat-invoice
+	 */
+	update(id: string, params?: UpdateSatInvoiceParams, options?: RequestOptions): Promise<SatInvoice> {
+		return this.#client.request({ method: "POST", path: `/v1/sat_invoices/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -9552,6 +9735,7 @@ export class FiscalistoApi extends Core {
 	readonly invoiceBatches = new InvoiceBatchesResource(this);
 	readonly taxIds = new TaxIdsResource(this);
 	readonly branches = new BranchesResource(this);
+	readonly costCenters = new CostCentersResource(this);
 	readonly customers = new CustomersResource(this);
 	readonly customerDataRequests = new CustomerDataRequestsResource(this);
 	readonly products = new ProductsResource(this);
