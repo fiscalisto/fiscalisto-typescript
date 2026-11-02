@@ -3039,10 +3039,6 @@ export interface PurchaseReceipt {
 	use: string | null;
 	/** Una nota, o null. */
 	note: string | null;
-	/** ai (lo leyó la IA), manual (se mandaron los datos) o null. */
-	read_by: "ai" | "manual" | null;
-	/** Por qué no se leyó o qué revisar (foto borrosa, no parece un ticket…), o null. */
-	read_note: string | null;
 	/** El tipo del archivo guardado (image/jpeg, application/pdf…). */
 	file_type: string | null;
 	/** true si se pagó en efectivo más de $2,000: aunque tenga factura, no es deducible (LISR art. 27 fr. III). */
@@ -4896,8 +4892,6 @@ export interface CreatePurchaseReceiptParams {
 	file_type: "image/jpeg" | "image/png" | "image/webp" | "application/pdf";
 	/** Lo que dice el código QR del ticket, si ya lo leyó (suele ser la liga del portal). */
 	qr_text?: string;
-	/** false para no leerlo con IA y mandar los datos usted. Por omisión se lee y se llena lo que no mandó. */
-	read?: boolean;
 	/** El nombre de la tienda. */
 	store_name?: string | null;
 	/** El RFC de la tienda (el que factura). */
@@ -7668,7 +7662,7 @@ export class PurchaseReceiptsResource {
 	/**
 	 * Guardar un ticket de compra
 	 *
-	 * La foto o el PDF de un ticket que el emisor pagó sin factura, en base64. La IA lee la tienda, su RFC, la fecha, el total, la forma de pago, el folio, los datos que pide su portal y la liga de facturación; lo que usted mande gana a lo que se lea. El mismo archivo dos veces devuelve el ticket que ya estaba, sin leerlo otra vez. Si llega una factura de esa tienda por el mismo total con las descargas del SAT, el ticket queda invoiced solo.
+	 * La foto o el PDF de un ticket que el emisor pagó sin factura, en base64, con los datos que usted tenga: la tienda, su RFC, la fecha, el total, la forma de pago, el folio, los datos que pide su portal y la liga de facturación. Si qr_text es la liga de una tienda que factura con Fiscalisto, el folio y el total se llenan solos. El mismo archivo dos veces devuelve el ticket que ya estaba. Si llega una factura de esa tienda por el mismo total con las descargas del SAT, el ticket queda invoiced solo.
 	 *
 	 * POST /v1/purchase_receipts
 	 * @see https://fiscalisto.com/docs/api/referencia/tickets-de-compra/create-purchase-receipt
@@ -7723,18 +7717,6 @@ export class PurchaseReceiptsResource {
 	 */
 	delete(id: string, options?: RequestOptions): Promise<Deleted> {
 		return this.#client.request({ method: "DELETE", path: `/v1/purchase_receipts/${encodeURIComponent(id)}` }, options);
-	}
-
-	/**
-	 * Leer el ticket de nuevo
-	 *
-	 * La IA vuelve a leer el archivo y llena solo los datos que siguen vacíos. Cuenta en el límite diario de tickets de compra.
-	 *
-	 * POST /v1/purchase_receipts/{id}/read
-	 * @see https://fiscalisto.com/docs/api/referencia/tickets-de-compra/read-purchase-receipt
-	 */
-	read(id: string, options?: RequestOptions): Promise<PurchaseReceipt> {
-		return this.#client.request({ method: "POST", path: `/v1/purchase_receipts/${encodeURIComponent(id)}/read`, idempotent: true }, options);
 	}
 
 	/**
