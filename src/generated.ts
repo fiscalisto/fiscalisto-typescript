@@ -818,6 +818,24 @@ export interface Employee {
 	department: string | null;
 	/** Puesto (Puesto). */
 	position: string | null;
+	/** CLABE de su cuenta, a donde le paga el archivo para el banco, o null. */
+	clabe: string | null;
+	/** Nombre(s) como en su CURP, o null (los archivos del IMSS lo separan con la CURP). */
+	given_names: string | null;
+	/** Primer apellido como en su CURP, o null. */
+	first_surname: string | null;
+	/** Segundo apellido, o null. */
+	second_surname: string | null;
+	/** Tipo de trabajador del IMSS: 1 permanente, 2 eventual de la ciudad, 3 eventual de la construcción, 4 eventual del campo. */
+	imss_worker_type: string;
+	/** Tipo de salario del IMSS: 0 fijo, 1 variable, 2 mixto. */
+	imss_salary_type: string;
+	/** Semana o jornada reducida: 0 normal, 1 a 5 días a la semana, 6 jornada de menos de 8 horas. */
+	imss_reduced_week: string;
+	/** Unidad de medicina familiar del IMSS, o null. */
+	family_medicine_unit: string | null;
+	/** Causa de la baja ante el IMSS cuando tiene end_date (2 separación voluntaria por omisión), o null. */
+	exit_reason: string | null;
 	/** Lo que el SAT podría observar de sus datos, antes de timbrar. */
 	warnings: string[];
 	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
@@ -1134,6 +1152,142 @@ export interface PayrollBatch {
 			/** Qué pasó y cómo corregirlo, para una persona. */
 			message: string;
 		} | null;
+	}[];
+}
+
+/** El archivo para pagar la nómina desde el portal del banco (no cobra nada). */
+export interface PayrollBankFile {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "payroll_bank_file";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** El formato del banco: bbva, banamex, banorte, santander o spei (CSV). */
+	layout: "bbva" | "banamex" | "banorte" | "santander" | "spei";
+	/** Fecha de pago (FechaPago), AAAA-MM-DD. Por omisión el último día del periodo. */
+	payment_date: string;
+	/** La CLABE de la cuenta de cargo. */
+	account: string | null;
+	/** El nombre con que el portal del banco lo espera. */
+	file_name: string;
+	/** text/plain para los portales de los bancos, text/csv para spei. */
+	content_type: "text/plain" | "text/csv";
+	/** El archivo como texto, con renglones terminados en CR LF. */
+	content: string;
+	/** El mismo archivo en Windows-1252 (ANSI), en base64: guárdelo tal cual para subirlo. */
+	content_base64: string;
+	/** Total en la moneda del comprobante (Total). */
+	total: number;
+	/** Cuántos pagos lleva. */
+	count: number;
+	/** Cada pago del archivo, en el orden en que va. */
+	payments: {
+		/** El empleado (emp_…); null si el recibo lo timbró otro sistema y no hay empleado con ese RFC. */
+		employee: string | null;
+		/** Número de empleado (NumEmpleado). */
+		number: string | null;
+		/** Nombre. */
+		name: string;
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string;
+		/** El neto a pagar: la suma de sus recibos con esa fecha de pago. */
+		amount: number;
+		/** La CLABE a donde se paga. */
+		clabe: string;
+		/** true: a otro banco por SPEI; false: a una cuenta del mismo banco. */
+		spei: boolean;
+		/** Serie y folio de los recibos que paga. */
+		receipts: string[];
+	}[];
+	/** Quién no va en el archivo y por qué (sin CLABE, otro banco…). */
+	excluded: {
+		/** El empleado (emp_…); null si el recibo lo timbró otro sistema y no hay empleado con ese RFC. */
+		employee: string | null;
+		/** Número de empleado (NumEmpleado). */
+		number: string | null;
+		/** Nombre. */
+		name: string;
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string;
+		/** El neto a pagar: la suma de sus recibos con esa fecha de pago. */
+		amount: number;
+		/** Por qué no va en el archivo. */
+		reason: string;
+	}[];
+}
+
+/** Un movimiento afiliatorio del IMSS de un empleado: alta, modificación de salario, baja o reingreso. */
+export interface ImssMovement {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "imss_movement";
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** El empleado (emp_…). */
+	employee: string;
+	/** Su número de empleado. */
+	employee_number: string;
+	/** Su nombre completo. */
+	employee_name: string;
+	/** Número de seguridad social (NumSeguridadSocial), 11 dígitos. */
+	social_security_number: string;
+	/** alta, reingreso, modificacion (de salario) o baja. */
+	kind: "alta" | "reingreso" | "modificacion" | "baja";
+	/** El tipo de movimiento del IMSS: 08 alta o reingreso, 07 modificación, 02 baja. */
+	movement_type: "08" | "07" | "02";
+	/** Fecha de emisión (Fecha), hora de la Ciudad de México. */
+	date: string;
+	/** Salario diario integrado (SalarioDiarioIntegrado): no menor al salario diario. */
+	integrated_daily_salary: number | null;
+	/** En bajas, la causa (1 a 9 o A); null en los demás. */
+	exit_reason: string | null;
+	/** automatic: lo registró el alta o el cambio del empleado; manual: se agregó a mano. */
+	source: "automatic" | "manual";
+	/** pending: falta presentarlo al IMSS; reported: ya se presentó (ya no cambia). */
+	status: "pending" | "reported";
+	/** Cuándo se marcó como presentado, o null. */
+	reported_at: string | null;
+	/** Lo que el IMSS rechazaría en su renglón (vacío: listo para el archivo). */
+	problems: string[];
+}
+
+/** Los archivos para presentar movimientos en IDSE o importarlos en SUA. */
+export interface ImssFiles {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "imss_files";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** idse o sua. */
+	format: "idse" | "sua";
+	/** Los archivos: en IDSE uno por tipo de movimiento; en SUA ASEG.TXT y MOVT.TXT. */
+	files: {
+		/** El nombre del archivo. */
+		file_name: string;
+		/** Qué lleva, en palabras. */
+		description: string;
+		/** Cuántos movimientos lleva. */
+		count: number;
+		/** El archivo como texto, renglones terminados en CR LF. */
+		content: string;
+		/** El archivo en Windows-1252 (ANSI, como lo leen IDSE y SUA), en base64. */
+		content_base64: string;
+	}[];
+	/** Los movimientos que van en los archivos. */
+	movements: string[];
+	/** Los que se quedaron fuera y por qué (un NSS inválido…). */
+	refused: {
+		/** El movimiento (imv_…). */
+		movement: string;
+		/** El nombre del empleado. */
+		employee_name: string;
+		/** Lo que el IMSS rechazaría en su renglón. */
+		problems: string[];
 	}[];
 }
 
@@ -3150,6 +3304,17 @@ export interface PayrollBatchList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: PayrollBatch[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface ImssMovementList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: ImssMovement[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -5259,6 +5424,24 @@ export interface CreateEmployeeParams {
 	department?: string | null;
 	/** Puesto (Puesto). */
 	position?: string | null;
+	/** CLABE de 18 dígitos de la cuenta del empleado: a donde le paga el archivo para el banco (POST /v1/payroll_bank_files). */
+	clabe?: string | null;
+	/** Nombre(s), como en su CURP. Con first_surname y second_surname, los archivos del IMSS (IDSE y SUA) escriben el nombre en sus tres partes; sin ellos, Fiscalisto lo separa con la CURP. */
+	given_names?: string | null;
+	/** Primer apellido, como en su CURP. */
+	first_surname?: string | null;
+	/** Segundo apellido (vacío si tiene uno). */
+	second_surname?: string | null;
+	/** Tipo de trabajador del IMSS: 1 permanente, 2 eventual de la ciudad, 3 eventual de la construcción, 4 eventual del campo. Por omisión 1. */
+	imss_worker_type?: "1" | "2" | "3" | "4";
+	/** Tipo de salario del IMSS: 0 fijo, 1 variable, 2 mixto. Por omisión 0. */
+	imss_salary_type?: "0" | "1" | "2";
+	/** Semana o jornada reducida: 0 normal, 1 a 5 los días que trabaja a la semana, 6 jornada de menos de 8 horas. Por omisión 0. */
+	imss_reduced_week?: "0" | "1" | "2" | "3" | "4" | "5" | "6";
+	/** Unidad de medicina familiar (UMF) del IMSS, opcional. */
+	family_medicine_unit?: string | null;
+	/** Causa de la baja ante el IMSS, con end_date: 1 término de contrato, 2 separación voluntaria (la usual), 3 abandono, 4 defunción, 5 clausura, 6 otras, 7 ausentismo, 8 rescisión, 9 jubilación, A pensión. */
+	exit_reason?: "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "A" | null;
 }
 
 /** Los parámetros de GET /v1/employees. */
@@ -5312,6 +5495,24 @@ export interface UpdateEmployeeParams {
 	department?: string | null;
 	/** Puesto (Puesto). */
 	position?: string | null;
+	/** CLABE de 18 dígitos de la cuenta del empleado: a donde le paga el archivo para el banco (POST /v1/payroll_bank_files). */
+	clabe?: string | null;
+	/** Nombre(s), como en su CURP. Con first_surname y second_surname, los archivos del IMSS (IDSE y SUA) escriben el nombre en sus tres partes; sin ellos, Fiscalisto lo separa con la CURP. */
+	given_names?: string | null;
+	/** Primer apellido, como en su CURP. */
+	first_surname?: string | null;
+	/** Segundo apellido (vacío si tiene uno). */
+	second_surname?: string | null;
+	/** Tipo de trabajador del IMSS: 1 permanente, 2 eventual de la ciudad, 3 eventual de la construcción, 4 eventual del campo. Por omisión 1. */
+	imss_worker_type?: "1" | "2" | "3" | "4";
+	/** Tipo de salario del IMSS: 0 fijo, 1 variable, 2 mixto. Por omisión 0. */
+	imss_salary_type?: "0" | "1" | "2";
+	/** Semana o jornada reducida: 0 normal, 1 a 5 los días que trabaja a la semana, 6 jornada de menos de 8 horas. Por omisión 0. */
+	imss_reduced_week?: "0" | "1" | "2" | "3" | "4" | "5" | "6";
+	/** Unidad de medicina familiar (UMF) del IMSS, opcional. */
+	family_medicine_unit?: string | null;
+	/** Causa de la baja ante el IMSS, con end_date: 1 término de contrato, 2 separación voluntaria (la usual), 3 abandono, 4 defunción, 5 clausura, 6 otras, 7 ausentismo, 8 rescisión, 9 jubilación, A pensión. */
+	exit_reason?: "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "A" | null;
 }
 
 export interface CreatePayrollReceiptParams {
@@ -5407,6 +5608,79 @@ export interface ListPayrollBatchesParams {
 	starting_after?: string;
 	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
 	issuer?: string;
+}
+
+export interface CreatePayrollBankFileParams {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** La fecha de pago de los recibos (FechaPago): se pagan los recibos de nómina timbrados con esa fecha, sumados por empleado. También es el día en que el banco aplica el archivo. */
+	payment_date: string;
+	/** El formato del banco: bbva (Net Cash), banamex (BancaNet, layout D), banorte (Banorte en su Empresa), santander (Enlace, solo cuentas Santander) o spei (CSV para cualquier banco). Por omisión, el del banco de account. */
+	layout?: "bbva" | "banamex" | "banorte" | "santander" | "spei";
+	/** La CLABE de la cuenta de cargo del emisor. Por omisión, la que se usó la última vez en la app, o su primera cuenta bancaria. */
+	account?: string;
+	/** El archivo del día (1 a 99): un segundo archivo el mismo día lleva otro número. Por omisión 1. */
+	sequence?: number;
+	/** Banamex: su número de cliente de BancaNet (12 dígitos). */
+	client_number?: string;
+	/** Banorte: su número de emisora (5 dígitos). */
+	issuer_number?: string;
+}
+
+export interface CreateImssMovementParams {
+	/** El empleado (emp_…). */
+	employee: string;
+	/** alta (o reingreso): tipo 08; modificacion: cambio de salario, tipo 07; baja: tipo 02. */
+	kind: "alta" | "reingreso" | "modificacion" | "baja";
+	/** El día en que surte efecto (AAAA-MM-DD, hora de México). El IMSS no acepta más de unos días de anticipación. */
+	date: string;
+	/** El salario diario integrado que se declara (en altas, reingresos y modificaciones). El archivo lo topa a 25 UMA y nunca baja del salario mínimo. */
+	integrated_daily_salary?: number | null;
+	/** Solo en bajas: 1 término de contrato, 2 separación voluntaria, 3 abandono, 4 defunción, 5 clausura, 6 otras, 7 ausentismo, 8 rescisión, 9 jubilación, A pensión. */
+	exit_reason?: "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "A" | null;
+}
+
+/** Los parámetros de GET /v1/imss_movements. */
+export interface ListImssMovementsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** pending (por omisión) o reported. */
+	status?: "pending" | "reported";
+}
+
+export interface ReportImssMovementsParams {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** Los movimientos (imv_…) que el IMSS ya recibió, hasta 1,000. */
+	movements: string[];
+	/** true (por omisión): marcarlos como presentados; false: devolverlos a pendientes (si los marcó por error). */
+	reported?: boolean;
+}
+
+export interface UpdateImssMovementParams {
+	/** alta (o reingreso): tipo 08; modificacion: cambio de salario, tipo 07; baja: tipo 02. */
+	kind?: "alta" | "reingreso" | "modificacion" | "baja";
+	/** El día en que surte efecto (AAAA-MM-DD, hora de México). El IMSS no acepta más de unos días de anticipación. */
+	date?: string;
+	/** El salario diario integrado que se declara (en altas, reingresos y modificaciones). El archivo lo topa a 25 UMA y nunca baja del salario mínimo. */
+	integrated_daily_salary?: number | null;
+	/** Solo en bajas: 1 término de contrato, 2 separación voluntaria, 3 abandono, 4 defunción, 5 clausura, 6 otras, 7 ausentismo, 8 rescisión, 9 jubilación, A pensión. */
+	exit_reason?: "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "A" | null;
+}
+
+export interface CreateImssFilesParams {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** idse: los archivos de IDSE (uno por tipo: reingresos, modificaciones, bajas); sua: ASEG.TXT (altas) y MOVT.TXT (los demás) para importar en SUA. */
+	format: "idse" | "sua";
+	/** Los movimientos (imv_…) pendientes que van en los archivos. Por omisión, todos los pendientes. */
+	movements?: string[];
+	/** IDSE: la guía de 5 dígitos de su subdelegación. Por omisión, la que se guardó en la app. */
+	guide?: string;
 }
 
 export interface CreateInvoiceBatchParams {
@@ -7753,6 +8027,126 @@ export class PayrollBatchesResource {
 	}
 }
 
+/** Nómina: fiscalisto.payrollBankFiles. */
+export class PayrollBankFilesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Archivo para pagar la nómina en el banco
+	 *
+	 * El archivo de dispersión que paga el neto de cada empleado desde el portal de su banco: BBVA (Net Cash), Banamex (BancaNet, layout D), Banorte (Banorte en su Empresa), Santander (Enlace) o un CSV de SPEI para cualquier banco. Toma los recibos de nómina timbrados (y no cancelados) con esa fecha de pago, los suma por empleado y le paga a la CLABE de su ficha (clabe en el empleado): a la misma institución por cuenta, a otra por SPEI. No cobra ni mueve dinero: usted lo sube al banco y lo autoriza ahí. Quien no se puede pagar (sin CLABE, otro banco en Santander) va en excluded con su razón. Suba el primero como prueba: cada portal lo valida antes de cargar nada.
+	 *
+	 * POST /v1/payroll_bank_files
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-payroll-bank-file
+	 */
+	create(params: CreatePayrollBankFileParams, options?: RequestOptions): Promise<PayrollBankFile> {
+		return this.#client.request({ method: "POST", path: "/v1/payroll_bank_files", body: params, idempotent: true }, options);
+	}
+}
+
+/** Nómina: fiscalisto.imssMovements. */
+export class ImssMovementsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Agregar un movimiento del IMSS
+	 *
+	 * Un movimiento afiliatorio a mano. Casi nunca hace falta: al crear un empleado se registra su alta, al cambiar su integrated_daily_salary la modificación (con fecha de hoy), al ponerle end_date su baja y al volver a contratarlo su reingreso. Queda pendiente de presentar.
+	 *
+	 * POST /v1/imss_movements
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-imss-movement
+	 */
+	create(params: CreateImssMovementParams, options?: RequestOptions): Promise<ImssMovement> {
+		return this.#client.request({ method: "POST", path: "/v1/imss_movements", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar movimientos del IMSS
+	 *
+	 * Los movimientos del emisor por presentar (status=pending, por omisión: todos, del más antiguo al más reciente, como van en los archivos) o ya presentados (status=reported: los 500 más recientes).
+	 *
+	 * GET /v1/imss_movements
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/list-imss-movements
+	 */
+	list(params?: ListImssMovementsParams, options?: RequestOptions): List<ImssMovement> {
+		return this.#client.list({ path: "/v1/imss_movements", query: params }, options);
+	}
+
+	/**
+	 * Marcar movimientos como presentados
+	 *
+	 * Cuando el IMSS ya los recibió (el acuse de IDSE o la importación en SUA): pasan a reported y ya no cambian ni se borran. Con reported false vuelven a pendientes. Devuelve los movimientos como quedaron.
+	 *
+	 * POST /v1/imss_movements/report
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/report-imss-movements
+	 */
+	report(params: ReportImssMovementsParams, options?: RequestOptions): Promise<ImssMovementList> {
+		return this.#client.request({ method: "POST", path: "/v1/imss_movements/report", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Ver un movimiento del IMSS
+	 *
+	 * El movimiento con lo que el IMSS rechazaría en problems.
+	 *
+	 * GET /v1/imss_movements/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-imss-movement
+	 */
+	get(id: string, options?: RequestOptions): Promise<ImssMovement> {
+		return this.#client.request({ method: "GET", path: `/v1/imss_movements/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Cambiar un movimiento del IMSS
+	 *
+	 * Solo uno pendiente: uno ya presentado se queda como lo tiene el IMSS.
+	 *
+	 * POST /v1/imss_movements/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-imss-movement
+	 */
+	update(id: string, params?: UpdateImssMovementParams, options?: RequestOptions): Promise<ImssMovement> {
+		return this.#client.request({ method: "POST", path: `/v1/imss_movements/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Borrar un movimiento del IMSS
+	 *
+	 * Solo uno pendiente (por ejemplo, un alta registrada por error).
+	 *
+	 * DELETE /v1/imss_movements/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/delete-imss-movement
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/imss_movements/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Nómina: fiscalisto.imssFiles. */
+export class ImssFilesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Archivos para IDSE o SUA
+	 *
+	 * Los archivos de los movimientos pendientes: para IDSE (formato de 168 posiciones, un archivo por tipo: reingresos, modificaciones de salario y bajas; necesita la guía de su subdelegación) o para importar en SUA (ASEG.TXT con las altas y MOVT.TXT con los demás). El salario se declara topado a 25 UMA y nunca abajo del mínimo. El emisor necesita employer_registration. Los que el IMSS rechazaría van en refused con su razón. No los marca como presentados: hágalo con POST /v1/imss_movements/report cuando el IMSS los reciba.
+	 *
+	 * POST /v1/imss_files
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-imss-files
+	 */
+	create(params: CreateImssFilesParams, options?: RequestOptions): Promise<ImssFiles> {
+		return this.#client.request({ method: "POST", path: "/v1/imss_files", body: params, idempotent: true }, options);
+	}
+}
+
 /** Lotes: fiscalisto.invoiceBatches. */
 export class InvoiceBatchesResource {
 	readonly #client: Client;
@@ -9152,6 +9546,9 @@ export class FiscalistoApi extends Core {
 	readonly employees = new EmployeesResource(this);
 	readonly payrollReceipts = new PayrollReceiptsResource(this);
 	readonly payrollBatches = new PayrollBatchesResource(this);
+	readonly payrollBankFiles = new PayrollBankFilesResource(this);
+	readonly imssMovements = new ImssMovementsResource(this);
+	readonly imssFiles = new ImssFilesResource(this);
 	readonly invoiceBatches = new InvoiceBatchesResource(this);
 	readonly taxIds = new TaxIdsResource(this);
 	readonly branches = new BranchesResource(this);
