@@ -2566,7 +2566,7 @@ export interface Diot {
 	warnings: string[];
 }
 
-/** Una tienda de Shopify o Mercado Libre cuyos pedidos pagados se vuelven tickets de autofactura del emisor. */
+/** Una tienda de Shopify, WooCommerce, Tiendanube, Mercado Libre o Amazon cuyos pedidos pagados se vuelven tickets de autofactura del emisor. */
 export interface StoreConnection {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 	id: string;
@@ -2576,13 +2576,15 @@ export interface StoreConnection {
 	object: "store_connection";
 	/** El emisor dueño de la tienda. */
 	issuer: string;
-	/** shopify o mercadolibre. */
-	platform: "shopify" | "mercadolibre";
-	/** El dominio de la tienda de Shopify, o el id del vendedor en Mercado Libre (al autorizar). */
+	/** shopify, woocommerce, tiendanube, mercadolibre o amazon. */
+	platform: "shopify" | "mercadolibre" | "amazon" | "tiendanube" | "woocommerce";
+	/** El dominio de la tienda (Shopify, WooCommerce), o el id de la tienda en Tiendanube o del vendedor en Mercado Libre y Amazon (al autorizar). */
 	shop: string | null;
-	/** pending (Mercado Libre espera que el vendedor autorice en authorize_url), active o disconnected. */
+	/** El nombre de la tienda según su plataforma, o null. */
+	name: string | null;
+	/** pending (Mercado Libre, Tiendanube o Amazon esperan que se autorice en authorize_url), active o disconnected. */
 	status: "pending" | "active" | "disconnected";
-	/** Si está pending: la página de Mercado Libre donde el vendedor autoriza (vale un día; cada consulta da una nueva). Si no, null. */
+	/** Si está pending: la página de la plataforma donde el vendedor autoriza (vale un día; cada consulta da una nueva). Si no, null. */
 	authorize_url: string | null;
 	/** Cómo se vuelve ticket cada pedido. */
 	settings: {
@@ -2600,8 +2602,10 @@ export interface StoreConnection {
 		payment_form: string | null;
 		/** c_FormaPago por pasarela o tipo de pago. */
 		payment_forms: Record<string, string>;
-		/** Mercado Libre: si se timbra al momento con los datos fiscales del comprador; null en Shopify. */
+		/** Mercado Libre: si se timbra al momento con los datos fiscales del comprador; null en las demás plataformas. */
 		auto_invoice: boolean | null;
+		/** WooCommerce y Tiendanube: si el comprador recibe su enlace para facturar (nota del pedido o correo); null en las demás plataformas. */
+		notify_buyer: boolean | null;
 	};
 	/** Cuántos pedidos se han vuelto tickets. */
 	orders_count: number;
@@ -2805,6 +2809,81 @@ export interface BankImport {
 	duplicates: number;
 	/** Los depósitos agregados. */
 	data: BankTransaction[];
+}
+
+/** Un ticket de compra del emisor sin factura: lo que se leyó de su foto y si ya se pidió, llegó o no es deducible. */
+export interface PurchaseReceipt {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "purchase_receipt";
+	/** El emisor (el que compró). */
+	issuer: string;
+	/** pending (por pedir), requested (pedida a la tienda), invoiced (ya tiene factura) o non_deductible (no hubo factura). */
+	status: "pending" | "requested" | "invoiced" | "non_deductible";
+	/** La tienda: name, tax_id (su RFC), email, portal_url (su portal o la liga del QR) y on_fiscalisto (factura con Fiscalisto: method fiscalisto la timbra al momento). */
+	store: {
+		/** Nombre. */
+		name: string | null;
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string | null;
+		/** Correo a donde se envía (varios separados por comas). Solo se usa si se pide enviarlo. */
+		email: string | null;
+		/** Su portal de facturación o la liga del QR, o null. */
+		portal_url: string | null;
+		/** true si factura con Fiscalisto: method fiscalisto timbra la factura al momento. */
+		on_fiscalisto: boolean;
+	};
+	/** El día de la compra (AAAA-MM-DD), o null. */
+	date: string | null;
+	/** El total pagado, en pesos, o null. */
+	total: number | null;
+	/** efectivo, tarjeta u otro, o null. */
+	payment_method: "efectivo" | "tarjeta" | "otro" | null;
+	/** El folio o número de ticket, o null. */
+	folio: string | null;
+	/** Otros datos que pide el portal de la tienda para facturar (Web ID, sucursal, caja…). */
+	fields: {
+		/** Cómo lo llama el ticket (Web ID, Sucursal…). */
+		label: string;
+		/** Lo que dice el ticket en ese dato. */
+		value: string;
+	}[];
+	/** El uso de la factura que se pide, o null: G03 si el régimen del emisor lo permite, si no S01. */
+	use: string | null;
+	/** Una nota, o null. */
+	note: string | null;
+	/** ai (lo leyó la IA), manual (se mandaron los datos) o null. */
+	read_by: "ai" | "manual" | null;
+	/** Por qué no se leyó o qué revisar (foto borrosa, no parece un ticket…), o null. */
+	read_note: string | null;
+	/** El tipo del archivo guardado (image/jpeg, application/pdf…). */
+	file_type: string | null;
+	/** true si se pagó en efectivo más de $2,000: aunque tenga factura, no es deducible (LISR art. 27 fr. III). */
+	cash_over_limit: boolean;
+	/** Por pedir: los días que le quedan al mes de la compra, en hora de México (muchas tiendas solo facturan dentro del mes); si no, null. */
+	days_left_in_month: number | null;
+	/** Cuándo y cómo se pidió (method: fiscalisto, email, portal o manual; to: la tienda o su correo), o null. */
+	requested: {
+		/** egreso (la factura completa y después una nota de crédito por el anticipo, opción A) o remanente (la factura solo por lo que falta, opción B). */
+		method: string | null;
+		/** A quién (correos separados por comas). */
+		to: string | null;
+		/** Cuándo se pidió. */
+		at: string | null;
+	} | null;
+	/** El folio fiscal de la factura que lo cubre, o null. */
+	invoice_uuid: string | null;
+	/** La factura recibida (sat_…) que lo cubre, si ya llegó con las descargas del SAT, o null. */
+	invoice: string | null;
+	/** Cuándo quedó facturado, o null. */
+	invoiced_at: string | null;
+	/** Cuándo se marcó no deducible, o null. */
+	non_deductible_at: string | null;
+	/** Cuándo se guardó. */
+	created_at: string | null;
 }
 
 /** Una liga para que el dueño de un emisor suba su CSD y firme con su e.firma. */
@@ -3014,6 +3093,17 @@ export interface BankTransactionList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: BankTransaction[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface PurchaseReceiptList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: PurchaseReceipt[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -4582,6 +4672,104 @@ export interface ClassifyBankTransactionParams {
 	note?: string;
 }
 
+export interface CreatePurchaseReceiptParams {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** La foto (JPG, PNG o WebP) o el PDF, en base64; hasta 8 MB. */
+	file: string;
+	/** image/jpeg, image/png, image/webp o application/pdf. */
+	file_type: "image/jpeg" | "image/png" | "image/webp" | "application/pdf";
+	/** Lo que dice el código QR del ticket, si ya lo leyó (suele ser la liga del portal). */
+	qr_text?: string;
+	/** false para no leerlo con IA y mandar los datos usted. Por omisión se lee y se llena lo que no mandó. */
+	read?: boolean;
+	/** El nombre de la tienda. */
+	store_name?: string | null;
+	/** El RFC de la tienda (el que factura). */
+	store_tax_id?: string | null;
+	/** El día de la compra (AAAA-MM-DD). */
+	date?: string | null;
+	/** El total pagado, en pesos. */
+	total?: number | null;
+	/** efectivo, tarjeta u otro. */
+	payment_method?: "efectivo" | "tarjeta" | "otro" | null;
+	/** El folio o número de ticket. */
+	folio?: string | null;
+	/** Otros datos que pide el portal de la tienda (Web ID, sucursal, caja…), hasta 8. */
+	fields?: {
+		/** Cómo lo llama el ticket (Web ID, Sucursal…). */
+		label: string;
+		/** Lo que dice el ticket en ese dato. */
+		value: string;
+	}[];
+	/** La dirección del portal de facturación de la tienda (o la liga de autofactura de su QR). */
+	portal_url?: string | null;
+	/** El correo de facturación de la tienda. */
+	store_email?: string | null;
+	/** El uso de la factura (G03, I01…). Por omisión G03 si el régimen del emisor lo permite. */
+	use?: string | null;
+	/** Una nota para su equipo. */
+	note?: string | null;
+}
+
+/** Los parámetros de GET /v1/purchase_receipts. */
+export interface ListPurchaseReceiptsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** pending, requested, invoiced o non_deductible. */
+	status?: "pending" | "requested" | "invoiced" | "non_deductible";
+}
+
+export interface UpdatePurchaseReceiptParams {
+	/** El nombre de la tienda. */
+	store_name?: string | null;
+	/** El RFC de la tienda (el que factura). */
+	store_tax_id?: string | null;
+	/** El día de la compra (AAAA-MM-DD). */
+	date?: string | null;
+	/** El total pagado, en pesos. */
+	total?: number | null;
+	/** efectivo, tarjeta u otro. */
+	payment_method?: "efectivo" | "tarjeta" | "otro" | null;
+	/** El folio o número de ticket. */
+	folio?: string | null;
+	/** Otros datos que pide el portal de la tienda (Web ID, sucursal, caja…), hasta 8. */
+	fields?: {
+		/** Cómo lo llama el ticket (Web ID, Sucursal…). */
+		label: string;
+		/** Lo que dice el ticket en ese dato. */
+		value: string;
+	}[];
+	/** La dirección del portal de facturación de la tienda (o la liga de autofactura de su QR). */
+	portal_url?: string | null;
+	/** El correo de facturación de la tienda. */
+	store_email?: string | null;
+	/** El uso de la factura (G03, I01…). Por omisión G03 si el régimen del emisor lo permite. */
+	use?: string | null;
+	/** Una nota para su equipo. */
+	note?: string | null;
+}
+
+export interface RequestPurchaseReceiptInvoiceParams {
+	/** fiscalisto (la tienda factura con Fiscalisto: se timbra al momento), email (le mandamos a la tienda sus datos y la foto), portal o manual (usted la pidió; solo se marca pedida). */
+	method: "fiscalisto" | "email" | "portal" | "manual";
+	/** email: el correo de la tienda. Por omisión, store_email. */
+	to?: string;
+	/** email: unas líneas para la tienda. */
+	message?: string;
+	/** email y fiscalisto: el correo al que la tienda manda la factura. Por omisión, el correo de respuesta del emisor. */
+	reply_to?: string;
+}
+
+export interface MarkPurchaseReceiptInvoicedParams {
+	/** La factura recibida que lo cubre: su id (sat_…) o su folio fiscal (UUID). Sin ella, solo se marca facturado. */
+	invoice?: string;
+}
+
 export interface CreatePaymentParams {
 	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
 	issuer?: string;
@@ -5886,8 +6074,8 @@ export interface GetDiotFileParams {
 export interface CreateStoreConnectionParams {
 	/** El emisor (iss_…) dueño de la tienda. Por omisión, su único emisor. */
 	issuer?: string;
-	/** shopify o mercadolibre. */
-	platform: "shopify" | "mercadolibre";
+	/** shopify, woocommerce, mercadolibre, tiendanube o amazon. */
+	platform: "shopify" | "mercadolibre" | "amazon" | "tiendanube" | "woocommerce";
 	/** Shopify: el dominio de la tienda (mi-tienda.myshopify.com). */
 	shop?: string;
 	/** Shopify: el Client ID de la app de la tienda (Dev Dashboard). */
@@ -5896,7 +6084,13 @@ export interface CreateStoreConnectionParams {
 	client_secret?: string;
 	/** Shopify, solo apps personalizadas antiguas: su token de la Admin API (shpat_…); client_secret es entonces su API secret key. */
 	access_token?: string;
-	/** Mercado Libre: a dónde volver después de autorizar (se agregan store_connection y status). */
+	/** WooCommerce: la dirección de la tienda (https://mitienda.com). */
+	site?: string;
+	/** WooCommerce: la Clave de cliente (ck_…) de una llave de la API REST con permisos de Lectura/Escritura. */
+	consumer_key?: string;
+	/** WooCommerce: la Clave secreta de cliente (cs_…) de esa llave. Se guarda cifrada y nunca se muestra. */
+	consumer_secret?: string;
+	/** Mercado Libre, Tiendanube y Amazon: a dónde volver después de autorizar (se agregan store_connection y status). */
 	return_url?: string;
 	/** Cómo se vuelve ticket cada pedido. */
 	settings?: {
@@ -5916,6 +6110,8 @@ export interface CreateStoreConnectionParams {
 		payment_forms?: Record<string, string>;
 		/** Mercado Libre: timbrar en cuanto se paga si el comprador dejó sus datos fiscales completos. Por omisión true. */
 		auto_invoice?: boolean;
+		/** WooCommerce y Tiendanube: mandar al comprador el enlace para facturar (WooCommerce, como nota al cliente del pedido; Tiendanube, por correo). Por omisión true. */
+		notify_buyer?: boolean;
 	};
 }
 
@@ -5948,6 +6144,8 @@ export interface UpdateStoreConnectionParams {
 		payment_forms?: Record<string, string>;
 		/** Mercado Libre: timbrar en cuanto se paga si el comprador dejó sus datos fiscales completos. Por omisión true. */
 		auto_invoice?: boolean;
+		/** WooCommerce y Tiendanube: mandar al comprador el enlace para facturar (WooCommerce, como nota al cliente del pedido; Tiendanube, por correo). Por omisión true. */
+		notify_buyer?: boolean;
 	};
 }
 
@@ -7038,6 +7236,134 @@ export class BankTransactionsResource {
 	 */
 	reopen(id: string, options?: RequestOptions): Promise<BankTransaction> {
 		return this.#client.request({ method: "POST", path: `/v1/bank_transactions/${encodeURIComponent(id)}/reopen`, idempotent: true }, options);
+	}
+}
+
+/** Tickets de compra: fiscalisto.purchaseReceipts. */
+export class PurchaseReceiptsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Guardar un ticket de compra
+	 *
+	 * La foto o el PDF de un ticket que el emisor pagó sin factura, en base64. La IA lee la tienda, su RFC, la fecha, el total, la forma de pago, el folio, los datos que pide su portal y la liga de facturación; lo que usted mande gana a lo que se lea. El mismo archivo dos veces devuelve el ticket que ya estaba, sin leerlo otra vez. Si llega una factura de esa tienda por el mismo total con las descargas del SAT, el ticket queda invoiced solo.
+	 *
+	 * POST /v1/purchase_receipts
+	 * @see https://fiscalisto.com/docs/api/referencia/tickets-de-compra/create-purchase-receipt
+	 */
+	create(params: CreatePurchaseReceiptParams, options?: RequestOptions): Promise<PurchaseReceipt> {
+		return this.#client.request({ method: "POST", path: "/v1/purchase_receipts", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar tickets de compra
+	 *
+	 * Los más recientes primero.
+	 *
+	 * GET /v1/purchase_receipts
+	 * @see https://fiscalisto.com/docs/api/referencia/tickets-de-compra/list-purchase-receipts
+	 */
+	list(params?: ListPurchaseReceiptsParams, options?: RequestOptions): List<PurchaseReceipt> {
+		return this.#client.list({ path: "/v1/purchase_receipts", query: params }, options);
+	}
+
+	/**
+	 * Ver un ticket de compra
+	 *
+	 * Con la factura recibida que lo cubre, si ya llegó.
+	 *
+	 * GET /v1/purchase_receipts/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/tickets-de-compra/get-purchase-receipt
+	 */
+	get(id: string, options?: RequestOptions): Promise<PurchaseReceipt> {
+		return this.#client.request({ method: "GET", path: `/v1/purchase_receipts/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Corregir un ticket de compra
+	 *
+	 * Corrige o llena sus datos; solo cambia lo que mande (null borra un dato). Con store_tax_id y total corregidos se vuelve a buscar su factura.
+	 *
+	 * POST /v1/purchase_receipts/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/tickets-de-compra/update-purchase-receipt
+	 */
+	update(id: string, params?: UpdatePurchaseReceiptParams, options?: RequestOptions): Promise<PurchaseReceipt> {
+		return this.#client.request({ method: "POST", path: `/v1/purchase_receipts/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Borrar un ticket de compra
+	 *
+	 * El ticket y su archivo, para siempre.
+	 *
+	 * DELETE /v1/purchase_receipts/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/tickets-de-compra/delete-purchase-receipt
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/purchase_receipts/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Leer el ticket de nuevo
+	 *
+	 * La IA vuelve a leer el archivo y llena solo los datos que siguen vacíos. Cuenta en el límite diario de tickets de compra.
+	 *
+	 * POST /v1/purchase_receipts/{id}/read
+	 * @see https://fiscalisto.com/docs/api/referencia/tickets-de-compra/read-purchase-receipt
+	 */
+	read(id: string, options?: RequestOptions): Promise<PurchaseReceipt> {
+		return this.#client.request({ method: "POST", path: `/v1/purchase_receipts/${encodeURIComponent(id)}/read`, idempotent: true }, options);
+	}
+
+	/**
+	 * Pedir la factura a la tienda
+	 *
+	 * fiscalisto: la tienda factura con Fiscalisto (store.on_fiscalisto), se timbra al momento con los datos fiscales del emisor y el ticket queda invoiced. email: le manda a la tienda los datos fiscales y la foto; las respuestas van a reply_to. portal o manual: usted la pidió, solo queda requested. Pide el uso de use (G03 por omisión).
+	 *
+	 * POST /v1/purchase_receipts/{id}/request
+	 * @see https://fiscalisto.com/docs/api/referencia/tickets-de-compra/request-purchase-receipt-invoice
+	 */
+	requestInvoice(id: string, params: RequestPurchaseReceiptInvoiceParams, options?: RequestOptions): Promise<PurchaseReceipt> {
+		return this.#client.request({ method: "POST", path: `/v1/purchase_receipts/${encodeURIComponent(id)}/request`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Ya llegó la factura
+	 *
+	 * Para una factura que llegó por otro lado. Con invoice (sat_… o UUID), la factura recibida que lo cubre; una factura cubre un solo ticket.
+	 *
+	 * POST /v1/purchase_receipts/{id}/mark_invoiced
+	 * @see https://fiscalisto.com/docs/api/referencia/tickets-de-compra/mark-purchase-receipt-invoiced
+	 */
+	markInvoiced(id: string, params?: MarkPurchaseReceiptInvoicedParams, options?: RequestOptions): Promise<PurchaseReceipt> {
+		return this.#client.request({ method: "POST", path: `/v1/purchase_receipts/${encodeURIComponent(id)}/mark_invoiced`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Marcar como no deducible
+	 *
+	 * La tienda no dio factura: el gasto queda como no deducible.
+	 *
+	 * POST /v1/purchase_receipts/{id}/mark_non_deductible
+	 * @see https://fiscalisto.com/docs/api/referencia/tickets-de-compra/mark-purchase-receipt-non-deductible
+	 */
+	markNonDeductible(id: string, options?: RequestOptions): Promise<PurchaseReceipt> {
+		return this.#client.request({ method: "POST", path: `/v1/purchase_receipts/${encodeURIComponent(id)}/mark_non_deductible`, idempotent: true }, options);
+	}
+
+	/**
+	 * Volver a pedir la factura
+	 *
+	 * Deshace mark_non_deductible o mark_invoiced: vuelve a requested si ya se había pedido, si no a pending.
+	 *
+	 * POST /v1/purchase_receipts/{id}/reopen
+	 * @see https://fiscalisto.com/docs/api/referencia/tickets-de-compra/reopen-purchase-receipt
+	 */
+	reopen(id: string, options?: RequestOptions): Promise<PurchaseReceipt> {
+		return this.#client.request({ method: "POST", path: `/v1/purchase_receipts/${encodeURIComponent(id)}/reopen`, idempotent: true }, options);
 	}
 }
 
@@ -8339,7 +8665,7 @@ export class StoreConnectionsResource {
 	/**
 	 * Conectar una tienda
 	 *
-	 * Shopify: con el dominio y las llaves de la app de la tienda (Dev Dashboard, permisos read_orders y write_orders) registra los webhooks y queda active. Mercado Libre: queda pending hasta que el vendedor autorice en authorize_url. Desde entonces cada pedido pagado es un ticket (folio SHOP-1001 o ML-…), que su comprador factura en el portal o entra en la factura global; un pedido cancelado o reembolsado completo cancela su ticket.
+	 * Shopify: con el dominio y las llaves de la app de la tienda (Dev Dashboard, permisos read_orders y write_orders) registra los webhooks y queda active. WooCommerce: con la dirección de la tienda y una llave de su API REST de Lectura/Escritura, igual. Mercado Libre, Tiendanube y Amazon: queda pending hasta que el vendedor autorice en authorize_url (Amazon no tiene webhooks: sus pedidos se leen cada hora). Desde entonces cada pedido pagado es un ticket (folio SHOP-1001, WEB-1001, TN-1001, ML-… o AMZ-…), que su comprador factura en el portal o entra en la factura global; un pedido cancelado o reembolsado completo cancela su ticket.
 	 *
 	 * POST /v1/store_connections
 	 * @see https://fiscalisto.com/docs/api/referencia/tiendas-en-linea/create-store-connection
@@ -8776,6 +9102,7 @@ export class FiscalistoApi extends Core {
 	readonly invoices = new InvoicesResource(this);
 	readonly receivables = new ReceivablesResource(this);
 	readonly bankTransactions = new BankTransactionsResource(this);
+	readonly purchaseReceipts = new PurchaseReceiptsResource(this);
 	readonly payments = new PaymentsResource(this);
 	readonly creditNotes = new CreditNotesResource(this);
 	readonly advances = new AdvancesResource(this);
