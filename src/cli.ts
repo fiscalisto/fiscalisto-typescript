@@ -1523,7 +1523,7 @@ const PLACES: Record<string, string> = {
 	eventos: "/desarrolladores/eventos",
 	logs: "/desarrolladores/solicitudes",
 	docs: "/docs/api",
-	reference: "/docs/api/referencia",
+	reference: "/docs/api/referencia/facturas/create-invoice",
 };
 
 function openPlace(args: string[]) {
