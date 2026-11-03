@@ -1780,7 +1780,7 @@ export interface SatDeclarationCalendar {
 	}[];
 }
 
-/** Una sucursal del emisor: otro lugar desde donde factura, con su código postal (LugarExpedicion), su dirección en el PDF y sus series. */
+/** Una sucursal del emisor: otro lugar desde donde factura, con su código postal (LugarExpedicion), su dirección en el PDF, sus series y, si quiere, su propia marca (nombre comercial, logo, color y estilo del PDF). */
 export interface Branch {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 	id: string;
@@ -1824,6 +1824,14 @@ export interface Branch {
 		/** Serie de sus traslados (tipo T); null, la del emisor. */
 		transfer: string | null;
 	};
+	/** Su nombre comercial propio (PDF, correo y página de la factura); null: el del emisor. */
+	trade_name: string | null;
+	/** Su logo propio, para el PDF (se sube en Ajustes › Sucursales); null: el del emisor. */
+	logo_url: string | null;
+	/** Color de su PDF, como #2563EB; null: el del emisor. */
+	pdf_color: string | null;
+	/** Estilo de su PDF; null: el del emisor. */
+	pdf_style: "clasico" | "moderno" | "compacto" | "minimalista" | null;
 	/** true si está archivada: ya no se factura desde ella. */
 	archived: boolean;
 	/** Cuándo se creó. */
@@ -5805,6 +5813,12 @@ export interface CreateBranchParams {
 		/** Serie de sus traslados (tipo T); sin ella, la del emisor. */
 		transfer?: string | null;
 	};
+	/** Su nombre comercial, si se presenta con otra marca: va en grande en el PDF de lo que se factura desde ella, en el correo y en la página de la factura. null toma el del emisor. */
+	trade_name?: string | null;
+	/** Color del PDF de sus facturas, como #2563EB. null toma el del emisor. */
+	pdf_color?: string | null;
+	/** Estilo del PDF de sus facturas: clasico, moderno, compacto o minimalista. null toma el del emisor. */
+	pdf_style?: "clasico" | "moderno" | "compacto" | "minimalista" | null;
 }
 
 /** Los parámetros de GET /v1/branches. */
@@ -5856,6 +5870,12 @@ export interface UpdateBranchParams {
 		/** Serie de sus traslados (tipo T); sin ella, la del emisor. */
 		transfer?: string | null;
 	};
+	/** Su nombre comercial, si se presenta con otra marca: va en grande en el PDF de lo que se factura desde ella, en el correo y en la página de la factura. null toma el del emisor. */
+	trade_name?: string | null;
+	/** Color del PDF de sus facturas, como #2563EB. null toma el del emisor. */
+	pdf_color?: string | null;
+	/** Estilo del PDF de sus facturas: clasico, moderno, compacto o minimalista. null toma el del emisor. */
+	pdf_style?: "clasico" | "moderno" | "compacto" | "minimalista" | null;
 	/** true la archiva: ya no se puede facturar desde ella, y sus facturas la siguen nombrando. false la restaura. */
 	archived?: boolean;
 }
