@@ -5781,7 +5781,7 @@ export interface CreateBranchParams {
 	issuer?: string;
 	/** Cómo la llama su equipo, por ejemplo «Sucursal Monterrey». Va en el PDF. */
 	name: string;
-	/** Su código postal (LugarExpedicion de sus CFDI): uno por sucursal, distinto del domicilio fiscal del emisor. */
+	/** Su código postal (LugarExpedicion de sus CFDI). Varias sucursales pueden compartirlo, y también el del domicilio fiscal del emisor. */
 	zip: string;
 	/** La dirección que va en el PDF de sus facturas. */
 	address?: {
@@ -5838,7 +5838,7 @@ export interface ListBranchesParams {
 export interface UpdateBranchParams {
 	/** Cómo la llama su equipo, por ejemplo «Sucursal Monterrey». Va en el PDF. */
 	name?: string;
-	/** Su código postal (LugarExpedicion de sus CFDI): uno por sucursal, distinto del domicilio fiscal del emisor. */
+	/** Su código postal (LugarExpedicion de sus CFDI). Varias sucursales pueden compartirlo, y también el del domicilio fiscal del emisor. */
 	zip?: string;
 	/** La dirección que va en el PDF de sus facturas. */
 	address?: {
@@ -8338,7 +8338,7 @@ export class BranchesResource {
 	/**
 	 * Crear una sucursal
 	 *
-	 * Otro lugar desde donde factura el emisor, con su propio código postal: sus facturas llevan ese CP en LugarExpedicion (y su zona horaria en la Fecha, y el IVA 8 % si es de la franja fronteriza), su dirección en el PDF y, si las da, sus propias series. Un CP que ya tiene otra sucursal contesta branch_exists; el del domicilio fiscal del emisor no es sucursal (es la Matriz). Hasta 200 por emisor.
+	 * Otro lugar desde donde factura el emisor, con su propio código postal: sus facturas llevan ese CP en LugarExpedicion (y su zona horaria en la Fecha, y el IVA 8 % si es de la franja fronteriza), su dirección en el PDF y, si las da, sus propias series. Varias sucursales pueden tener el mismo CP (dos locales en una plaza), incluso el del domicilio fiscal del emisor: cada factura recuerda de cuál salió. Hasta 200 por emisor.
 	 *
 	 * POST /v1/branches
 	 * @see https://fiscalisto.com/docs/api/referencia/sucursales/create-branch

@@ -13,8 +13,6 @@ export const ErrorCode = {
 	BatchInvalid: "batch_invalid",
 	/** El cuerpo pasa de 10 MB. Divida el trabajo en varios lotes. */
 	BodyTooLarge: "body_too_large",
-	/** El emisor ya tiene una sucursal con ese código postal (cada una lleva el suyo); el mensaje dice cuál. Si está archivada, restáurela con archived: false. */
-	BranchExists: "branch_exists",
 	/** La sucursal ya facturó, así que no se borra: archívela con archived: true y sus facturas la siguen nombrando. */
 	BranchHasInvoices: "branch_has_invoices",
 	/** La API se llama desde su servidor, nunca desde el navegador: la llave secreta quedaría expuesta. */
