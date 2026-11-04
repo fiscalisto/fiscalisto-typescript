@@ -4390,10 +4390,10 @@ export interface InvoiceCreate {
 		goods: {
 			/** Número de identificación de la mercancía (NoIdentificacion): el sku de su concepto. */
 			id?: string;
-			/** Fracción arancelaria (FraccionArancelaria), 10 dígitos. Transporte internacional. */
+			/** Fracción arancelaria (FraccionArancelaria), 10 dígitos con el NICO, vigente en c_FraccionArancelaria (búsquela en `GET /v1/sat_catalogs/customs_tariffs`); una que no lo esté se rechaza antes de timbrar. */
 			tariff?: string;
-			/** Unidad aduana (UnidadAduana), c_UnidadAduana. */
-			unit: string;
+			/** Unidad aduana (UnidadAduana), c_UnidadAduana; 99 en un servicio. Con `tariff` puede omitirse: va la UMT de la fracción en el catálogo del SAT (otra la rechaza el SAT con CCE161). */
+			unit?: string;
 			/** Cantidad en la unidad aduana (CantidadAduana). */
 			quantity?: number;
 			/** Valor unitario en dólares (ValorUnitarioAduana). */
@@ -8870,7 +8870,7 @@ export class SatCatalogsResource {
 	/**
 	 * Consultar un catálogo del SAT
 	 *
-	 * product_keys y unit_keys se buscan con q (texto o clave). Los demás vienen completos: tax_systems, cfdi_uses, payment_forms, payment_methods, relationship_types, cancellation_motives, export_types, tax_objects, retention_codes.
+	 * product_keys, unit_keys y customs_tariffs (fracciones arancelarias de Comercio Exterior, con su customs_unit) se buscan con q (texto o clave). Los demás vienen completos: tax_systems, cfdi_uses, payment_forms, payment_methods, relationship_types, cancellation_motives, export_types, tax_objects, retention_codes.
 	 *
 	 * GET /v1/sat_catalogs/{name}
 	 * @see https://fiscalisto.com/docs/api/referencia/catalogos-del-sat/get-sat-catalog
