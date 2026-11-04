@@ -5030,6 +5030,8 @@ export interface CreatePaymentParams {
 }
 
 export interface CreateCreditNoteParams {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
 	/** La factura (inv_… o su UUID). */
 	invoice: string;
 	/** Importe de la nota antes de impuestos: Fiscalisto agrega el IVA y las retenciones de la factura en la misma proporción. */
@@ -7538,7 +7540,7 @@ export class InvoicesResource {
 	/**
 	 * Cancelar una factura
 	 *
-	 * Pide la cancelación al SAT. Si el cliente debe aceptarla queda en pending (escuche invoice.canceled o invoice.cancellation_rejected). No usa timbres.
+	 * Pide la cancelación al SAT. Si el cliente debe aceptarla queda en pending (escuche invoice.canceled o invoice.cancellation_rejected). No usa timbres. El SAT registra cada comprobante unos minutos después de timbrarlo: si lo cancela antes, contesta 409 cancellation_too_early con Retry-After; repita la misma solicitud.
 	 *
 	 * POST /v1/invoices/{id}/cancel
 	 * @see https://fiscalisto.com/docs/api/referencia/facturas/cancel-invoice
