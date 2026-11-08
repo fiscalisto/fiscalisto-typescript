@@ -20,6 +20,11 @@ mensajes de error y los textos, en español (\`Accept-Language: en\` los da en i
 - Base: \`https://api.fiscalisto.com/v1\`, JSON, \`Authorization: Bearer <llave>\`.
 - Llaves: \`fk_test_…\` timbra en el ambiente de pruebas del SAT, gratis; \`fk_live_…\` timbra CFDI
   reales y usa un timbre cada uno. Se crean en **Desarrolladores › Llaves**.
+- Costo en producción: paquetes de timbres prepagados, sin mensualidad. Cada CFDI timbrado usa 1;
+  las consultas al SAT también (1 por cada 10 RFC en listas o constancias al mes, 1 por cada 100 CFDI
+  descargados, 1 por consulta de declaraciones, opinión o buzón). Cancelar, leer, PDF/XML, correos y
+  webhooks no cuestan. Sin timbres: \`402\` \`insufficient_balance\`. Precios:
+  ${DOCS}/pruebas-y-produccion.md
 - Documentación para agentes: ${DOCS}/llms.txt (índice; cada página también en \`.md\`), la
   referencia OpenAPI 3.1 en https://api.fiscalisto.com/v1/openapi.json y el servidor MCP
   ${DOCS}/mcp (sin llave) con search_docs, describe_operation, describe_object, explain_error y

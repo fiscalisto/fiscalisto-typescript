@@ -1864,6 +1864,245 @@ export interface CostCenter {
 	updated_at: string | null;
 }
 
+/** Alguien que viaja o gasta por el emisor: un empleado (de Nómina) o alguien por honorarios. Tiene un enlace propio para subir sus facturas sin cuenta. */
+export interface ExpensePerson {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "expense_person";
+	/** El emisor por el que gasta. */
+	issuer: string;
+	/** empleado (sueldos y salarios: viáticos exentos en su recibo de nómina) o honorarios. */
+	kind: "empleado" | "honorarios";
+	/** Su empleado de Nómina (emp_…), o null si es por honorarios. */
+	employee: string | null;
+	/** Su nombre. */
+	name: string;
+	/** Su RFC, o null. */
+	tax_id: string | null;
+	/** Su correo, a donde se le manda su enlace y los avisos, o null. */
+	email: string | null;
+	/** Dónde trabaja: un viaje a más de 50 km de ahí es de viáticos. */
+	base_city: string | null;
+	/** Su área, o null. */
+	department: string | null;
+	/** true si tiene un enlace que funciona para subir sus facturas. */
+	link_active: boolean;
+	/** true si está archivada. */
+	archived: boolean;
+	/** Cuándo se agregó. */
+	created_at: string | null;
+}
+
+/** El enlace de una persona: ahí ve solo sus comprobaciones y sube sus facturas desde el teléfono, sin cuenta. */
+export interface ExpensePersonLink {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "expense_person_link";
+	/** La persona (exp_…). */
+	person: string;
+	/** Su enlace, o null si está apagado. */
+	url: string | null;
+}
+
+/** Un gasto de una comprobación. */
+export interface ExpenseItem {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "expense_item";
+	/** Cuándo se gastó (AAAA-MM-DD). */
+	date: string;
+	/** De qué es: hospedaje, alimentos, avion, transporte, auto, combustible, comidas, papeleria, mensajeria, software u otros. */
+	category: "hospedaje" | "alimentos" | "avion" | "transporte" | "auto" | "combustible" | "comidas" | "papeleria" | "mensajeria" | "software" | "otros";
+	/** Qué fue (el proveedor), o null. */
+	description: string | null;
+	/** En pesos. */
+	amount: number;
+	/** En su moneda, o null. */
+	foreign_amount: number | null;
+	/** Su moneda (USD, EUR…), o null. */
+	foreign_currency: string | null;
+	/** Cuántas personas comieron (en alimentos el tope es por persona). */
+	people: number;
+	/** Cómo se pagó: tarjeta_empresa, tarjeta_propia, efectivo, transferencia u otro, o null. */
+	payment: "tarjeta_empresa" | "tarjeta_propia" | "efectivo" | "transferencia" | "otro" | null;
+	/** Su comprobante: cfdi, extranjero, ticket o ninguno. */
+	receipt: "cfdi" | "extranjero" | "ticket" | "ninguno";
+	/** El UUID de su factura, o null. */
+	uuid: string | null;
+	/** La nota de la persona, o null. */
+	note: string | null;
+	/** true si quien aprueba lo rechazó. */
+	rejected: boolean;
+	/** Por qué se rechazó, o null. */
+	reject_reason: string | null;
+	/** Lo que se deduce de este gasto. */
+	deductible: number;
+	/** Lo que no se deduce. */
+	non_deductible: number;
+	/** true si pasa un tope de la política. */
+	over_policy: boolean;
+	/** Sus avisos contra la ley y la política. */
+	issues: {
+		/** error (impide enviarla), warning, policy (pasa la política) o info. */
+		level: "error" | "warning" | "policy" | "info";
+		/** Qué es, como código estable. */
+		code: string;
+		/** Qué es, en palabras. */
+		message: string;
+	}[];
+	/** Cuándo se agregó. */
+	created_at: string | null;
+}
+
+/** Dinero que se le dio a la persona (anticipo, reembolso) o que devolvió. */
+export interface ExpenseMovement {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "expense_movement";
+	/** anticipo, reembolso o devolucion. */
+	kind: "anticipo" | "reembolso" | "devolucion";
+	/** En pesos. */
+	amount: number;
+	/** Cuándo se pagó (AAAA-MM-DD). */
+	date: string;
+	/** transferencia, efectivo, tarjeta o nomina (en su recibo de nómina). */
+	method: "transferencia" | "efectivo" | "tarjeta" | "nomina";
+	/** Su referencia, o null. */
+	reference: string | null;
+	/** true si ya se pagó en un recibo de nómina. */
+	in_payroll: boolean;
+	/** Cuándo se registró. */
+	created_at: string | null;
+}
+
+/** Una comprobación de viáticos (un viaje) o de gastos de un periodo: sus gastos revisados contra la ley y la política, y el dinero dado o devuelto. Al aprobarla sus facturas se deducen y entra en las pólizas por 107.01. */
+export interface ExpenseReport {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "expense_report";
+	/** El emisor. */
+	issuer: string;
+	/** Su número, consecutivo por emisor. */
+	number: number;
+	/** Cómo se muestra, por ejemplo «VIA-0012». */
+	label: string;
+	/** Quién la comprueba (exp_…). */
+	person: string;
+	/** El nombre de esa persona. */
+	person_name: string;
+	/** viaje o gastos (de oficina, de un periodo). */
+	kind: "viaje" | "gastos";
+	/** Su nombre. */
+	title: string;
+	/** Para qué fue, o null. */
+	purpose: string | null;
+	/** A dónde, o null. */
+	destination: string | null;
+	/** true si fue al extranjero. */
+	abroad: boolean;
+	/** true si fue a más de 50 km de donde trabaja la persona. */
+	far: boolean;
+	/** La salida o el inicio del periodo (AAAA-MM-DD), o null. */
+	start_date: string | null;
+	/** El regreso o el fin del periodo (AAAA-MM-DD), o null. */
+	end_date: string | null;
+	/** draft (abierta), submitted (por aprobar), rejected (devuelta para corregir), approved (por liquidar) o closed (cerrada, con el saldo en cero). */
+	status: "draft" | "submitted" | "rejected" | "approved" | "closed";
+	/** Hasta cuándo hay para comprobarla (la política), o null. */
+	due_date: string | null;
+	/** Cuándo se envió a aprobar, o null. */
+	submitted_at: string | null;
+	/** Cuándo se aprobó o se devolvió, o null. */
+	decided_at: string | null;
+	/** La nota de quien la aprobó o la devolvió, o null. */
+	decision_note: string | null;
+	/** Cuándo se cerró, o null. */
+	closed_at: string | null;
+	/** true si ya se reportó en un recibo de nómina (viáticos 050 y 081). */
+	in_payroll: boolean;
+	/** Lo gastado, sin los gastos rechazados. */
+	spent: number;
+	/** Lo de los gastos rechazados. */
+	rejected: number;
+	/** Lo comprobado con factura o comprobante del extranjero. */
+	proven: number;
+	/** Lo que se deduce, con los topes de la ley. */
+	deductible: number;
+	/** Lo que no se deduce (pasa los topes o no tiene comprobante). */
+	non_deductible: number;
+	/** Lo que se le dio en anticipos. */
+	advances: number;
+	/** Lo que se le reembolsó. */
+	reimbursed: number;
+	/** Lo que devolvió. */
+	returned: number;
+	/** Positivo, lo que la persona debe devolver; negativo, lo que la empresa le debe reembolsar; 0, liquidada. Lo pagado con la tarjeta de la empresa no cuenta. */
+	balance: number;
+	/** true si se puede enviar o aprobar: ningún gasto tiene errores. */
+	ready: boolean;
+	/** Avisos de la comprobación entera. */
+	issues: {
+		/** error (impide enviarla), warning, policy (pasa la política) o info. */
+		level: "error" | "warning" | "policy" | "info";
+		/** Qué es, como código estable. */
+		code: string;
+		/** Qué es, en palabras. */
+		message: string;
+	}[];
+	/** Para un empleado, cómo irá en su recibo de nómina (o null). */
+	payroll: {
+		/** Viáticos exentos comprobados (OtroPago/Percepción 050, ImporteExento). */
+		exempt: number;
+		/** Lo que grava como sueldo (050, ImporteGravado): lo gastado sin comprobar. */
+		taxed: number;
+		/** Lo que se descuenta (deducción 081) por lo que ya se le dio y sobró. */
+		adjustment: number;
+		/** Lo que neto cobra o paga en el recibo por esta comprobación. */
+		net: number;
+	} | null;
+	/** Sus gastos. */
+	items: ExpenseItem[];
+	/** El dinero que se le dio o devolvió. */
+	movements: ExpenseMovement[];
+	/** Cuándo se abrió. */
+	created_at: string | null;
+	/** Cuándo cambió por última vez. */
+	updated_at: string | null;
+}
+
+/** La política de viáticos y gastos del emisor: topes por categoría, hasta cuánto sin factura y en cuántos días se comprueba. */
+export interface ExpensePolicy {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "expense_policy";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** Topes por categoría (hospedaje, alimentos…): las que no están no tienen tope. */
+	limits: Record<string, {
+		domestic: number | null;
+		abroad: number | null;
+		per: "dia" | "gasto";
+	}>;
+	/** Hasta cuánto se acepta un gasto sin factura; 0: todos la piden. */
+	ticket_limit: number;
+	/** Días después del regreso para comprobar. */
+	due_days: number;
+	/** true si pide una nota en cada gasto que pase un tope. */
+	note_over_limit: boolean;
+	/** true si avisa por correo a quien aprueba. */
+	notify_approvers: boolean;
+	/** true si avisa a la persona cuando se aprueba, se devuelve o se le paga. */
+	notify_people: boolean;
+}
+
 /** Un almacén del emisor: el de la Matriz y uno por sucursal se crean solos; cada factura saca existencias del de su sucursal. */
 export interface Warehouse {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
@@ -2338,8 +2577,8 @@ export interface JournalEntry {
 	object: "journal_entry";
 	/** El emisor. */
 	issuer: string;
-	/** De qué es: invoice (un CFDI de ingreso o egreso), payment_received o payment_made (un pago de un complemento), payroll (un recibo de nómina) o depreciation (la depreciación del mes de los activos fijos). */
-	type: "invoice" | "payment_received" | "payment_made" | "payroll" | "depreciation";
+	/** De qué es: invoice (un CFDI de ingreso o egreso), payment_received o payment_made (un pago de un complemento), payroll (un recibo de nómina), employee_expenses (un anticipo, reembolso, devolución o comprobación de viáticos, contra 107.01 «Funcionarios y empleados») o depreciation (la depreciación del mes de los activos fijos). */
+	type: "invoice" | "payment_received" | "payment_made" | "payroll" | "employee_expenses" | "depreciation";
 	/** La fecha del CFDI o del pago; en la depreciación, el último día del mes. */
 	date: string;
 	/** El documento, su folio y la contraparte. */
@@ -2764,6 +3003,92 @@ export interface Diot {
 	warnings: string[];
 }
 
+/** El IVA a favor del emisor mes por mes, qué pasó con cada saldo y, con un mes, la revisión antes de pedir su devolución. */
+export interface VatRefund {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "vat_refund";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El IVA a favor que todavía puede pedir de vuelta: lo que queda de cada saldo sin acreditar, sin solicitud y sin prescribir. */
+	available: number;
+	/** Lo pedido en solicitudes que siguen en trámite o ya se resolvieron sin depósito. */
+	in_refund: number;
+	/** Lo que el SAT ya depositó. */
+	refunded: number;
+	/** true si algún mes sale de sus CFDI porque su declaración no se ha leído (POST /v1/sat_declarations/refresh). */
+	estimated: boolean;
+	/** Cada mes con IVA a favor en los últimos cinco años, del más reciente al más antiguo. */
+	balances: {
+		/** El mes del saldo (AAAA-MM). */
+		month: string;
+		/** declaration si sale de la declaración leída; cfdi si se calculó con sus CFDI. */
+		source: "declaration" | "cfdi";
+		/** El saldo a favor del mes. */
+		amount: number;
+		/** El número de operación de la declaración, o null. */
+		operation_number: string | null;
+		/** Lo que de este saldo se acreditó en meses posteriores, del saldo más antiguo primero. */
+		credited: number;
+		/** En qué mes se acreditó cada parte y cuánto. */
+		credited_in: {
+			/** El mes en que se acreditó esa parte (AAAA-MM). */
+			month: string;
+			/** Lo acreditado ese mes. */
+			amount: number;
+		}[];
+		/** Lo que queda de este saldo para pedir de vuelta. */
+		available: number;
+		/** available (se puede pedir), credited (ya se acreditó), in_refund (con solicitud), refunded (depositado), denied (negado) o prescribed (pasaron cinco años). */
+		status: "available" | "credited" | "in_refund" | "refunded" | "denied" | "prescribed";
+		/** Cuándo prescribe el derecho a pedirlo: cinco años desde su declaración (AAAA-MM-DD). */
+		prescribes_on: string;
+	}[];
+	/** Con month, la revisión de ese mes antes de pedirlo; null sin month. */
+	review: {
+		/** El mes revisado (AAAA-MM). */
+		month: string;
+		/** Lo que conviene pedir, en pesos sin centavos como lo pide el SAT. */
+		amount_to_request: number;
+		/** true si ya acreditó parte del saldo y lo que pide es el remanente. */
+		remainder: boolean;
+		/** true si ninguna revisión bloquea la solicitud. */
+		ready: boolean;
+		/** Cada revisión, de la más grave a la que está bien. */
+		checks: {
+			/** Qué se revisó, estable para su código. */
+			key: string;
+			/** ok, warning (conviene revisar), blocking (el SAT la rechazaría) o pending (falta un dato). */
+			result: "ok" | "warning" | "blocking" | "pending";
+			/** La revisión, en una línea. */
+			title: string;
+			/** Qué encontró y qué hacer. */
+			detail: string;
+			/** Los pesos que toca, como el IVA en riesgo, o null. */
+			amount: number | null;
+		}[];
+		/** Los proveedores del mes, para la relación que pide el SAT. */
+		suppliers: {
+			/** Cuántos proveedores tuvo en el mes. */
+			count: number;
+			/** Cuántos CFDI recibidos suman al IVA acreditable. */
+			cfdi: number;
+			/** Cuántos proveedores juntan el 80% del IVA acreditable. */
+			main: number;
+			/** El IVA de CFDI de proveedores que el SAT no reconocería: cancelados, de EFOS o con otros hallazgos. */
+			vat_at_risk: number;
+		};
+		/** Los clientes del mes. */
+		customers: {
+			/** Cuántos clientes tuvo en el mes. */
+			count: number;
+			/** Cuántos CFDI emitidos suman al IVA cobrado. */
+			cfdi: number;
+		};
+	} | null;
+}
+
 /** Una tienda de Shopify, WooCommerce, Tiendanube, Mercado Libre o Amazon cuyos pedidos pagados se vuelven tickets de autofactura del emisor. */
 export interface StoreConnection {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
@@ -2942,6 +3267,93 @@ export interface Receivable {
 	open_invoices: number;
 	/** La fecha (AAAA-MM-DD) de su factura abierta más antigua. */
 	oldest_invoice_date: string;
+}
+
+/** Cómo paga un cliente: de sus facturas a crédito (PPD) de los últimos 12 meses y sus complementos de pago, en pesos. */
+export interface CustomerPaymentBehavior {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "customer_payment_behavior";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El cliente (cus_…). */
+	customer: string;
+	/** Su RFC. */
+	tax_id: string;
+	/** Sus días de crédito: los suyos (Clientes) o los de la empresa (Ajustes › Cobranza automática). Contra ellos se mide el atraso. */
+	credit_days: number;
+	/** on_time (80 % o más llega a tiempo y atraso promedio de 5 días o menos), sometimes_late (hasta 15 días), late (hasta 45), very_late (más) o no_history (menos de 2 facturas pagadas y nada vencido). */
+	rating: "on_time" | "sometimes_late" | "late" | "very_late" | "no_history";
+	/** Facturas PPD con un pago en los últimos 12 meses. */
+	paid_invoices: number;
+	/** Días de la factura a su pago, en promedio por monto; null sin pagos. */
+	average_days_to_pay: number | null;
+	/** La factura típica: la mitad se pagó en estos días o menos. */
+	median_days_to_pay: number | null;
+	/** 3 de cada 4 facturas se pagaron en estos días o menos. */
+	p75_days_to_pay: number | null;
+	/** La parte (0 a 1) de lo pagado que llegó antes de vencer; lo vencido sin pagar cuenta como tarde. */
+	on_time_share: number | null;
+	/** Días después del vencimiento, en promedio por monto; lo vencido sin pagar cuenta con sus días de atraso hasta hoy. */
+	average_days_late: number | null;
+	/** Los últimos 3 meses contra los 9 anteriores; null con menos de 2 facturas pagadas en cada lado. */
+	trend: {
+		/** slower: tarda 7 días o más que antes; faster: 7 o más menos. */
+		direction: "slower" | "faster" | "steady";
+		/** Días promedio para pagar de los últimos 3 meses. */
+		recent_days: number;
+		/** Días promedio de los 9 meses anteriores. */
+		earlier_days: number;
+	} | null;
+	/** Lo que debe ya vencido, en pesos. */
+	overdue_amount: number;
+	/** Cuántas facturas tiene vencidas. */
+	overdue_invoices: number;
+	/** Cómo le pagó, la mayor primero. */
+	payment_forms: {
+		/** Clave de forma de pago del SAT (c_FormaPago): 03 transferencia, 02 cheque… */
+		payment_form: string;
+		/** Lo pagado así, en pesos. */
+		amount: number;
+		/** Su parte de lo pagado (0 a 1). */
+		share: number;
+	}[];
+	/** Cada uno de los últimos 12 meses, el más antiguo primero. */
+	months: {
+		/** El mes de los pagos (AAAA-MM). */
+		month: string;
+		/** Días promedio (por monto) de los pagos de ese mes; null sin pagos. */
+		average_days_to_pay: number | null;
+		/** Lo pagado ese mes, en pesos. */
+		amount: number;
+		/** Facturas con un pago ese mes. */
+		paid_invoices: number;
+	}[];
+	/** Su último pago; null sin pagos en 12 meses. */
+	last_payment: {
+		/** El día (AAAA-MM-DD). */
+		date: string;
+		/** Lo pagado ese día, en pesos. */
+		amount: number;
+	} | null;
+	/** Facturas de contado (PUE) de los últimos 12 meses: se pagan al emitirse y no cuentan en lo demás. */
+	cash_invoices: number;
+	/** Lo que debe ahora, la factura más antigua primero. */
+	open_invoices: {
+		/** El UUID (folio fiscal) de la factura. */
+		uuid: string;
+		/** Su fecha (AAAA-MM-DD). */
+		date: string;
+		/** PPD a crédito; PUE que le pagan este mes. */
+		payment_method: "PPD" | "PUE";
+		/** Lo que falta, en pesos. */
+		amount_due: number;
+		/** Cuándo vence: su fecha más los días de crédito (una PUE, al fin de su mes). */
+		due_date: string;
+		/** Cuándo le llegaría: su fecha más lo que el cliente suele tardar (sin historial, el vencimiento). */
+		expected_payment_date: string;
+	}[];
 }
 
 /** Un depósito de la cuenta del emisor, y las facturas que pagó. */
@@ -3386,6 +3798,28 @@ export interface CostCenterList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: CostCenter[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface ExpensePersonList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: ExpensePerson[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface ExpenseReportList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: ExpenseReport[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -5918,6 +6352,218 @@ export interface DeleteCostCenterParams {
 	move_to?: string;
 }
 
+export interface CreateExpensePersonParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** empleado (sus viáticos van en su recibo de nómina; sus facturas pueden ir a su nombre en un viaje) o honorarios (sus facturas deben ir a nombre del emisor). */
+	kind: "empleado" | "honorarios";
+	/** Un empleado de Nómina (emp_…): su nombre, RFC y correo se toman de ahí y sus viáticos van en su recibo. Solo con kind empleado. */
+	employee?: string | null;
+	/** Su nombre. Obligatorio sin employee. */
+	name?: string | null;
+	/** Su RFC. */
+	tax_id?: string | null;
+	/** Su correo: para mandarle su enlace y avisarle cuando se aprueba o se le paga. */
+	email?: string | null;
+	/** Dónde trabaja (por ejemplo «Guadalajara, Jal.»): un viaje a menos de 50 km no es deducible como viáticos. */
+	base_city?: string | null;
+	/** Su área. */
+	department?: string | null;
+}
+
+/** Los parámetros de GET /v1/expense_people. */
+export interface ListExpensePeopleParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** true para incluir las archivadas. */
+	include_archived?: boolean;
+}
+
+export interface UpdateExpensePersonParams {
+	/** empleado (sus viáticos van en su recibo de nómina; sus facturas pueden ir a su nombre en un viaje) o honorarios (sus facturas deben ir a nombre del emisor). */
+	kind?: "empleado" | "honorarios";
+	/** Un empleado de Nómina (emp_…): su nombre, RFC y correo se toman de ahí y sus viáticos van en su recibo. Solo con kind empleado. */
+	employee?: string | null;
+	/** Su nombre. Obligatorio sin employee. */
+	name?: string | null;
+	/** Su RFC. */
+	tax_id?: string | null;
+	/** Su correo: para mandarle su enlace y avisarle cuando se aprueba o se le paga. */
+	email?: string | null;
+	/** Dónde trabaja (por ejemplo «Guadalajara, Jal.»): un viaje a menos de 50 km no es deducible como viáticos. */
+	base_city?: string | null;
+	/** Su área. */
+	department?: string | null;
+	/** true la archiva (y apaga su enlace): ya no se le abren comprobaciones. false la restaura. */
+	archived?: boolean;
+}
+
+export interface CreateExpensePersonLinkParams {
+	/** true le da un enlace nuevo: el anterior deja de funcionar en ese momento (por ejemplo, si se compartió por error). */
+	renew?: boolean;
+}
+
+export interface CreateExpenseReportParams {
+	/** La persona (exp_…). */
+	person: string;
+	/** viaje (por omisión) o gastos (gastos de oficina de un periodo que la empresa reembolsa). */
+	kind?: "viaje" | "gastos";
+	/** Su nombre. Por omisión, «Viaje a {destination}» o el periodo. */
+	title?: string | null;
+	/** Para qué fue: el SAT pide que el viaje sea por el negocio. */
+	purpose?: string | null;
+	/** A dónde. */
+	destination?: string | null;
+	/** Al extranjero: cambian los topes de alimentos y hospedaje. */
+	abroad?: boolean;
+	/** A más de 50 km de donde trabaja la persona (por omisión, true). Más cerca, no son viáticos deducibles. */
+	far?: boolean;
+	/** La salida (o el inicio del periodo). */
+	start_date?: string | null;
+	/** El regreso (o el fin del periodo). */
+	end_date?: string | null;
+}
+
+/** Los parámetros de GET /v1/expense_reports. */
+export interface ListExpenseReportsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Solo las de un estado: draft, submitted, rejected, approved o closed. */
+	status?: string;
+	/** Solo las de una persona (exp_…). */
+	person?: string;
+}
+
+export interface UpdateExpenseReportParams {
+	/** Su nombre. Por omisión, «Viaje a {destination}» o el periodo. */
+	title?: string | null;
+	/** Para qué fue: el SAT pide que el viaje sea por el negocio. */
+	purpose?: string | null;
+	/** A dónde. */
+	destination?: string | null;
+	/** Al extranjero: cambian los topes de alimentos y hospedaje. */
+	abroad?: boolean;
+	/** A más de 50 km de donde trabaja la persona (por omisión, true). Más cerca, no son viáticos deducibles. */
+	far?: boolean;
+	/** La salida (o el inicio del periodo). */
+	start_date?: string | null;
+	/** El regreso (o el fin del periodo). */
+	end_date?: string | null;
+}
+
+export interface ApproveExpenseReportParams {
+	/** Una nota para la persona. */
+	note?: string | null;
+}
+
+export interface ReturnExpenseReportParams {
+	/** Qué debe corregir: se le manda a la persona. */
+	note: string;
+}
+
+export interface CreateExpenseItemParams {
+	/** El UUID de una factura recibida del emisor (GET /v1/sat_invoices): la fecha, el monto, el proveedor y la forma de pago salen de ella. */
+	uuid?: string;
+	/** De qué es: hospedaje, alimentos, avion, transporte, auto, combustible (gasolina, casetas y estacionamiento), comidas (en restaurante, fuera de viaje), papeleria, mensajeria, software u otros. */
+	category: "hospedaje" | "alimentos" | "avion" | "transporte" | "auto" | "combustible" | "comidas" | "papeleria" | "mensajeria" | "software" | "otros";
+	/** Cuándo se gastó. Con uuid, la fecha de la factura. */
+	date?: string;
+	/** Qué fue (el proveedor). Con uuid, su emisor. */
+	description?: string | null;
+	/** En pesos. Con uuid, el total de la factura. */
+	amount?: number;
+	/** En su moneda, si fue en otra. */
+	foreign_amount?: number | null;
+	/** La moneda (USD, EUR…). */
+	foreign_currency?: string | null;
+	/** En alimentos, cuántas personas comieron: el tope es por persona. */
+	people?: number;
+	/** Cómo se pagó: tarjeta_empresa (no se le reembolsa), tarjeta_propia, efectivo, transferencia u otro. */
+	payment?: "tarjeta_empresa" | "tarjeta_propia" | "efectivo" | "transferencia" | "otro" | null;
+	/** Su comprobante: cfdi, extranjero, ticket o ninguno. Con uuid, cfdi. */
+	receipt?: "cfdi" | "extranjero" | "ticket" | "ninguno";
+	/** Por qué, si pasa la política (la política puede pedirla). */
+	note?: string | null;
+}
+
+export interface UpdateExpenseItemParams {
+	/** De qué es: hospedaje, alimentos, avion, transporte, auto, combustible (gasolina, casetas y estacionamiento), comidas (en restaurante, fuera de viaje), papeleria, mensajeria, software u otros. */
+	category?: "hospedaje" | "alimentos" | "avion" | "transporte" | "auto" | "combustible" | "comidas" | "papeleria" | "mensajeria" | "software" | "otros";
+	/** Cuándo se gastó. Con uuid, la fecha de la factura. */
+	date?: string;
+	/** Qué fue (el proveedor). Con uuid, su emisor. */
+	description?: string | null;
+	/** En pesos. Con uuid, el total de la factura. */
+	amount?: number;
+	/** En su moneda, si fue en otra. */
+	foreign_amount?: number | null;
+	/** La moneda (USD, EUR…). */
+	foreign_currency?: string | null;
+	/** En alimentos, cuántas personas comieron: el tope es por persona. */
+	people?: number;
+	/** Cómo se pagó: tarjeta_empresa (no se le reembolsa), tarjeta_propia, efectivo, transferencia u otro. */
+	payment?: "tarjeta_empresa" | "tarjeta_propia" | "efectivo" | "transferencia" | "otro" | null;
+	/** Su comprobante: cfdi, extranjero, ticket o ninguno. Con uuid, cfdi. */
+	receipt?: "cfdi" | "extranjero" | "ticket" | "ninguno";
+	/** Por qué, si pasa la política (la política puede pedirla). */
+	note?: string | null;
+	/** Al aprobar: true lo rechaza (no se paga ni se deduce), false lo vuelve a incluir. Solo en una comprobación enviada. */
+	rejected?: boolean;
+	/** Por qué se rechaza. */
+	reject_reason?: string | null;
+}
+
+export interface CreateExpenseMovementParams {
+	/** anticipo (dinero que se le da antes o durante; hasta que se aprueba), reembolso (lo que la empresa le debe, ya aprobada) o devolucion (lo que le sobró, ya aprobada). */
+	kind: "anticipo" | "reembolso" | "devolucion";
+	/** En pesos. */
+	amount: number;
+	/** Cuándo se pagó. */
+	date: string;
+	/** transferencia (por omisión), efectivo, tarjeta o nomina (en el siguiente recibo de nómina del empleado; solo si está en Nómina). */
+	method?: "transferencia" | "efectivo" | "tarjeta" | "nomina";
+	/** Su referencia (folio de la transferencia). */
+	reference?: string | null;
+}
+
+/** Los parámetros de GET /v1/expense_policy. */
+export interface GetExpensePolicyParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface UpdateExpensePolicyParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** Topes por categoría. Una categoría con null deja de tener tope; las que no manda no cambian. Un gasto que pase un tope no se rechaza: se marca para quien aprueba. */
+	limits?: Record<string, {
+		/** En México; null sin tope. */
+		domestic: number | null;
+		/** En el extranjero; null sin tope. */
+		abroad: number | null;
+		/** dia (al día y por persona) o gasto. */
+		per: "dia" | "gasto";
+	} | null>;
+	/** Hasta cuánto se acepta un gasto sin factura; 0: todos la piden. */
+	ticket_limit?: number;
+	/** Días después del regreso para comprobar. */
+	due_days?: number;
+	/** Pedir una nota en cada gasto que pase un tope. */
+	note_over_limit?: boolean;
+	/** Avisar por correo a quien aprueba cuando le envían una comprobación. */
+	notify_approvers?: boolean;
+	/** Avisar a la persona cuando se aprueba, se devuelve o se le paga. */
+	notify_people?: boolean;
+}
+
 export interface CreateCustomerParams {
 	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
 	issuer?: string;
@@ -6450,6 +7096,14 @@ export interface GetFinancialStatementsParams {
 export interface GetCrossChecksParams {
 	/** El ejercicio. Por omisión, el actual. */
 	year?: number;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+/** Los parámetros de GET /v1/accounting/vat_refund. */
+export interface GetVatRefundParams {
+	/** El mes del saldo a revisar (AAAA-MM). Sin él, solo los saldos. */
+	month?: string;
 	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
 	issuer?: string;
 }
@@ -7606,6 +8260,86 @@ export class ReceivablesResource {
 	}
 }
 
+/** Cuentas por cobrar: fiscalisto.customers. */
+export class CustomersResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ver cómo paga un cliente
+	 *
+	 * Cuántos días tarda en pagar, qué parte llega a tiempo con sus días de crédito, si paga más lento que antes, cómo le paga y cuándo le llegaría lo que debe. De sus facturas a crédito (PPD) de los últimos 12 meses y sus complementos de pago, como «Cómo paga» en la app. No aplica a XAXX010101000 ni XEXX010101000.
+	 *
+	 * GET /v1/customers/{id}/payment_behavior
+	 * @see https://fiscalisto.com/docs/api/referencia/cuentas-por-cobrar/get-customer-payment-behavior
+	 */
+	paymentBehavior(id: string, options?: RequestOptions): Promise<CustomerPaymentBehavior> {
+		return this.#client.request({ method: "GET", path: `/v1/customers/${encodeURIComponent(id)}/payment_behavior` }, options);
+	}
+
+	/**
+	 * Crear un cliente
+	 *
+	 * Un cliente del catálogo del emisor, con sus datos fiscales como vienen en su constancia. Un RFC que ya está en el catálogo contesta customer_exists.
+	 *
+	 * POST /v1/customers
+	 * @see https://fiscalisto.com/docs/api/referencia/clientes/create-customer
+	 */
+	create(params: CreateCustomerParams, options?: RequestOptions): Promise<Customer> {
+		return this.#client.request({ method: "POST", path: "/v1/customers", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar clientes
+	 *
+	 * Los clientes del emisor, los más recientes primero. Con tax_id, el de ese RFC.
+	 *
+	 * GET /v1/customers
+	 * @see https://fiscalisto.com/docs/api/referencia/clientes/list-customers
+	 */
+	list(params?: ListCustomersParams, options?: RequestOptions): List<Customer> {
+		return this.#client.list({ path: "/v1/customers", query: params }, options);
+	}
+
+	/**
+	 * Ver un cliente
+	 *
+	 * Un cliente del catálogo.
+	 *
+	 * GET /v1/customers/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/clientes/get-customer
+	 */
+	get(id: string, options?: RequestOptions): Promise<Customer> {
+		return this.#client.request({ method: "GET", path: `/v1/customers/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Actualizar un cliente
+	 *
+	 * Cambia solo los campos que manda. Las facturas ya timbradas no cambian.
+	 *
+	 * POST /v1/customers/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/clientes/update-customer
+	 */
+	update(id: string, params?: UpdateCustomerParams, options?: RequestOptions): Promise<Customer> {
+		return this.#client.request({ method: "POST", path: `/v1/customers/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Borrar un cliente
+	 *
+	 * Lo quita del catálogo. Sus facturas timbradas siguen igual.
+	 *
+	 * DELETE /v1/customers/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/clientes/delete-customer
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/customers/${encodeURIComponent(id)}` }, options);
+	}
+}
+
 /** Conciliación bancaria: fiscalisto.bankTransactions. */
 export class BankTransactionsResource {
 	readonly #client: Client;
@@ -8466,71 +9200,291 @@ export class CostCentersResource {
 	}
 }
 
-/** Clientes: fiscalisto.customers. */
-export class CustomersResource {
+/** Viáticos y gastos: fiscalisto.expensePeople. */
+export class ExpensePeopleResource {
 	readonly #client: Client;
 	constructor(client: Client) {
 		this.#client = client;
 	}
 
 	/**
-	 * Crear un cliente
+	 * Agregar a una persona
 	 *
-	 * Un cliente del catálogo del emisor, con sus datos fiscales como vienen en su constancia. Un RFC que ya está en el catálogo contesta customer_exists.
+	 * Alguien que viaja o gasta por el emisor: un empleado (employee, emp_…: sus anticipos y reembolsos «En la nómina» van en su siguiente recibo) o alguien por honorarios (name y tax_id). Con email, Fiscalisto le puede mandar su enlace.
 	 *
-	 * POST /v1/customers
-	 * @see https://fiscalisto.com/docs/api/referencia/clientes/create-customer
+	 * POST /v1/expense_people
+	 * @see https://fiscalisto.com/docs/api/referencia/viaticos-y-gastos/create-expense-person
 	 */
-	create(params: CreateCustomerParams, options?: RequestOptions): Promise<Customer> {
-		return this.#client.request({ method: "POST", path: "/v1/customers", body: params, idempotent: true }, options);
+	create(params: CreateExpensePersonParams, options?: RequestOptions): Promise<ExpensePerson> {
+		return this.#client.request({ method: "POST", path: "/v1/expense_people", body: params, idempotent: true }, options);
 	}
 
 	/**
-	 * Listar clientes
+	 * Listar personas
 	 *
-	 * Los clientes del emisor, los más recientes primero. Con tax_id, el de ese RFC.
+	 * Las personas que comprueban gastos del emisor, las más recientes primero. Las archivadas solo con include_archived=true.
 	 *
-	 * GET /v1/customers
-	 * @see https://fiscalisto.com/docs/api/referencia/clientes/list-customers
+	 * GET /v1/expense_people
+	 * @see https://fiscalisto.com/docs/api/referencia/viaticos-y-gastos/list-expense-people
 	 */
-	list(params?: ListCustomersParams, options?: RequestOptions): List<Customer> {
-		return this.#client.list({ path: "/v1/customers", query: params }, options);
+	list(params?: ListExpensePeopleParams, options?: RequestOptions): List<ExpensePerson> {
+		return this.#client.list({ path: "/v1/expense_people", query: params }, options);
 	}
 
 	/**
-	 * Ver un cliente
+	 * Ver una persona
 	 *
-	 * Un cliente del catálogo.
+	 * Una persona que comprueba gastos del emisor.
 	 *
-	 * GET /v1/customers/{id}
-	 * @see https://fiscalisto.com/docs/api/referencia/clientes/get-customer
+	 * GET /v1/expense_people/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/viaticos-y-gastos/get-expense-person
 	 */
-	get(id: string, options?: RequestOptions): Promise<Customer> {
-		return this.#client.request({ method: "GET", path: `/v1/customers/${encodeURIComponent(id)}` }, options);
+	get(id: string, options?: RequestOptions): Promise<ExpensePerson> {
+		return this.#client.request({ method: "GET", path: `/v1/expense_people/${encodeURIComponent(id)}` }, options);
 	}
 
 	/**
-	 * Actualizar un cliente
+	 * Actualizar una persona
 	 *
-	 * Cambia solo los campos que manda. Las facturas ya timbradas no cambian.
+	 * Cambia solo lo que manda. archived: true la archiva (ya no se le abren comprobaciones y su enlace deja de funcionar), false la restaura.
 	 *
-	 * POST /v1/customers/{id}
-	 * @see https://fiscalisto.com/docs/api/referencia/clientes/update-customer
+	 * POST /v1/expense_people/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/viaticos-y-gastos/update-expense-person
 	 */
-	update(id: string, params?: UpdateCustomerParams, options?: RequestOptions): Promise<Customer> {
-		return this.#client.request({ method: "POST", path: `/v1/customers/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	update(id: string, params?: UpdateExpensePersonParams, options?: RequestOptions): Promise<ExpensePerson> {
+		return this.#client.request({ method: "POST", path: `/v1/expense_people/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
 	}
 
 	/**
-	 * Borrar un cliente
+	 * Dar su enlace a una persona
 	 *
-	 * Lo quita del catálogo. Sus facturas timbradas siguen igual.
+	 * El enlace donde la persona ve solo sus comprobaciones y sube sus facturas desde el teléfono, sin cuenta. Con renew: true le da uno nuevo y el anterior deja de funcionar.
 	 *
-	 * DELETE /v1/customers/{id}
-	 * @see https://fiscalisto.com/docs/api/referencia/clientes/delete-customer
+	 * POST /v1/expense_people/{id}/link
+	 * @see https://fiscalisto.com/docs/api/referencia/viaticos-y-gastos/create-expense-person-link
+	 */
+	createLink(id: string, params?: CreateExpensePersonLinkParams, options?: RequestOptions): Promise<ExpensePersonLink> {
+		return this.#client.request({ method: "POST", path: `/v1/expense_people/${encodeURIComponent(id)}/link`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Apagar el enlace de una persona
+	 *
+	 * Su enlace deja de funcionar (url: null). Puede darle uno nuevo después con POST /v1/expense_people/{id}/link.
+	 *
+	 * DELETE /v1/expense_people/{id}/link
+	 * @see https://fiscalisto.com/docs/api/referencia/viaticos-y-gastos/delete-expense-person-link
+	 */
+	deleteLink(id: string, options?: RequestOptions): Promise<ExpensePersonLink> {
+		return this.#client.request({ method: "DELETE", path: `/v1/expense_people/${encodeURIComponent(id)}/link` }, options);
+	}
+}
+
+/** Viáticos y gastos: fiscalisto.expenseReports. */
+export class ExpenseReportsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Abrir una comprobación
+	 *
+	 * Una por viaje (kind viaje) o una por periodo de gastos de oficina que la empresa reembolsa (kind gastos). Queda abierta (draft): se le agregan gastos y anticipos, y se envía con POST /v1/expense_reports/{id}/submit.
+	 *
+	 * POST /v1/expense_reports
+	 * @see https://fiscalisto.com/docs/api/referencia/viaticos-y-gastos/create-expense-report
+	 */
+	create(params: CreateExpenseReportParams, options?: RequestOptions): Promise<ExpenseReport> {
+		return this.#client.request({ method: "POST", path: "/v1/expense_reports", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar comprobaciones
+	 *
+	 * Las comprobaciones del emisor, las más recientes primero, con sus gastos y movimientos.
+	 *
+	 * GET /v1/expense_reports
+	 * @see https://fiscalisto.com/docs/api/referencia/viaticos-y-gastos/list-expense-reports
+	 */
+	list(params?: ListExpenseReportsParams, options?: RequestOptions): List<ExpenseReport> {
+		return this.#client.list({ path: "/v1/expense_reports", query: params }, options);
+	}
+
+	/**
+	 * Ver una comprobación
+	 *
+	 * Una comprobación con sus gastos, lo deducible de cada uno, sus avisos (issues) contra la ley y la política, y su saldo.
+	 *
+	 * GET /v1/expense_reports/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/viaticos-y-gastos/get-expense-report
+	 */
+	get(id: string, options?: RequestOptions): Promise<ExpenseReport> {
+		return this.#client.request({ method: "GET", path: `/v1/expense_reports/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Actualizar una comprobación
+	 *
+	 * Cambia solo lo que manda: su nombre, el propósito, el destino y las fechas. Mientras no esté aprobada.
+	 *
+	 * POST /v1/expense_reports/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/viaticos-y-gastos/update-expense-report
+	 */
+	update(id: string, params?: UpdateExpenseReportParams, options?: RequestOptions): Promise<ExpenseReport> {
+		return this.#client.request({ method: "POST", path: `/v1/expense_reports/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Borrar una comprobación
+	 *
+	 * Una que no esté aprobada y no tenga anticipos ni pagos (quítelos antes). No se puede deshacer.
+	 *
+	 * DELETE /v1/expense_reports/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/viaticos-y-gastos/delete-expense-report
 	 */
 	delete(id: string, options?: RequestOptions): Promise<Deleted> {
-		return this.#client.request({ method: "DELETE", path: `/v1/customers/${encodeURIComponent(id)}` }, options);
+		return this.#client.request({ method: "DELETE", path: `/v1/expense_reports/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Enviar a aprobar
+	 *
+	 * La persona termina: pasa a submitted (por aprobar). Contesta expense_report_invalid si un gasto tiene un error (issues con level error).
+	 *
+	 * POST /v1/expense_reports/{id}/submit
+	 * @see https://fiscalisto.com/docs/api/referencia/viaticos-y-gastos/submit-expense-report
+	 */
+	submit(id: string, options?: RequestOptions): Promise<ExpenseReport> {
+		return this.#client.request({ method: "POST", path: `/v1/expense_reports/${encodeURIComponent(id)}/submit`, idempotent: true }, options);
+	}
+
+	/**
+	 * Aprobar una comprobación
+	 *
+	 * Pasa a approved (por liquidar): sus facturas se deducen en los impuestos del emisor y entra en las pólizas contra 107.01 Funcionarios y empleados. Con el saldo en cero se cierra sola; si no, liquide con un reembolso o una devolución.
+	 *
+	 * POST /v1/expense_reports/{id}/approve
+	 * @see https://fiscalisto.com/docs/api/referencia/viaticos-y-gastos/approve-expense-report
+	 */
+	approve(id: string, params?: ApproveExpenseReportParams, options?: RequestOptions): Promise<ExpenseReport> {
+		return this.#client.request({ method: "POST", path: `/v1/expense_reports/${encodeURIComponent(id)}/approve`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Devolver para corregir
+	 *
+	 * Regresa a la persona (rejected, «Devuelta») con una nota de qué corregir. La corrige y la vuelve a enviar.
+	 *
+	 * POST /v1/expense_reports/{id}/return
+	 * @see https://fiscalisto.com/docs/api/referencia/viaticos-y-gastos/return-expense-report
+	 */
+	sendBack(id: string, params: ReturnExpenseReportParams, options?: RequestOptions): Promise<ExpenseReport> {
+		return this.#client.request({ method: "POST", path: `/v1/expense_reports/${encodeURIComponent(id)}/return`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Reabrir una comprobación
+	 *
+	 * Una aprobada vuelve a abierta: sus facturas dejan de deducirse y sale de las pólizas. No si ya se reportó en la nómina.
+	 *
+	 * POST /v1/expense_reports/{id}/reopen
+	 * @see https://fiscalisto.com/docs/api/referencia/viaticos-y-gastos/reopen-expense-report
+	 */
+	reopen(id: string, options?: RequestOptions): Promise<ExpenseReport> {
+		return this.#client.request({ method: "POST", path: `/v1/expense_reports/${encodeURIComponent(id)}/reopen`, idempotent: true }, options);
+	}
+
+	/**
+	 * Agregar un gasto
+	 *
+	 * Con uuid, una factura recibida del emisor (GET /v1/sat_invoices): la fecha, el monto y el proveedor salen de ella. Sin uuid, un gasto con su category, date y amount (un ticket, un comprobante del extranjero). Contesta la comprobación revisada.
+	 *
+	 * POST /v1/expense_reports/{id}/items
+	 * @see https://fiscalisto.com/docs/api/referencia/viaticos-y-gastos/create-expense-item
+	 */
+	createItem(id: string, params: CreateExpenseItemParams, options?: RequestOptions): Promise<ExpenseReport> {
+		return this.#client.request({ method: "POST", path: `/v1/expense_reports/${encodeURIComponent(id)}/items`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Actualizar un gasto
+	 *
+	 * Cambia solo lo que manda. Al revisarla, rejected: true con reject_reason rechaza el gasto (no se paga ni se deduce) y false lo vuelve a incluir.
+	 *
+	 * POST /v1/expense_reports/{id}/items/{item}
+	 * @see https://fiscalisto.com/docs/api/referencia/viaticos-y-gastos/update-expense-item
+	 */
+	updateItem(id: string, item: string, params?: UpdateExpenseItemParams, options?: RequestOptions): Promise<ExpenseReport> {
+		return this.#client.request({ method: "POST", path: `/v1/expense_reports/${encodeURIComponent(id)}/items/${encodeURIComponent(item)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Quitar un gasto
+	 *
+	 * Lo quita de la comprobación mientras no esté aprobada. Contesta la comprobación.
+	 *
+	 * DELETE /v1/expense_reports/{id}/items/{item}
+	 * @see https://fiscalisto.com/docs/api/referencia/viaticos-y-gastos/delete-expense-item
+	 */
+	deleteItem(id: string, item: string, options?: RequestOptions): Promise<ExpenseReport> {
+		return this.#client.request({ method: "DELETE", path: `/v1/expense_reports/${encodeURIComponent(id)}/items/${encodeURIComponent(item)}` }, options);
+	}
+
+	/**
+	 * Registrar dinero dado o devuelto
+	 *
+	 * Un anticipo (antes de aprobarla), un reembolso o una devolución (ya aprobada). Con method nomina va en el siguiente recibo de nómina del empleado. Con el saldo en cero, una aprobada se cierra.
+	 *
+	 * POST /v1/expense_reports/{id}/movements
+	 * @see https://fiscalisto.com/docs/api/referencia/viaticos-y-gastos/create-expense-movement
+	 */
+	createMovement(id: string, params: CreateExpenseMovementParams, options?: RequestOptions): Promise<ExpenseReport> {
+		return this.#client.request({ method: "POST", path: `/v1/expense_reports/${encodeURIComponent(id)}/movements`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Deshacer un movimiento
+	 *
+	 * Lo quita (una cerrada vuelve a por liquidar). No uno que ya se pagó en la nómina.
+	 *
+	 * DELETE /v1/expense_reports/{id}/movements/{movement}
+	 * @see https://fiscalisto.com/docs/api/referencia/viaticos-y-gastos/delete-expense-movement
+	 */
+	deleteMovement(id: string, movement: string, options?: RequestOptions): Promise<ExpenseReport> {
+		return this.#client.request({ method: "DELETE", path: `/v1/expense_reports/${encodeURIComponent(id)}/movements/${encodeURIComponent(movement)}` }, options);
+	}
+}
+
+/** Viáticos y gastos: fiscalisto.expensePolicy. */
+export class ExpensePolicyResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ver la política
+	 *
+	 * La política de viáticos y gastos del emisor: topes por categoría, hasta cuánto sin factura y los días para comprobar.
+	 *
+	 * GET /v1/expense_policy
+	 * @see https://fiscalisto.com/docs/api/referencia/viaticos-y-gastos/get-expense-policy
+	 */
+	get(params?: GetExpensePolicyParams, options?: RequestOptions): Promise<ExpensePolicy> {
+		return this.#client.request({ method: "GET", path: "/v1/expense_policy", query: params }, options);
+	}
+
+	/**
+	 * Cambiar la política
+	 *
+	 * Cambia solo lo que manda; en limits, una categoría con null deja de tener tope. Un gasto que pasa un tope no se rechaza: se marca para quien aprueba.
+	 *
+	 * POST /v1/expense_policy
+	 * @see https://fiscalisto.com/docs/api/referencia/viaticos-y-gastos/update-expense-policy
+	 */
+	update(params?: UpdateExpensePolicyParams, options?: RequestOptions): Promise<ExpensePolicy> {
+		return this.#client.request({ method: "POST", path: "/v1/expense_policy", body: params, idempotent: true }, options);
 	}
 }
 
@@ -9230,6 +10184,18 @@ export class AccountingResource {
 	}
 
 	/**
+	 * Ver el IVA a favor y preparar su devolución
+	 *
+	 * El IVA a favor de cada mes de los últimos cinco años (de las declaraciones leídas con POST /v1/sat_declarations/refresh o, sin ellas, de sus CFDI, con estimated en true), cuánto se acreditó después (del saldo más antiguo primero), cuánto queda, qué está en devolución y cuándo prescribe. Con `month`, la revisión de ese mes antes de pedirlo en el SAT: declaración, cruce con CFDI, DIOT, opinión de cumplimiento, Buzón Tributario, e.firma, listas del SAT, CFDI de proveedores con hallazgos y CLABE, con el monto a pedir. No presenta nada en el SAT. Gratis.
+	 *
+	 * GET /v1/accounting/vat_refund
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-vat-refund
+	 */
+	vatRefund(params?: GetVatRefundParams, options?: RequestOptions): Promise<VatRefund> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/vat_refund", query: params }, options);
+	}
+
+	/**
 	 * Ver los CFDI de una cifra del cruce
 	 *
 	 * Los CFDI que forman lo facturado (invoiced) de una cifra del cruce de un mes, con los mismos cálculos de Impuestos: cada factura PUE o nota de crédito en su mes y cada factura PPD por lo que se pagó en el mes, con lo que aporta. La suma de cfdi más adjustment es invoiced. Sirve para ver por qué una cifra differs. Gratis: no consulta al SAT.
@@ -9736,6 +10702,7 @@ export class FiscalistoApi extends Core {
 	readonly issuers = new IssuersResource(this);
 	readonly invoices = new InvoicesResource(this);
 	readonly receivables = new ReceivablesResource(this);
+	readonly customers = new CustomersResource(this);
 	readonly bankTransactions = new BankTransactionsResource(this);
 	readonly purchaseReceipts = new PurchaseReceiptsResource(this);
 	readonly payments = new PaymentsResource(this);
@@ -9752,7 +10719,9 @@ export class FiscalistoApi extends Core {
 	readonly taxIds = new TaxIdsResource(this);
 	readonly branches = new BranchesResource(this);
 	readonly costCenters = new CostCentersResource(this);
-	readonly customers = new CustomersResource(this);
+	readonly expensePeople = new ExpensePeopleResource(this);
+	readonly expenseReports = new ExpenseReportsResource(this);
+	readonly expensePolicy = new ExpensePolicyResource(this);
 	readonly customerDataRequests = new CustomerDataRequestsResource(this);
 	readonly products = new ProductsResource(this);
 	readonly satMailboxMessages = new SatMailboxMessagesResource(this);
