@@ -3242,6 +3242,160 @@ export interface Quote {
 	created_at: string | null;
 }
 
+/** Un pedido de venta: lo que su cliente pidió, cómo se entrega (remisiones) y cómo se factura y se cobra. */
+export interface SalesOrder {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "sales_order";
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Su serie y folio (PED-12). */
+	number: string;
+	/** draft (borrador), confirmed, partially_delivered, delivered (todo entregado), invoiced (todo facturado), paid (sus facturas pagadas), closed (se dio por terminado) o canceled. Cambia solo, con lo que pasa. */
+	status: "draft" | "confirmed" | "partially_delivered" | "delivered" | "invoiced" | "paid" | "closed" | "canceled";
+	/** La etapa del negocio en que va («Por empacar», «En ruta»…), o null. Se elige en la app. */
+	stage: string | null;
+	/** La liga donde su cliente ve el pedido, lo confirma, firma cada entrega y abre sus facturas. null mientras sea borrador o no se haya mandado. */
+	url: string | null;
+	/** El cliente: su RFC, nombre, correo y su id en su catálogo. */
+	customer: {
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string | null;
+		/** Nombre. */
+		name: string | null;
+		/** Correo a donde se envía (varios separados por comas). Solo se usa si se pide enviarlo. */
+		email: string | null;
+		/** El cliente (cus_…) en su catálogo, o null si no está en él. */
+		catalog_id: string | null;
+	};
+	/** El número de orden de compra de su cliente, o null. */
+	customer_po: string | null;
+	/** La cotización (quo_…) de donde salió, o null. */
+	quote: string | null;
+	/** La moneda. */
+	currency: string;
+	/** Los conceptos: id (para entregar o facturar una parte), lo pedido, lo entregado, lo facturado y lo que ya no se entregará (canceled). goods es true cuando sale del almacén. */
+	items: {
+		/** El id del concepto en el pedido: con él entrega o factura una parte (line). */
+		id: number;
+		/** Descripción del concepto (Descripcion), hasta 1,000 caracteres. */
+		description: string;
+		/** Clave del producto o servicio (ClaveProdServ), 8 dígitos de c_ClaveProdServ. Búsquela con GET /v1/sat_catalogs/product_keys?q=… */
+		product_key: string | null;
+		/** Cantidad (Cantidad). Por omisión 1. */
+		quantity: number;
+		/** La unidad, como la ve el cliente. */
+		unit: string | null;
+		/** Precio unitario antes de impuestos (ValorUnitario). */
+		unit_price: number;
+		/** El descuento del concepto, en dinero. */
+		discount: number;
+		/** El importe del concepto, sin impuestos. */
+		amount: number;
+		/** true si sale del almacén con cada entrega; false si es un servicio (solo se factura). */
+		goods: boolean;
+		/** Cuánto ya se entregó. */
+		delivered: number;
+		/** Cuánto ya se facturó. */
+		invoiced: number;
+		/** Cuánto ya no se entregará (POST /v1/sales_orders/{id}/cancel_remaining). */
+		canceled: number;
+	}[];
+	/** El subtotal, sin impuestos. */
+	subtotal: number;
+	/** El total con impuestos. */
+	total: number;
+	/** La suma de sus facturas timbradas (sin las canceladas). */
+	invoiced_total: number;
+	/** Lo que ya se pagó de esas facturas. */
+	paid_total: number;
+	/** La entrega estimada (AAAA-MM-DD), o null. */
+	expected_on: string | null;
+	/** Días de crédito: cada factura vence esos días después de su fecha. */
+	payment_days: number;
+	/** delivered: cada factura lleva lo ya entregado; ordered: se factura lo pedido, entregado o no. */
+	invoice_policy: "delivered" | "ordered";
+	/** Dónde se entrega, o null. */
+	ship_to: string | null;
+	/** Las condiciones impresas en el pedido, o null. */
+	terms: string | null;
+	/** Las notas, como las de una factura. */
+	notes: string | null;
+	/** La nota interna (su cliente no la ve), o null. */
+	internal_note: string | null;
+	/** Sus entregas, cada una con su remisión. */
+	deliveries: SalesOrderDelivery[];
+	/** Sus facturas timbradas (inv_…), con lo que falta por pagar de cada una (balance). */
+	invoices: {
+		/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+		id: string;
+		/** stamped, o canceled (lo que llevaba se puede volver a facturar). */
+		status: "stamped" | "canceled";
+		/** El total de la factura. */
+		total: number;
+		/** Lo que falta por pagar de esa factura, o null si aún no se sabe. */
+		balance: number | null;
+	}[];
+	/** Cuándo su cliente lo confirmó en su liga, o null. */
+	customer_confirmed_at: string | null;
+	/** Cuándo se mandó, o null. */
+	sent_at: string | null;
+	/** Cuándo su cliente abrió la liga por primera vez, o null. */
+	viewed_at: string | null;
+	/** Cuándo se confirmó, o null. */
+	confirmed_at: string | null;
+	/** Cuándo quedó todo entregado, o null. */
+	delivered_at: string | null;
+	/** Cuándo quedó todo facturado, o null. */
+	invoiced_at: string | null;
+	/** Cuándo quedaron pagadas sus facturas, o null. */
+	paid_at: string | null;
+	/** Cuándo se cerró, o null. */
+	closed_at: string | null;
+	/** Cuándo se canceló, o null. */
+	canceled_at: string | null;
+	/** Por qué se canceló, o null. */
+	cancel_reason: string | null;
+	/** Cuándo se creó. */
+	created_at: string | null;
+}
+
+/** Una entrega del pedido, con su remisión (REM-1): lo que salió del almacén. */
+export interface SalesOrderDelivery {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "sales_order_delivery";
+	/** Su remisión (REM-1). */
+	number: string;
+	/** delivered, o canceled (la mercancía regresó al almacén). */
+	status: "delivered" | "canceled";
+	/** El día en que salió (AAAA-MM-DD). */
+	delivered_on: string;
+	/** El transporte, o null. */
+	carrier: string | null;
+	/** El número de guía, o null. */
+	tracking: string | null;
+	/** Una nota, o null. */
+	note: string | null;
+	/** Quién recibió (lo firmó en la liga o lo anotó usted), o null. */
+	received_by: string | null;
+	/** Cuándo se recibió, o null. */
+	received_at: string | null;
+	/** Cuánto salió de cada concepto (line es items[].id del pedido). */
+	items: {
+		/** El concepto del pedido (su items[].id). */
+		line: number;
+		/** Cuánto salió de él. */
+		quantity: number;
+	}[];
+	/** Cuándo se registró. */
+	created_at: string | null;
+}
+
 /** Lo que un cliente le debe a un emisor en una moneda, de sus facturas abiertas. */
 export interface Receivable {
 	/** El RFC y la moneda (RFC:MXN): para starting_after. */
@@ -3564,7 +3718,7 @@ export interface WebhookTest {
 }
 
 /** Lo que puede pasar: el tipo de cada evento. */
-export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "issuer.ready" | "balance.low" | "test_clock.ready";
+export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "issuer.ready" | "balance.low" | "test_clock.ready";
 
 /** Algo que pasó en su cuenta: el objeto completo como quedó. Se manda a sus webhooks firmado (Standard Webhooks). */
 export interface EventBase<T extends EventType = EventType, O = unknown> {
@@ -3572,7 +3726,7 @@ export interface EventBase<T extends EventType = EventType, O = unknown> {
 	id: string;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "event";
-	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, invoice.paid, invoice.partially_paid, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, payroll_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, sat_declaration.created, sat_declaration.updated, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, quote.withdrawn, issuer.ready, balance.low o test_clock.ready. */
+	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, invoice.paid, invoice.partially_paid, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, payroll_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, sat_declaration.created, sat_declaration.updated, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, quote.withdrawn, sales_order.confirmed, sales_order.customer_confirmed, sales_order.delivered, sales_order.paid, sales_order.canceled, issuer.ready, balance.low o test_clock.ready. */
 	type: T;
 	/** Versión de la API con que se armó el objeto. */
 	api_version: string;
@@ -3613,6 +3767,11 @@ export type Event =
 	| EventBase<"quote.changes_requested", Quote>
 	| EventBase<"quote.rejected", Quote>
 	| EventBase<"quote.withdrawn", Quote>
+	| EventBase<"sales_order.confirmed", SalesOrder>
+	| EventBase<"sales_order.customer_confirmed", SalesOrder>
+	| EventBase<"sales_order.delivered", SalesOrder>
+	| EventBase<"sales_order.paid", SalesOrder>
+	| EventBase<"sales_order.canceled", SalesOrder>
 	| EventBase<"issuer.ready", Issuer>
 	| EventBase<"balance.low", Balance>
 	| EventBase<"test_clock.ready", TestClock>;
@@ -4051,6 +4210,17 @@ export interface QuoteList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: Quote[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface SalesOrderList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: SalesOrder[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -7636,6 +7806,384 @@ export interface RejectQuoteParams {
 	note?: string;
 }
 
+export interface CreateSalesOrderParams {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** Hacerlo de una cotización (quo_…): toma su cliente y sus conceptos, y la cotización queda aceptada. Sin customer ni items. */
+	quote?: string;
+	/** Un cliente de su catálogo (cus_…) o uno con sus datos fiscales (como en POST /v1/invoices: se agrega a sus clientes). */
+	customer?: string | {
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string;
+		/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+		legal_name: string;
+		/** Régimen fiscal (RegimenFiscal), clave de c_RegimenFiscal: 601, 612, 626… */
+		tax_system: string;
+		/** Código postal del domicilio fiscal del cliente (DomicilioFiscalReceptor), 5 dígitos. */
+		zip: string;
+		/** Correo a donde se envía (varios separados por comas). Solo se usa si se pide enviarlo. */
+		email?: string | null;
+		/** Si es extranjero: su país de residencia (ResidenciaFiscal, c_Pais) y su número de registro tributario (NumRegIdTrib), con el RFC genérico XEXX010101000. */
+		foreign?: {
+			/** País de residencia fiscal, clave de 3 letras de c_Pais (USA, CAN…). */
+			country: string;
+			/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
+			tax_id: string;
+		};
+		/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio. */
+		ieps_taxpayer?: boolean;
+	};
+	/** Los conceptos, como en POST /v1/invoices (hasta 200). */
+	items?: {
+		/** Un producto de su catálogo (prd_…): toma su clave, unidad, precio e impuestos. */
+		product?: string;
+		/** Descripción del concepto (Descripcion), hasta 1,000 caracteres. */
+		description?: string;
+		/** Clave del producto o servicio (ClaveProdServ), 8 dígitos de c_ClaveProdServ. Búsquela con GET /v1/sat_catalogs/product_keys?q=… */
+		product_key?: string;
+		/** Clave de unidad (ClaveUnidad) de c_ClaveUnidad: E48 unidad de servicio (por omisión), H87 pieza, ACT actividad… */
+		unit_key?: string;
+		/** Nombre de la unidad (Unidad), hasta 20 caracteres. */
+		unit_name?: string | null;
+		/** Número de identificación o SKU (NoIdentificacion). */
+		sku?: string | null;
+		/** Cantidad (Cantidad). Por omisión 1. */
+		quantity?: number;
+		/** Precio unitario antes de impuestos (ValorUnitario). */
+		unit_price?: number;
+		/** Descuento (Descuento). */
+		discount?: number;
+		/** Objeto de impuesto (ObjetoImp), c_ObjetoImp: 01 no objeto, 02 sí objeto (por omisión), 03 sin desglose, 04 no causa… */
+		taxability?: "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08";
+		/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
+		iva?: "0" | "0.16" | "0.08" | "exento";
+		/** IEPS trasladado: tasa (0.265…) o cuota en pesos por unidad, según ieps_factor. */
+		ieps?: number;
+		/** Tasa o Cuota (TipoFactor del IEPS). */
+		ieps_factor?: "Tasa" | "Cuota";
+		/** Unidades de IEPS a cuota (litros, cigarros…), si no son la cantidad. */
+		ieps_units?: number;
+		/** Tasa de IVA retenido (por ejemplo 0.106667, dos terceras partes del 16%). */
+		iva_retention?: number;
+		/** Tasa de ISR retenido (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
+		isr_retention?: number;
+		/** Números de cuenta predial (CuentaPredial) en arrendamiento. */
+		predial?: string[];
+		/** Números de pedimento (InformacionAduanera) de mercancía importada. */
+		pedimentos?: string[];
+		/** A cuenta de terceros (ACuentaTerceros): RFC, nombre, régimen y código postal. */
+		third_party?: {
+			/** RFC de a cuenta de quién (RfcACuentaTerceros). */
+			tax_id: string;
+			/** Nombre (NombreACuentaTerceros). */
+			name: string;
+			/** Régimen fiscal (RegimenFiscalACuentaTerceros), c_RegimenFiscal. */
+			tax_system: string;
+			/** Código postal de su domicilio fiscal (DomicilioFiscalACuentaTerceros). */
+			zip: string;
+		};
+		/** Complemento de instituciones educativas privadas (IEDU): alumno, CURP, nivel y RVOE. */
+		iedu?: {
+			/** Nombre del alumno (nombreAlumno). */
+			student_name: string;
+			/** CURP, 18 caracteres. */
+			curp: string;
+			/** Nivel educativo (nivelEducativo). */
+			level: "Preescolar" | "Primaria" | "Secundaria" | "Profesional técnico" | "Bachillerato o su equivalente";
+			/** Reconocimiento de validez oficial de estudios (autRVOE). */
+			rvoe: string;
+			/** RFC de quien paga, si no es el receptor (rfcPago). */
+			payer_tax_id?: string | null;
+		};
+		/** Complemento de vehículo usado. */
+		used_vehicle?: {
+			/** Monto de adquisición (montoAdquisicion). */
+			purchase_amount: number;
+			/** Monto de enajenación (montoEnajenacion). */
+			sale_amount: number;
+			/** Clave vehicular (claveVehicular). */
+			vehicle_key: string;
+			/** Marca (marca). */
+			make: string;
+			/** Tipo o versión (tipo). */
+			type: string;
+			/** Año del modelo (modelo), 4 dígitos. */
+			model: string;
+			/** Número de motor (numeroMotor). */
+			engine_number?: string;
+			/** Número de serie (numeroSerie). */
+			serial_number?: string;
+			/** Número de identificación vehicular (NIV). */
+			niv?: string;
+			/** Valor según la guía EBC o Libro Azul (valor). */
+			guide_value: number;
+			/** Información aduanera de la importación del vehículo (InformacionAduanera). */
+			customs?: {
+				/** Número del documento de importación (numero). */
+				number: string;
+				/** Fecha del documento (fecha), AAAA-MM-DD. */
+				date: string;
+				/** Aduana (aduana). */
+				office?: string;
+			}[];
+		};
+		/** Addenda del receptor (Walmart, Soriana…), con sus propios campos. */
+		addenda?: Record<string, string>;
+	}[];
+	/** Confirmarlo en el mismo paso (por omisión false: queda en draft). Confirmado, aparta lo pedido en el almacén. */
+	confirm?: boolean;
+	/** Moneda, clave ISO 4217 de c_Moneda (MXN, USD, EUR…). Por omisión MXN. */
+	currency?: string;
+	/** Tipo de cambio a pesos (TipoCambio). Obligatorio si la moneda no es MXN; use el del DOF del día anterior. */
+	exchange_rate?: number;
+	/** Forma de pago (FormaPago), clave de c_FormaPago: 01 efectivo, 03 transferencia, 04 tarjeta de crédito, 28 débito, 99 por definir… Obligatoria con PUE; con PPD es 99. */
+	payment_form?: string;
+	/** Método de pago (MetodoPago): PUE (una sola exhibición, por omisión) o PPD (en parcialidades o diferido, se cobra con complementos de pago). */
+	payment_method?: "PUE" | "PPD";
+	/** Uso del CFDI (UsoCFDI), clave de c_UsoCFDI. Por omisión G03, o S01 con régimen 616. */
+	use?: string;
+	/** Observaciones que aparecen en el PDF (no van en el XML). */
+	notes?: string;
+	/** El número de orden de compra de su cliente (va en la nota de cada factura). */
+	customer_po?: string;
+	/** A dónde mandarle el pedido y sus remisiones (hasta 5 correos, separados por comas). Por omisión, el del cliente. */
+	email?: string;
+	/** Entrega estimada (AAAA-MM-DD). */
+	expected_on?: string;
+	/** Días de crédito (0: de contado). */
+	payment_days?: number;
+	/** Qué se factura: delivered (por omisión), lo ya entregado; ordered, todo lo pedido desde el inicio (por ejemplo con pago por adelantado). */
+	invoice_policy?: "delivered" | "ordered";
+	/** Dónde se entrega. */
+	ship_to?: string;
+	/** Condiciones del pedido. */
+	terms?: string;
+	/** Nota interna (su cliente no la ve). */
+	internal_note?: string;
+}
+
+/** Los parámetros de GET /v1/sales_orders. */
+export interface ListSalesOrdersParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Solo los que estén en este estado. */
+	status?: "draft" | "confirmed" | "partially_delivered" | "delivered" | "invoiced" | "paid" | "closed" | "canceled";
+	/** Solo los de este RFC. */
+	customer?: string;
+}
+
+export interface UpdateSalesOrderParams {
+	/** Un cliente de su catálogo (cus_…) o uno con sus datos fiscales (como en POST /v1/invoices: se agrega a sus clientes). */
+	customer?: string | {
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string;
+		/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+		legal_name: string;
+		/** Régimen fiscal (RegimenFiscal), clave de c_RegimenFiscal: 601, 612, 626… */
+		tax_system: string;
+		/** Código postal del domicilio fiscal del cliente (DomicilioFiscalReceptor), 5 dígitos. */
+		zip: string;
+		/** Correo a donde se envía (varios separados por comas). Solo se usa si se pide enviarlo. */
+		email?: string | null;
+		/** Si es extranjero: su país de residencia (ResidenciaFiscal, c_Pais) y su número de registro tributario (NumRegIdTrib), con el RFC genérico XEXX010101000. */
+		foreign?: {
+			/** País de residencia fiscal, clave de 3 letras de c_Pais (USA, CAN…). */
+			country: string;
+			/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
+			tax_id: string;
+		};
+		/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio. */
+		ieps_taxpayer?: boolean;
+	};
+	/** Los conceptos, como en POST /v1/invoices (hasta 200). */
+	items?: {
+		/** Un producto de su catálogo (prd_…): toma su clave, unidad, precio e impuestos. */
+		product?: string;
+		/** Descripción del concepto (Descripcion), hasta 1,000 caracteres. */
+		description?: string;
+		/** Clave del producto o servicio (ClaveProdServ), 8 dígitos de c_ClaveProdServ. Búsquela con GET /v1/sat_catalogs/product_keys?q=… */
+		product_key?: string;
+		/** Clave de unidad (ClaveUnidad) de c_ClaveUnidad: E48 unidad de servicio (por omisión), H87 pieza, ACT actividad… */
+		unit_key?: string;
+		/** Nombre de la unidad (Unidad), hasta 20 caracteres. */
+		unit_name?: string | null;
+		/** Número de identificación o SKU (NoIdentificacion). */
+		sku?: string | null;
+		/** Cantidad (Cantidad). Por omisión 1. */
+		quantity?: number;
+		/** Precio unitario antes de impuestos (ValorUnitario). */
+		unit_price?: number;
+		/** Descuento (Descuento). */
+		discount?: number;
+		/** Objeto de impuesto (ObjetoImp), c_ObjetoImp: 01 no objeto, 02 sí objeto (por omisión), 03 sin desglose, 04 no causa… */
+		taxability?: "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08";
+		/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
+		iva?: "0" | "0.16" | "0.08" | "exento";
+		/** IEPS trasladado: tasa (0.265…) o cuota en pesos por unidad, según ieps_factor. */
+		ieps?: number;
+		/** Tasa o Cuota (TipoFactor del IEPS). */
+		ieps_factor?: "Tasa" | "Cuota";
+		/** Unidades de IEPS a cuota (litros, cigarros…), si no son la cantidad. */
+		ieps_units?: number;
+		/** Tasa de IVA retenido (por ejemplo 0.106667, dos terceras partes del 16%). */
+		iva_retention?: number;
+		/** Tasa de ISR retenido (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
+		isr_retention?: number;
+		/** Números de cuenta predial (CuentaPredial) en arrendamiento. */
+		predial?: string[];
+		/** Números de pedimento (InformacionAduanera) de mercancía importada. */
+		pedimentos?: string[];
+		/** A cuenta de terceros (ACuentaTerceros): RFC, nombre, régimen y código postal. */
+		third_party?: {
+			/** RFC de a cuenta de quién (RfcACuentaTerceros). */
+			tax_id: string;
+			/** Nombre (NombreACuentaTerceros). */
+			name: string;
+			/** Régimen fiscal (RegimenFiscalACuentaTerceros), c_RegimenFiscal. */
+			tax_system: string;
+			/** Código postal de su domicilio fiscal (DomicilioFiscalACuentaTerceros). */
+			zip: string;
+		};
+		/** Complemento de instituciones educativas privadas (IEDU): alumno, CURP, nivel y RVOE. */
+		iedu?: {
+			/** Nombre del alumno (nombreAlumno). */
+			student_name: string;
+			/** CURP, 18 caracteres. */
+			curp: string;
+			/** Nivel educativo (nivelEducativo). */
+			level: "Preescolar" | "Primaria" | "Secundaria" | "Profesional técnico" | "Bachillerato o su equivalente";
+			/** Reconocimiento de validez oficial de estudios (autRVOE). */
+			rvoe: string;
+			/** RFC de quien paga, si no es el receptor (rfcPago). */
+			payer_tax_id?: string | null;
+		};
+		/** Complemento de vehículo usado. */
+		used_vehicle?: {
+			/** Monto de adquisición (montoAdquisicion). */
+			purchase_amount: number;
+			/** Monto de enajenación (montoEnajenacion). */
+			sale_amount: number;
+			/** Clave vehicular (claveVehicular). */
+			vehicle_key: string;
+			/** Marca (marca). */
+			make: string;
+			/** Tipo o versión (tipo). */
+			type: string;
+			/** Año del modelo (modelo), 4 dígitos. */
+			model: string;
+			/** Número de motor (numeroMotor). */
+			engine_number?: string;
+			/** Número de serie (numeroSerie). */
+			serial_number?: string;
+			/** Número de identificación vehicular (NIV). */
+			niv?: string;
+			/** Valor según la guía EBC o Libro Azul (valor). */
+			guide_value: number;
+			/** Información aduanera de la importación del vehículo (InformacionAduanera). */
+			customs?: {
+				/** Número del documento de importación (numero). */
+				number: string;
+				/** Fecha del documento (fecha), AAAA-MM-DD. */
+				date: string;
+				/** Aduana (aduana). */
+				office?: string;
+			}[];
+		};
+		/** Addenda del receptor (Walmart, Soriana…), con sus propios campos. */
+		addenda?: Record<string, string>;
+	}[];
+	/** Moneda, clave ISO 4217 de c_Moneda (MXN, USD, EUR…). Por omisión MXN. */
+	currency?: string;
+	/** Tipo de cambio a pesos (TipoCambio). Obligatorio si la moneda no es MXN; use el del DOF del día anterior. */
+	exchange_rate?: number;
+	/** Forma de pago (FormaPago), clave de c_FormaPago: 01 efectivo, 03 transferencia, 04 tarjeta de crédito, 28 débito, 99 por definir… Obligatoria con PUE; con PPD es 99. */
+	payment_form?: string;
+	/** Método de pago (MetodoPago): PUE (una sola exhibición, por omisión) o PPD (en parcialidades o diferido, se cobra con complementos de pago). */
+	payment_method?: "PUE" | "PPD";
+	/** Uso del CFDI (UsoCFDI), clave de c_UsoCFDI. Por omisión G03, o S01 con régimen 616. */
+	use?: string;
+	/** Observaciones que aparecen en el PDF (no van en el XML). */
+	notes?: string;
+	/** El número de orden de compra de su cliente (va en la nota de cada factura). */
+	customer_po?: string;
+	/** A dónde mandarle el pedido y sus remisiones (hasta 5 correos, separados por comas). Por omisión, el del cliente. */
+	email?: string;
+	/** Entrega estimada (AAAA-MM-DD). */
+	expected_on?: string;
+	/** Días de crédito (0: de contado). */
+	payment_days?: number;
+	/** Qué se factura: delivered (por omisión), lo ya entregado; ordered, todo lo pedido desde el inicio (por ejemplo con pago por adelantado). */
+	invoice_policy?: "delivered" | "ordered";
+	/** Dónde se entrega. */
+	ship_to?: string;
+	/** Condiciones del pedido. */
+	terms?: string;
+	/** Nota interna (su cliente no la ve). */
+	internal_note?: string;
+}
+
+export interface CreateSalesOrderDeliveryParams {
+	/** Cuánto sale de cada concepto. Por omisión, todo lo que falta por entregar. */
+	items?: {
+		/** El id del concepto (items[].id). */
+		line: number;
+		/** Cantidad (Cantidad). Por omisión 1. */
+		quantity: number;
+	}[];
+	/** Por omisión, hoy. */
+	delivered_on?: string;
+	/** Transporte. */
+	carrier?: string;
+	/** Número de guía. */
+	tracking?: string;
+	/** Una nota en la remisión. */
+	note?: string;
+	/** Quién recibió, si ya lo sabe (si no, su cliente lo firma en url). */
+	received_by?: string;
+}
+
+export interface CancelSalesOrderDeliveryParams {
+	/** Por qué (queda en el historial). */
+	reason?: string;
+}
+
+export interface InvoiceSalesOrderParams {
+	/** Cuánto facturar de cada concepto. Por omisión, lo entregado sin facturar (o todo lo pedido con invoice_policy ordered). */
+	items?: {
+		/** El id del concepto (items[].id). */
+		line: number;
+		/** Cantidad (Cantidad). Por omisión 1. */
+		quantity: number;
+	}[];
+	/** Facturar también lo que aún no se entrega (con invoice_policy delivered). */
+	include_undelivered?: boolean;
+	/** Registrar también la entrega de lo que lleva la factura al timbrarla (venta de mostrador). */
+	deliver?: boolean;
+}
+
+export interface SendSalesOrderParams {
+	/** Mandarlo por correo, con su PDF y url (por omisión true). Con false solo contesta url, para que usted la mande. */
+	send_email?: boolean;
+	/** A quién (hasta 5 correos). Por omisión, el correo del pedido. */
+	to?: string;
+	/** Qué pasó y cómo corregirlo, para una persona. */
+	message?: string;
+}
+
+export interface CloseSalesOrderParams {
+	/** Por qué (queda en el historial). */
+	reason?: string;
+}
+
+export interface CancelSalesOrderParams {
+	/** Por qué (queda en el historial). */
+	reason?: string;
+}
+
 export interface CreateWebhookEndpointParams {
 	/** Dirección https de su servidor que recibe los avisos. */
 	url: string;
@@ -7675,7 +8223,7 @@ export interface RollWebhookSecretParams {
 
 export interface TestWebhookEndpointParams {
 	/** El evento a mandar. Por omisión invoice.stamped. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "issuer.ready" | "balance.low" | "test_clock.ready";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "issuer.ready" | "balance.low" | "test_clock.ready";
 }
 
 /** Los parámetros de GET /v1/events. */
@@ -7685,7 +8233,7 @@ export interface ListEventsParams {
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
 	/** Solo de este tipo (invoice.stamped), o todos los de un recurso con un comodín (invoice.*). */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "issuer.ready" | "balance.low" | "test_clock.ready" | "invoice.*" | "invoice_batch.*" | "payroll_batch.*" | "recurring_invoice.*" | "quote.*" | "ticket.*" | "retention.*" | "customer_data_request.*" | "sat_download.*" | "sat_declaration.*" | "issuer.*" | "balance.*" | "test_clock.*";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "issuer.ready" | "balance.low" | "test_clock.ready" | "invoice.*" | "invoice_batch.*" | "payroll_batch.*" | "recurring_invoice.*" | "quote.*" | "sales_order.*" | "ticket.*" | "retention.*" | "customer_data_request.*" | "sat_download.*" | "sat_declaration.*" | "issuer.*" | "balance.*" | "test_clock.*";
 	/** Solo los de este objeto (inv_…, ret_…, bat_…). */
 	object?: string;
 	/** false: los que algún webhook no recibió (su último intento falló). true: los que recibieron todos los webhooks a los que se mandaron. */
@@ -10568,6 +11116,194 @@ export class QuotesResource {
 	}
 }
 
+/** Pedidos: fiscalisto.salesOrders. */
+export class SalesOrdersResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Crear un pedido
+	 *
+	 * Lo que su cliente le pidió, con los conceptos y las condiciones de pago de una factura (se revisan con las mismas reglas, así que cada factura que sale de él timbra). customer es un cliente de su catálogo o uno con sus datos fiscales (se agrega a sus clientes). Con quote (quo_…) lo hace de una cotización. Queda en draft, o confirmado con confirm: true (llega sales_order.confirmed y se aparta lo pedido en el almacén).
+	 *
+	 * POST /v1/sales_orders
+	 * @see https://fiscalisto.com/docs/api/referencia/pedidos/create-sales-order
+	 */
+	create(params?: CreateSalesOrderParams, options?: RequestOptions): Promise<SalesOrder> {
+		return this.#client.request({ method: "POST", path: "/v1/sales_orders", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar pedidos
+	 *
+	 * Los más recientes primero.
+	 *
+	 * GET /v1/sales_orders
+	 * @see https://fiscalisto.com/docs/api/referencia/pedidos/list-sales-orders
+	 */
+	list(params?: ListSalesOrdersParams, options?: RequestOptions): List<SalesOrder> {
+		return this.#client.list({ path: "/v1/sales_orders", query: params }, options);
+	}
+
+	/**
+	 * Ver un pedido
+	 *
+	 * Con sus entregas, sus facturas y lo que se ha pagado de ellas.
+	 *
+	 * GET /v1/sales_orders/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/pedidos/get-sales-order
+	 */
+	get(id: string, options?: RequestOptions): Promise<SalesOrder> {
+		return this.#client.request({ method: "GET", path: `/v1/sales_orders/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Cambiar un pedido
+	 *
+	 * Solo lo que mande cambia. Los conceptos cambian mientras no tengan entregas ni facturas; si no, 400 sales_order_invalid.
+	 *
+	 * POST /v1/sales_orders/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/pedidos/update-sales-order
+	 */
+	update(id: string, params?: UpdateSalesOrderParams, options?: RequestOptions): Promise<SalesOrder> {
+		return this.#client.request({ method: "POST", path: `/v1/sales_orders/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Borrar un pedido
+	 *
+	 * Solo un borrador. Uno confirmado se cancela con POST /v1/sales_orders/{id}/cancel: 400 sales_order_not_deletable.
+	 *
+	 * DELETE /v1/sales_orders/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/pedidos/delete-sales-order
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/sales_orders/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Confirmar un pedido
+	 *
+	 * Es un pedido en firme: se aparta lo pedido en el almacén y ya se puede entregar y facturar. Llega sales_order.confirmed.
+	 *
+	 * POST /v1/sales_orders/{id}/confirm
+	 * @see https://fiscalisto.com/docs/api/referencia/pedidos/confirm-sales-order
+	 */
+	confirm(id: string, options?: RequestOptions): Promise<SalesOrder> {
+		return this.#client.request({ method: "POST", path: `/v1/sales_orders/${encodeURIComponent(id)}/confirm`, idempotent: true }, options);
+	}
+
+	/**
+	 * Registrar una entrega
+	 *
+	 * Lo que salió, con su remisión (REM-1, REM-2…): la mercancía sale del almacén con la entrega, no con la factura. Por omisión, todo lo que falta. Si el emisor no vende sin existencias, no sale más de lo que hay (400 sales_order_invalid). Cuando ya salió todo llega sales_order.delivered.
+	 *
+	 * POST /v1/sales_orders/{id}/deliveries
+	 * @see https://fiscalisto.com/docs/api/referencia/pedidos/create-sales-order-delivery
+	 */
+	deliver(id: string, params?: CreateSalesOrderDeliveryParams, options?: RequestOptions): Promise<SalesOrder> {
+		return this.#client.request({ method: "POST", path: `/v1/sales_orders/${encodeURIComponent(id)}/deliveries`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Cancelar una entrega
+	 *
+	 * La mercancía regresa al almacén y lo entregado vuelve a quedar pendiente.
+	 *
+	 * POST /v1/sales_orders/{id}/deliveries/{delivery}/cancel
+	 * @see https://fiscalisto.com/docs/api/referencia/pedidos/cancel-sales-order-delivery
+	 */
+	cancelDelivery(id: string, delivery: string, params?: CancelSalesOrderDeliveryParams, options?: RequestOptions): Promise<SalesOrder> {
+		return this.#client.request({ method: "POST", path: `/v1/sales_orders/${encodeURIComponent(id)}/deliveries/${encodeURIComponent(delivery)}/cancel`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Facturar un pedido
+	 *
+	 * Timbra una factura con lo entregado y no facturado (o lo que diga items; con invoice_policy ordered, lo pedido), con los datos fiscales del cliente de hoy y la nota «Pedido PED-…» con su orden de compra. Se factura en varias partes: cada llamada, con su Idempotency-Key, timbra la que sigue. Si no queda nada, 400 sales_order_invalid. Cuando sus facturas se pagan llega sales_order.paid.
+	 *
+	 * POST /v1/sales_orders/{id}/invoice
+	 * @see https://fiscalisto.com/docs/api/referencia/pedidos/invoice-sales-order
+	 */
+	invoice(id: string, params?: InvoiceSalesOrderParams, options?: RequestOptions): Promise<Invoice> {
+		return this.#client.request({ method: "POST", path: `/v1/sales_orders/${encodeURIComponent(id)}/invoice`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Mandar un pedido
+	 *
+	 * Por correo, con su PDF y la liga donde su cliente lo confirma (llega sales_order.customer_confirmed), firma cada entrega y abre sus facturas. Con send_email: false solo contesta url. En borrador, 400 sales_order_draft.
+	 *
+	 * POST /v1/sales_orders/{id}/send
+	 * @see https://fiscalisto.com/docs/api/referencia/pedidos/send-sales-order
+	 */
+	send(id: string, params?: SendSalesOrderParams, options?: RequestOptions): Promise<SalesOrder> {
+		return this.#client.request({ method: "POST", path: `/v1/sales_orders/${encodeURIComponent(id)}/send`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Ya no entregar lo pendiente
+	 *
+	 * El pedido se queda con lo ya entregado (lo demás pasa a canceled en cada concepto) y se libera lo apartado.
+	 *
+	 * POST /v1/sales_orders/{id}/cancel_remaining
+	 * @see https://fiscalisto.com/docs/api/referencia/pedidos/cancel-sales-order-remaining
+	 */
+	cancelRemaining(id: string, options?: RequestOptions): Promise<SalesOrder> {
+		return this.#client.request({ method: "POST", path: `/v1/sales_orders/${encodeURIComponent(id)}/cancel_remaining`, idempotent: true }, options);
+	}
+
+	/**
+	 * Cerrar un pedido
+	 *
+	 * Lo da por terminado aunque quede algo pendiente, y libera lo apartado.
+	 *
+	 * POST /v1/sales_orders/{id}/close
+	 * @see https://fiscalisto.com/docs/api/referencia/pedidos/close-sales-order
+	 */
+	close(id: string, params?: CloseSalesOrderParams, options?: RequestOptions): Promise<SalesOrder> {
+		return this.#client.request({ method: "POST", path: `/v1/sales_orders/${encodeURIComponent(id)}/close`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Cancelar un pedido
+	 *
+	 * Solo sin entregas ni facturas timbradas (cancele primero las entregas, y las facturas con POST /v1/invoices/{id}/cancel). Borra sus facturas en borrador y libera lo apartado. Llega sales_order.canceled.
+	 *
+	 * POST /v1/sales_orders/{id}/cancel
+	 * @see https://fiscalisto.com/docs/api/referencia/pedidos/cancel-sales-order
+	 */
+	cancel(id: string, params?: CancelSalesOrderParams, options?: RequestOptions): Promise<SalesOrder> {
+		return this.#client.request({ method: "POST", path: `/v1/sales_orders/${encodeURIComponent(id)}/cancel`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Reabrir un pedido
+	 *
+	 * Uno cerrado o cancelado vuelve a estar abierto.
+	 *
+	 * POST /v1/sales_orders/{id}/reopen
+	 * @see https://fiscalisto.com/docs/api/referencia/pedidos/reopen-sales-order
+	 */
+	reopen(id: string, options?: RequestOptions): Promise<SalesOrder> {
+		return this.#client.request({ method: "POST", path: `/v1/sales_orders/${encodeURIComponent(id)}/reopen`, idempotent: true }, options);
+	}
+
+	/**
+	 * Descargar el PDF
+	 *
+	 * El PDF del pedido, con el diseño de PDF del emisor.
+	 *
+	 * GET /v1/sales_orders/{id}/pdf
+	 * @see https://fiscalisto.com/docs/api/referencia/pedidos/get-sales-order-pdf
+	 */
+	pdf(id: string, options?: RequestOptions): Promise<Uint8Array> {
+		return this.#client.request({ method: "GET", path: `/v1/sales_orders/${encodeURIComponent(id)}/pdf`, as: "bytes" }, options);
+	}
+}
+
 /** Webhooks: fiscalisto.webhookEndpoints. */
 export class WebhookEndpointsResource {
 	readonly #client: Client;
@@ -10740,6 +11476,7 @@ export class FiscalistoApi extends Core {
 	readonly storeConnections = new StoreConnectionsResource(this);
 	readonly recurringInvoices = new RecurringInvoicesResource(this);
 	readonly quotes = new QuotesResource(this);
+	readonly salesOrders = new SalesOrdersResource(this);
 	readonly webhookEndpoints = new WebhookEndpointsResource(this);
 	readonly events = new EventsResource(this);
 }
