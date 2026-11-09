@@ -2586,6 +2586,13 @@ export interface Ticket {
 		/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
 		legal_name: string | null;
 	} | null;
+	/** Quién pagó, como lo conoce el origen de la venta (el `buyer` que mandó, o el cliente de un pago de Stripe). No es el receptor de la factura (`customer`). */
+	buyer: {
+		/** Nombre. */
+		name: string | null;
+		/** Correo a donde se envía (varios separados por comas). Solo se usa si se pide enviarlo. */
+		email: string | null;
+	} | null;
 	/** Cuándo se registró. */
 	created_at: string | null;
 }
@@ -7485,6 +7492,13 @@ export interface CreateTicketParams {
 	unit_key?: string;
 	/** Tasa de IVA incluida en el total. Por omisión 0.16. */
 	iva?: "0" | "0.16" | "0.08" | "exento";
+	/** Quién pagó, para reconocer la venta en Tickets. No es el receptor de la factura (eso lo escribe el comprador en el portal) y no se le manda nada. */
+	buyer?: {
+		/** Su nombre o el de su empresa, como lo conoce su sistema. */
+		name?: string;
+		/** Su correo. */
+		email?: string;
+	};
 	/** Una venta de varios conceptos (el folio de un hotel: noches, desayunos, lavandería), cada uno con su producto o sus claves, sus impuestos y lo que se cobró por él; hasta 200. En lugar de `product`, `description`, `product_key`, `unit_key` e `iva`. La factura del cliente lleva un concepto por línea; la factura global, uno por cada combinación de impuestos del ticket. */
 	lines?: {
 		/** Un producto (prd_…) de su catálogo: sus claves, IVA e impuestos locales. */
