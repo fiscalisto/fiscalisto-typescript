@@ -701,6 +701,12 @@ export interface Customer {
 	} | null;
 	/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio. */
 	ieps_taxpayer: boolean;
+	/** Su grupo de clientes (cgr_…), o null si no está en ninguno. */
+	group: string | null;
+	/** Lista de precios (prl_…). En un cliente, la suya propia, que gana a la de su grupo; null para usar la de su grupo o la de todos. */
+	price_list: string | null;
+	/** Porcentaje de descuento sobre el precio, de 0 a 100; en el CFDI va como Descuento de cada concepto. */
+	discount_percent: number | null;
 	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
 	created_at: string;
 	/** Cuándo cambió por última vez, ISO 8601 (-06:00). */
@@ -762,6 +768,12 @@ export interface Product {
 	barcode: string | null;
 	/** Su existencia mínima, o null. */
 	min_stock: number | null;
+	/** true si se ofrece en el Portal del cliente para hacer pedidos. */
+	portal_visible: boolean;
+	/** Lo mínimo que se pide de él en el Portal del cliente, o null sin mínimo. */
+	min_order_qty: number | null;
+	/** De cuántos en cuántos se pide en el Portal del cliente (6 para pedir 6, 12, 18…), o null de uno en uno. */
+	order_step: number | null;
 	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
 	created_at: string;
 	/** Cuándo cambió por última vez, ISO 8601 (-06:00). */
@@ -1862,6 +1874,121 @@ export interface CostCenter {
 	created_at: string | null;
 	/** Cuándo cambió por última vez. */
 	updated_at: string | null;
+}
+
+/** Una lista de precios: parte del precio del catálogo (o de otra lista), lo mueve un porcentaje y lo redondea, con precios propios por producto, presentación y desde cierta cantidad (escalones de mayoreo). items solo viene al ver una lista. */
+export interface PriceList {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "price_list";
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Nombre. */
+	name: string;
+	/** Descripción. */
+	description: string | null;
+	/** La lista (prl_…) de la que parte; null parte del precio del catálogo de cada producto. */
+	base_list: string | null;
+	/** Cuánto sube (positivo) o baja (negativo) el precio del que parte, en porcentaje. */
+	adjust_percent: number;
+	/** A cuánto redondea los precios que calcula (0.5, 1, 10…), o null sin redondear. */
+	round_to: number | null;
+	/** Desde qué día vale (YYYY-MM-DD, Ciudad de México), o null desde siempre. */
+	starts_on: string | null;
+	/** Hasta qué día vale, ese día incluido (YYYY-MM-DD), o null sin fin. */
+	ends_on: string | null;
+	/** true si es la lista de todos los clientes que no tienen otra (solo puede haber una). */
+	is_default: boolean;
+	/** false la pausa; true la reanuda desde hoy. */
+	active: boolean;
+	/** Cuántos grupos de clientes la usan. */
+	groups: number;
+	/** Cuántos clientes la tienen como suya. */
+	customers: number;
+	/** Conceptos (Conceptos), al menos uno. */
+	items: {
+		/** Un producto de su catálogo (prd_…): toma su clave, unidad, precio e impuestos. */
+		product: string;
+		/** Unidad aduana (UnidadAduana), c_UnidadAduana. */
+		unit: string | null;
+		/** Desde cuántas unidades (de su presentación) vale este precio: un escalón de mayoreo. 1 por omisión. */
+		min_quantity: number;
+		/** Precio unitario antes de impuestos (ValorUnitario). */
+		unit_price: number | null;
+		/** Porcentaje que baja el precio de la lista para este producto, en vez de un precio fijo. */
+		discount_percent: number | null;
+	}[] | null;
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string | null;
+	/** Cuándo cambió por última vez, ISO 8601 (-06:00). */
+	updated_at: string | null;
+}
+
+/** Un grupo de clientes: su lista de precios, descuento, días de crédito, pedido mínimo y si piden desde su Portal del cliente. */
+export interface CustomerGroup {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "customer_group";
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Nombre. */
+	name: string;
+	/** Color de su etiqueta en la app: info, warning, positive, critical o muted. */
+	color: string;
+	/** Lista de precios (prl_…). En un cliente, la suya propia, que gana a la de su grupo; null para usar la de su grupo o la de todos. */
+	price_list: string | null;
+	/** Porcentaje de descuento sobre el precio, de 0 a 100; en el CFDI va como Descuento de cada concepto. */
+	discount_percent: number;
+	/** Días de crédito que se le dan, de 0 a 365, o null para no cambiar los del cliente. */
+	credit_days: number | null;
+	/** Pedido mínimo, sin IVA, para pedir desde el Portal del cliente, o null sin mínimo. */
+	min_order: number | null;
+	/** true si sus clientes pueden hacer pedidos desde su Portal del cliente. */
+	portal_ordering: boolean;
+	/** Cuántos clientes hay en el grupo. */
+	customers: number;
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string | null;
+}
+
+/** Lo que un cliente paga por unos productos a una cantidad: su precio por unidad sin IVA (de su lista), su descuento y el siguiente escalón de mayoreo. */
+export interface PriceQuote {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "price_quote";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El cliente (cus_…) cuyos precios se calcularon. */
+	customer: string;
+	/** Conceptos (Conceptos), al menos uno. */
+	items: {
+		/** Un producto de su catálogo (prd_…): toma su clave, unidad, precio e impuestos. */
+		product: string;
+		/** Cantidad (Cantidad). Por omisión 1. */
+		quantity: number;
+		/** Unidad aduana (UnidadAduana), c_UnidadAduana. */
+		unit: string | null;
+		/** Precio unitario antes de impuestos (ValorUnitario). */
+		unit_price: number;
+		/** Su precio del catálogo, por unidad y sin IVA, antes de su lista. */
+		catalog_price: number;
+		/** El descuento del cliente (el suyo, o el de su grupo) sobre ese precio; va como Descuento en el CFDI. */
+		discount_percent: number;
+		/** La lista (prl_…) de donde sale el precio, o null si es el del catálogo. */
+		price_list: string | null;
+		/** El siguiente escalón de mayoreo: desde qué cantidad y a qué precio. null si no hay. */
+		next_step: {
+			/** Desde cuántas unidades (de su presentación) vale este precio: un escalón de mayoreo. 1 por omisión. */
+			min_quantity: number;
+			/** Precio unitario antes de impuestos (ValorUnitario). */
+			unit_price: number;
+		} | null;
+	}[];
 }
 
 /** Alguien que viaja o gasta por el emisor: un empleado (de Nómina) o alguien por honorarios. Tiene un enlace propio para subir sus facturas sin cuenta. */
@@ -3957,6 +4084,28 @@ export interface CostCenterList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: CostCenter[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface PriceListList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: PriceList[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface CustomerGroupList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: CustomerGroup[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -6522,6 +6671,144 @@ export interface DeleteCostCenterParams {
 	move_to?: string;
 }
 
+export interface CreatePriceListParams {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** Mayoreo, Distribuidor, Buen Fin… */
+	name: string;
+	/** Descripción. */
+	description?: string | null;
+	/** Otra lista (prl_…) de la que parte; null o sin ella: el precio del catálogo. */
+	base_list?: string | null;
+	/** Cuánto mueve el precio del que parte: −10 lo baja 10 %, 5 lo sube 5 %. */
+	adjust_percent?: number;
+	/** Redondea a: 0.5, 1, 5, 10… (null: a centavos). */
+	round_to?: number | null;
+	/** Desde qué día vale (YYYY-MM-DD, Ciudad de México), o null desde siempre. */
+	starts_on?: string | null;
+	/** Hasta qué día vale, ese día incluido (YYYY-MM-DD), o null sin fin. */
+	ends_on?: string | null;
+	/** La tienen los clientes sin otra lista (ni ellos ni su grupo). Solo una lo es. */
+	is_default?: boolean;
+	/** Sus precios propios; al mandarlos reemplazan a los que tenía. */
+	items?: {
+		/** El producto (prd_…). */
+		product: string;
+		/** Una presentación del producto (su id de unidad, un entero de GET /v1/products/{id}/units), por ejemplo una caja de 12; null o sin él: su propia unidad. */
+		unit?: string | null;
+		/** Desde cuántas aplica (1 por omisión): varios renglones del mismo producto son sus escalones de mayoreo. */
+		min_quantity?: number;
+		/** Su precio por unidad sin IVA. Mande este o discount_percent. */
+		unit_price?: number;
+		/** Un descuento sobre el precio de la lista. Mande este o unit_price. */
+		discount_percent?: number;
+	}[];
+}
+
+/** Los parámetros de GET /v1/price_lists. */
+export interface ListPriceListsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface UpdatePriceListParams {
+	/** Mayoreo, Distribuidor, Buen Fin… */
+	name?: string;
+	/** Descripción. */
+	description?: string | null;
+	/** Otra lista (prl_…) de la que parte; null o sin ella: el precio del catálogo. */
+	base_list?: string | null;
+	/** Cuánto mueve el precio del que parte: −10 lo baja 10 %, 5 lo sube 5 %. */
+	adjust_percent?: number;
+	/** Redondea a: 0.5, 1, 5, 10… (null: a centavos). */
+	round_to?: number | null;
+	/** Desde qué día vale (YYYY-MM-DD, Ciudad de México), o null desde siempre. */
+	starts_on?: string | null;
+	/** Hasta qué día vale, ese día incluido (YYYY-MM-DD), o null sin fin. */
+	ends_on?: string | null;
+	/** La tienen los clientes sin otra lista (ni ellos ni su grupo). Solo una lo es. */
+	is_default?: boolean;
+	/** Sus precios propios; al mandarlos reemplazan a los que tenía. */
+	items?: {
+		/** El producto (prd_…). */
+		product: string;
+		/** Una presentación del producto (su id de unidad, un entero de GET /v1/products/{id}/units), por ejemplo una caja de 12; null o sin él: su propia unidad. */
+		unit?: string | null;
+		/** Desde cuántas aplica (1 por omisión): varios renglones del mismo producto son sus escalones de mayoreo. */
+		min_quantity?: number;
+		/** Su precio por unidad sin IVA. Mande este o discount_percent. */
+		unit_price?: number;
+		/** Un descuento sobre el precio de la lista. Mande este o unit_price. */
+		discount_percent?: number;
+	}[];
+}
+
+export interface CreateCustomerGroupParams {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** Nombre. */
+	name: string;
+	/** Color de su etiqueta en la app: info, warning, positive, critical o muted. */
+	color?: "info" | "warning" | "positive" | "critical" | "muted";
+	/** Su lista (prl_…); null: la que aplica a todos. */
+	price_list?: string | null;
+	/** Un descuento en cada concepto, como descuento del CFDI. */
+	discount_percent?: number;
+	/** Días de crédito que se le dan, de 0 a 365, o null para no cambiar los del cliente. */
+	credit_days?: number | null;
+	/** El pedido mínimo antes de IVA desde el Portal del cliente. */
+	min_order?: number | null;
+	/** Sus clientes pueden hacer pedidos desde su Portal del cliente (true por omisión). */
+	portal_ordering?: boolean;
+}
+
+/** Los parámetros de GET /v1/customer_groups. */
+export interface ListCustomerGroupsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface UpdateCustomerGroupParams {
+	/** Nombre. */
+	name?: string;
+	/** Color de su etiqueta en la app: info, warning, positive, critical o muted. */
+	color?: "info" | "warning" | "positive" | "critical" | "muted";
+	/** Su lista (prl_…); null: la que aplica a todos. */
+	price_list?: string | null;
+	/** Un descuento en cada concepto, como descuento del CFDI. */
+	discount_percent?: number;
+	/** Días de crédito que se le dan, de 0 a 365, o null para no cambiar los del cliente. */
+	credit_days?: number | null;
+	/** El pedido mínimo antes de IVA desde el Portal del cliente. */
+	min_order?: number | null;
+	/** Sus clientes pueden hacer pedidos desde su Portal del cliente (true por omisión). */
+	portal_ordering?: boolean;
+}
+
+export interface QuotePricesParams {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** El cliente (cus_…) o su RFC. */
+	customer: string;
+	/** Conceptos (Conceptos), al menos uno. */
+	items: {
+		/** El producto (prd_…). */
+		product: string;
+		/** Cantidad (Cantidad). Por omisión 1. */
+		quantity?: number;
+		/** Unidad aduana (UnidadAduana), c_UnidadAduana. */
+		unit?: string | null;
+	}[];
+}
+
 export interface CreateExpensePersonParams {
 	/** El emisor (iss_…). Por omisión, su único emisor. */
 	issuer?: string;
@@ -6756,6 +7043,12 @@ export interface CreateCustomerParams {
 		/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
 		tax_id: string;
 	} | null;
+	/** Su grupo de clientes (cgr_…), o null para ninguno. */
+	group?: string | null;
+	/** Su propia lista de precios (prl_…), que gana sobre la de su grupo; null: la de su grupo o la de todos. */
+	price_list?: string | null;
+	/** Su propio descuento en cada concepto, en %; null: el de su grupo. */
+	discount_percent?: number | null;
 	/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio. */
 	ieps_taxpayer?: boolean;
 }
@@ -6792,6 +7085,12 @@ export interface UpdateCustomerParams {
 		/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
 		tax_id: string;
 	} | null;
+	/** Su grupo de clientes (cgr_…), o null para ninguno. */
+	group?: string | null;
+	/** Su propia lista de precios (prl_…), que gana sobre la de su grupo; null: la de su grupo o la de todos. */
+	price_list?: string | null;
+	/** Su propio descuento en cada concepto, en %; null: el de su grupo. */
+	discount_percent?: number | null;
 	/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio. */
 	ieps_taxpayer?: boolean;
 }
@@ -6865,6 +7164,12 @@ export interface CreateProductParams {
 	barcode?: string | null;
 	/** Existencia mínima: por debajo, el aviso de existencias bajas lo incluye. */
 	min_stock?: number | null;
+	/** Se vende en el Portal del cliente: sus clientes lo piden desde ahí, a sus precios (listas de precios), y el pedido llega por confirmar. */
+	portal_visible?: boolean;
+	/** Lo menos que se le pide desde el portal, en su unidad. */
+	min_order_qty?: number | null;
+	/** Se pide de tantos en tantos desde el portal (12: de 12 en 12). */
+	order_step?: number | null;
 }
 
 /** Los parámetros de GET /v1/products. */
@@ -6927,6 +7232,12 @@ export interface UpdateProductParams {
 	barcode?: string | null;
 	/** Existencia mínima: por debajo, el aviso de existencias bajas lo incluye. */
 	min_stock?: number | null;
+	/** Se vende en el Portal del cliente: sus clientes lo piden desde ahí, a sus precios (listas de precios), y el pedido llega por confirmar. */
+	portal_visible?: boolean;
+	/** Lo menos que se le pide desde el portal, en su unidad. */
+	min_order_qty?: number | null;
+	/** Se pide de tantos en tantos desde el portal (12: de 12 en 12). */
+	order_step?: number | null;
 }
 
 /** Los parámetros de GET /v1/sat_mailbox_messages. */
@@ -9748,6 +10059,162 @@ export class CostCentersResource {
 	}
 }
 
+/** Listas de precios: fiscalisto.priceLists. */
+export class PriceListsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Crear una lista de precios
+	 *
+	 * Parte del precio del catálogo (o de base_list, otra lista), lo mueve adjust_percent y lo redondea a round_to; con starts_on y ends_on es una promoción. items le pone precios propios por producto, por presentación (unit, una caja) y desde min_quantity (escalones de mayoreo), cada uno con unit_price o discount_percent. is_default: la tienen los clientes sin otra. Hasta 100.
+	 *
+	 * POST /v1/price_lists
+	 * @see https://fiscalisto.com/docs/api/referencia/listas-de-precios/create-price-list
+	 */
+	create(params: CreatePriceListParams, options?: RequestOptions): Promise<PriceList> {
+		return this.#client.request({ method: "POST", path: "/v1/price_lists", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar listas de precios
+	 *
+	 * Las listas de precios en el orden de la app, con cuántos grupos y clientes la tienen. items viene al ver una.
+	 *
+	 * GET /v1/price_lists
+	 * @see https://fiscalisto.com/docs/api/referencia/listas-de-precios/list-price-lists
+	 */
+	list(params?: ListPriceListsParams, options?: RequestOptions): List<PriceList> {
+		return this.#client.list({ path: "/v1/price_lists", query: params }, options);
+	}
+
+	/**
+	 * Ver una lista de precios
+	 *
+	 * Una lista de precios con sus precios propios (items).
+	 *
+	 * GET /v1/price_lists/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/listas-de-precios/get-price-list
+	 */
+	get(id: string, options?: RequestOptions): Promise<PriceList> {
+		return this.#client.request({ method: "GET", path: `/v1/price_lists/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Actualizar una lista de precios
+	 *
+	 * Cambia solo lo que manda; items reemplaza todos sus precios propios. Las facturas, cotizaciones y pedidos ya hechos no cambian.
+	 *
+	 * POST /v1/price_lists/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/listas-de-precios/update-price-list
+	 */
+	update(id: string, params?: UpdatePriceListParams, options?: RequestOptions): Promise<PriceList> {
+		return this.#client.request({ method: "POST", path: `/v1/price_lists/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Quitar una lista de precios
+	 *
+	 * La archiva: sus grupos y clientes pasan a la lista que aplica a todos (o al precio del catálogo).
+	 *
+	 * DELETE /v1/price_lists/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/listas-de-precios/delete-price-list
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/price_lists/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Listas de precios: fiscalisto.customerGroups. */
+export class CustomerGroupsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Crear un grupo de clientes
+	 *
+	 * Lo que tienen todos sus clientes: price_list, discount_percent (el descuento de cada concepto en el CFDI), credit_days, min_order (antes de IVA, desde el portal) y portal_ordering. Un cliente entra con group en POST /v1/customers/{id}.
+	 *
+	 * POST /v1/customer_groups
+	 * @see https://fiscalisto.com/docs/api/referencia/listas-de-precios/create-customer-group
+	 */
+	create(params: CreateCustomerGroupParams, options?: RequestOptions): Promise<CustomerGroup> {
+		return this.#client.request({ method: "POST", path: "/v1/customer_groups", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar grupos de clientes
+	 *
+	 * Los grupos de clientes, con cuántos clientes tiene cada uno.
+	 *
+	 * GET /v1/customer_groups
+	 * @see https://fiscalisto.com/docs/api/referencia/listas-de-precios/list-customer-groups
+	 */
+	list(params?: ListCustomerGroupsParams, options?: RequestOptions): List<CustomerGroup> {
+		return this.#client.list({ path: "/v1/customer_groups", query: params }, options);
+	}
+
+	/**
+	 * Ver un grupo de clientes
+	 *
+	 * Un grupo de clientes.
+	 *
+	 * GET /v1/customer_groups/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/listas-de-precios/get-customer-group
+	 */
+	get(id: string, options?: RequestOptions): Promise<CustomerGroup> {
+		return this.#client.request({ method: "GET", path: `/v1/customer_groups/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Actualizar un grupo de clientes
+	 *
+	 * Cambia solo lo que manda.
+	 *
+	 * POST /v1/customer_groups/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/listas-de-precios/update-customer-group
+	 */
+	update(id: string, params?: UpdateCustomerGroupParams, options?: RequestOptions): Promise<CustomerGroup> {
+		return this.#client.request({ method: "POST", path: `/v1/customer_groups/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Quitar un grupo de clientes
+	 *
+	 * Sus clientes se quedan sin grupo.
+	 *
+	 * DELETE /v1/customer_groups/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/listas-de-precios/delete-customer-group
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/customer_groups/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Listas de precios: fiscalisto.prices. */
+export class PricesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ver los precios de un cliente
+	 *
+	 * Lo que un cliente paga por unos productos a una cantidad: el precio por unidad sin IVA de su lista (la suya, la de su grupo o la de todos), su descuento y el siguiente escalón de mayoreo. No guarda nada.
+	 *
+	 * POST /v1/prices
+	 * @see https://fiscalisto.com/docs/api/referencia/listas-de-precios/quote-prices
+	 */
+	quote(params: QuotePricesParams, options?: RequestOptions): Promise<PriceQuote> {
+		return this.#client.request({ method: "POST", path: "/v1/prices", body: params, idempotent: true }, options);
+	}
+}
+
 /** Viáticos y gastos: fiscalisto.expensePeople. */
 export class ExpensePeopleResource {
 	readonly #client: Client;
@@ -11455,6 +11922,9 @@ export class FiscalistoApi extends Core {
 	readonly taxIds = new TaxIdsResource(this);
 	readonly branches = new BranchesResource(this);
 	readonly costCenters = new CostCentersResource(this);
+	readonly priceLists = new PriceListsResource(this);
+	readonly customerGroups = new CustomerGroupsResource(this);
+	readonly prices = new PricesResource(this);
 	readonly expensePeople = new ExpensePeopleResource(this);
 	readonly expenseReports = new ExpenseReportsResource(this);
 	readonly expensePolicy = new ExpensePolicyResource(this);
