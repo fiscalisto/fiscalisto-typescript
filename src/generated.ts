@@ -737,6 +737,8 @@ export interface Product {
 	unit_name: string | null;
 	/** Número de identificación o SKU (NoIdentificacion). */
 	sku: string | null;
+	/** Su categoría, con las de arriba separadas por › («Ferretería › Tornillos»), o null si no tiene. */
+	category: string | null;
 	/** Precio unitario antes de impuestos (ValorUnitario). */
 	unit_price: number;
 	/** Precio abierto: el producto no tiene precio fijo y cada concepto con él manda su unit_price. */
@@ -7434,6 +7436,8 @@ export interface CreateProductParams {
 	min_order_qty?: number | null;
 	/** Se pide de tantos en tantos desde el portal (12: de 12 en 12). */
 	order_step?: number | null;
+	/** Su categoría, con las de arriba separadas por › (también > o /): «Ferretería › Tornillos». Si no existe, se crea. null la quita. */
+	category?: string | null;
 }
 
 /** Los parámetros de GET /v1/products. */
@@ -7448,6 +7452,8 @@ export interface ListProductsParams {
 	sku?: string;
 	/** Solo los de esta clave del SAT. */
 	product_key?: string;
+	/** Solo los de esta categoría y sus subcategorías: «Ferretería» o «Ferretería › Tornillos». */
+	category?: string;
 }
 
 export interface UpdateProductParams {
@@ -7502,6 +7508,8 @@ export interface UpdateProductParams {
 	min_order_qty?: number | null;
 	/** Se pide de tantos en tantos desde el portal (12: de 12 en 12). */
 	order_step?: number | null;
+	/** Su categoría, con las de arriba separadas por › (también > o /): «Ferretería › Tornillos». Si no existe, se crea. null la quita. */
+	category?: string | null;
 }
 
 /** Los parámetros de GET /v1/sat_mailbox_messages. */
@@ -10916,7 +10924,7 @@ export class ProductsResource {
 	/**
 	 * Listar productos
 	 *
-	 * Los productos del emisor, los más recientes primero. Filtre por sku o product_key.
+	 * Los productos del emisor, los más recientes primero. Filtre por sku, product_key o category.
 	 *
 	 * GET /v1/products
 	 * @see https://fiscalisto.com/docs/api/referencia/productos/list-products
