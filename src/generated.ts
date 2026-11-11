@@ -3572,6 +3572,147 @@ export interface SalesOrder {
 	created_at: string | null;
 }
 
+/** Un proveedor del Portal de proveedores del emisor: su alta, sus documentos, la cuenta a la que se le paga y su calificación. */
+export interface PortalSupplier {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "portal_supplier";
+	/** El emisor de su cuenta (iss_…) cuyo portal es. */
+	issuer: string;
+	/** El RFC del proveedor. */
+	tax_id: string;
+	/** Su nombre o razón social, o null si aún no lo da. */
+	name: string | null;
+	/** Los correos a los que le escribimos. */
+	emails: string[];
+	/** Su teléfono, o null. */
+	phone: string | null;
+	/** invited (invitado), onboarding (dando su alta), in_review (alta por revisar), approved (puede mandar facturas), rejected o suspended. */
+	status: "invited" | "onboarding" | "in_review" | "approved" | "rejected" | "suspended";
+	/** true si da servicios especializados (REPSE). */
+	repse: boolean;
+	/** Su alta: complete cuando todo lo obligatorio está aprobado y vigente, y cuántos documentos faltan, esperan revisión, vencieron o están por vencer. */
+	documents: {
+		/** true cuando todo lo obligatorio de su alta está aprobado y vigente. */
+		complete: boolean;
+		/** Cuántos documentos obligatorios no ha subido. */
+		missing: number;
+		/** Cuántos esperan revisión. */
+		pending: number;
+		/** Cuántos vencieron. */
+		expired: number;
+		/** Cuántos vencen en los próximos 7 días. */
+		expiring: number;
+	};
+	/** La cuenta a la que se le paga, o null. Una nueva queda pending hasta que se aprueba en la app; mientras, se le paga a previous_clabe. */
+	bank_account: {
+		/** La CLABE de 18 dígitos. */
+		clabe: string;
+		/** El banco, o null. */
+		bank: string | null;
+		/** El titular de la cuenta, o null. */
+		holder: string | null;
+		/** Estado del objeto. */
+		status: "pending" | "approved" | "rejected";
+		/** Mientras una CLABE nueva está pending, la anterior, a la que se le sigue pagando; si no, null. */
+		previous_clabe: string | null;
+	} | null;
+	/** Su calificación de 0 a 100 de los últimos 12 meses (value, null sin datos; level excellent, good, fair o poor) y cada parte: invoices (facturas a la primera), deliveries (entregas a tiempo), prices (precio y cantidad de la orden), documents (documentos al día) y complements (complementos de pago), con good de total casos. */
+	score: {
+		/** Valor de la mercancía (ValorMercancia); obligatorio en transporte aéreo. */
+		value: number | null;
+		/** Nivel educativo (nivelEducativo). */
+		level: "excellent" | "good" | "fair" | "poor" | null;
+		/** Partes del transporte que posee o arrienda (ParteTransporte), c_ParteTransporte. */
+		parts: {
+			/** invoices (facturas a la primera), deliveries (entregas a tiempo), prices (precio y cantidad de la orden), documents (documentos al día) o complements (complementos de pago). */
+			part: "invoices" | "deliveries" | "prices" | "documents" | "complements";
+			/** Valor de la mercancía (ValorMercancia); obligatorio en transporte aéreo. */
+			value: number | null;
+			/** En cuántos de los total casos lo hizo bien. */
+			good: number;
+			/** Total en la moneda del comprobante (Total). */
+			total: number;
+		}[];
+	};
+	/** La última vez que entró a su portal, o null. */
+	last_seen_at: string | null;
+	/** Cuándo se invitó o se registró. */
+	created_at: string | null;
+	/** Cuándo cambió por última vez. */
+	updated_at: string | null;
+}
+
+/** Una factura que un proveedor le mandó al emisor por su Portal de proveedores, con lo que se revisó, su orden de compra, su contrarecibo y sus fechas de pago. */
+export interface SupplierInvoice {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "supplier_invoice";
+	/** El emisor de su cuenta (iss_…) que la recibió. */
+	issuer: string;
+	/** El proveedor (sup_…) que la mandó. */
+	supplier: string;
+	/** El RFC del proveedor. */
+	supplier_tax_id: string;
+	/** El folio fiscal (UUID del timbre). */
+	uuid: string;
+	/** La misma factura en sus facturas recibidas (sat_…), para su XML y su PDF, o null. */
+	sat_invoice: string | null;
+	/** Su serie, o null. */
+	series: string | null;
+	/** Su folio, o null. */
+	folio: string | null;
+	/** income (factura de ingreso) o credit_note (nota de crédito). */
+	type: "income" | "credit_note";
+	/** La fecha de la factura. */
+	date: string;
+	/** La moneda. */
+	currency: string;
+	/** El total de la factura. */
+	total: number;
+	/** Lo que se le paga: el total sin las diferencias con su orden ni el descuento de pronto pago aceptado. */
+	payable: number;
+	/** PUE o PPD. */
+	payment_method: string | null;
+	/** received (por revisar), approved, scheduled (con fecha de pago), paid o rejected. */
+	status: "received" | "approved" | "scheduled" | "paid" | "rejected";
+	/** La orden de compra que factura (OC-12), o null. */
+	purchase_order: string | null;
+	/** true si cuadró con su orden, false si tuvo diferencias, null sin orden. */
+	matches_purchase_order: boolean | null;
+	/** El folio de su contrarecibo, o null. */
+	contrarecibo: string | null;
+	/** El día en que vence por sus fechas de pago, o null. */
+	due_on: string | null;
+	/** El día programado para pagarla, o null. */
+	scheduled_on: string | null;
+	/** El día en que se pagó, o null. */
+	paid_on: string | null;
+	/** Lo que se pagó, o null. */
+	paid_amount: number | null;
+	/** La referencia del pago, o null. */
+	payment_reference: string | null;
+	/** Por qué se rechazó, o null. */
+	rejection_reason: string | null;
+	/** Lo que se revisó y quedó como aviso (code y message), para que su equipo lo vea. */
+	warnings: {
+		/** Clave de la retención (CveRetenc), c_CveRetenc: 01 servicios profesionales, 05 arrendamiento, 14 dividendos, 16 intereses, 18 pagos al extranjero… Las claves 14, 16, 17 y 18 a 24 llevan su complemento (dividends, interest, trust_lease, foreign_payment, share_sale, prize, trust, retirement_plan, mortgage_interest, financial_derivatives); la 26 (plataformas tecnológicas) lleva platform, y sus totals y taxes se calculan de las operaciones. */
+		code: string;
+		/** Qué pasó y cómo corregirlo, para una persona. */
+		message: string;
+	}[];
+	/** Cuándo llegó. */
+	received_at: string | null;
+	/** Cuándo se aprobó, o null. */
+	approved_at: string | null;
+}
+
 /** Una entrega del pedido, con su remisión (REM-1): lo que salió del almacén. */
 export interface SalesOrderDelivery {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
@@ -3927,7 +4068,7 @@ export interface WebhookTest {
 }
 
 /** Lo que puede pasar: el tipo de cada evento. */
-export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "issuer.ready" | "balance.low" | "test_clock.ready";
+export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "issuer.ready" | "balance.low" | "test_clock.ready";
 
 /** Algo que pasó en su cuenta: el objeto completo como quedó. Se manda a sus webhooks firmado (Standard Webhooks). */
 export interface EventBase<T extends EventType = EventType, O = unknown> {
@@ -3935,7 +4076,7 @@ export interface EventBase<T extends EventType = EventType, O = unknown> {
 	id: string;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "event";
-	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, invoice.paid, invoice.partially_paid, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, payroll_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, sat_declaration.created, sat_declaration.updated, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, quote.withdrawn, sales_order.confirmed, sales_order.customer_confirmed, sales_order.delivered, sales_order.paid, sales_order.canceled, issuer.ready, balance.low o test_clock.ready. */
+	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, invoice.paid, invoice.partially_paid, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, payroll_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, sat_declaration.created, sat_declaration.updated, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, quote.withdrawn, sales_order.confirmed, sales_order.customer_confirmed, sales_order.delivered, sales_order.paid, sales_order.canceled, supplier_invoice.received, supplier_invoice.approved, supplier_invoice.rejected, supplier_invoice.scheduled, supplier_invoice.paid, portal_supplier.approved, issuer.ready, balance.low o test_clock.ready. */
 	type: T;
 	/** Versión de la API con que se armó el objeto. */
 	api_version: string;
@@ -3981,6 +4122,12 @@ export type Event =
 	| EventBase<"sales_order.delivered", SalesOrder>
 	| EventBase<"sales_order.paid", SalesOrder>
 	| EventBase<"sales_order.canceled", SalesOrder>
+	| EventBase<"supplier_invoice.received", SupplierInvoice>
+	| EventBase<"supplier_invoice.approved", SupplierInvoice>
+	| EventBase<"supplier_invoice.rejected", SupplierInvoice>
+	| EventBase<"supplier_invoice.scheduled", SupplierInvoice>
+	| EventBase<"supplier_invoice.paid", SupplierInvoice>
+	| EventBase<"portal_supplier.approved", PortalSupplier>
 	| EventBase<"issuer.ready", Issuer>
 	| EventBase<"balance.low", Balance>
 	| EventBase<"test_clock.ready", TestClock>;
@@ -4375,6 +4522,28 @@ export interface SatRetentionList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: SatRetention[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface PortalSupplierList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: PortalSupplier[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface SupplierInvoiceList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: SupplierInvoice[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -7546,6 +7715,48 @@ export interface ListSatRetentionsParams {
 	month?: number;
 }
 
+/** Los parámetros de GET /v1/portal_suppliers. */
+export interface ListPortalSuppliersParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Solo los que estén en este estado. */
+	status?: "invited" | "onboarding" | "in_review" | "approved" | "rejected" | "suspended";
+	/** Solo el de este RFC. */
+	tax_id?: string;
+}
+
+/** Los parámetros de GET /v1/supplier_invoices. */
+export interface ListSupplierInvoicesParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Solo las que estén en este estado. */
+	status?: "received" | "approved" | "scheduled" | "paid" | "rejected";
+	/** Solo las de este proveedor (sup_…). */
+	supplier?: string;
+	/** Solo las que llegaron desde este día (AAAA-MM-DD). */
+	received_since?: string;
+}
+
+export interface ScheduleSupplierInvoiceParams {
+	/** El día en que la pagará (AAAA-MM-DD, hoy o después). El proveedor lo ve. */
+	pay_on: string;
+}
+
+export interface MarkSupplierInvoicePaidParams {
+	/** El día en que la pagó (AAAA-MM-DD, hoy o antes). */
+	paid_on: string;
+	/** La referencia del pago (la de la transferencia o del ERP), o null. */
+	reference?: string | null;
+}
+
 export interface RefreshSatDeclarationsParams {
 	/** El emisor (iss_…). Por omisión, su único emisor. */
 	issuer?: string;
@@ -8656,7 +8867,7 @@ export interface RollWebhookSecretParams {
 
 export interface TestWebhookEndpointParams {
 	/** El evento a mandar. Por omisión invoice.stamped. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "issuer.ready" | "balance.low" | "test_clock.ready";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "issuer.ready" | "balance.low" | "test_clock.ready";
 }
 
 /** Los parámetros de GET /v1/events. */
@@ -8666,7 +8877,7 @@ export interface ListEventsParams {
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
 	/** Solo de este tipo (invoice.stamped), o todos los de un recurso con un comodín (invoice.*). */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "issuer.ready" | "balance.low" | "test_clock.ready" | "invoice.*" | "invoice_batch.*" | "payroll_batch.*" | "recurring_invoice.*" | "quote.*" | "sales_order.*" | "ticket.*" | "retention.*" | "customer_data_request.*" | "sat_download.*" | "sat_declaration.*" | "issuer.*" | "balance.*" | "test_clock.*";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "issuer.ready" | "balance.low" | "test_clock.ready" | "invoice.*" | "invoice_batch.*" | "payroll_batch.*" | "recurring_invoice.*" | "quote.*" | "sales_order.*" | "supplier_invoice.*" | "portal_supplier.*" | "ticket.*" | "retention.*" | "customer_data_request.*" | "sat_download.*" | "sat_declaration.*" | "issuer.*" | "balance.*" | "test_clock.*";
 	/** Solo los de este objeto (inv_…, ret_…, bat_…). */
 	object?: string;
 	/** false: los que algún webhook no recibió (su último intento falló). true: los que recibieron todos los webhooks a los que se mandaron. */
@@ -11173,6 +11384,94 @@ export class SatRetentionsResource {
 	}
 }
 
+/** Portal de proveedores: fiscalisto.portalSuppliers. */
+export class PortalSuppliersResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar proveedores del portal
+	 *
+	 * Los proveedores invitados o registrados en el Portal de proveedores del emisor, los más recientes primero: su alta, sus documentos, la cuenta a la que se le paga y su calificación.
+	 *
+	 * GET /v1/portal_suppliers
+	 * @see https://fiscalisto.com/docs/api/referencia/portal-de-proveedores/list-portal-suppliers
+	 */
+	list(params?: ListPortalSuppliersParams, options?: RequestOptions): List<PortalSupplier> {
+		return this.#client.list({ path: "/v1/portal_suppliers", query: params }, options);
+	}
+
+	/**
+	 * Ver un proveedor del portal
+	 *
+	 * Su alta, sus documentos, su cuenta bancaria y su calificación por partes.
+	 *
+	 * GET /v1/portal_suppliers/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/portal-de-proveedores/get-portal-supplier
+	 */
+	get(id: string, options?: RequestOptions): Promise<PortalSupplier> {
+		return this.#client.request({ method: "GET", path: `/v1/portal_suppliers/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Portal de proveedores: fiscalisto.supplierInvoices. */
+export class SupplierInvoicesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar facturas de proveedores
+	 *
+	 * Las facturas que mandaron sus proveedores por el portal, las más recientes primero. Para llevar a su ERP lo aprobado: status=approved, o escuche supplier_invoice.approved.
+	 *
+	 * GET /v1/supplier_invoices
+	 * @see https://fiscalisto.com/docs/api/referencia/portal-de-proveedores/list-supplier-invoices
+	 */
+	list(params?: ListSupplierInvoicesParams, options?: RequestOptions): List<SupplierInvoice> {
+		return this.#client.list({ path: "/v1/supplier_invoices", query: params }, options);
+	}
+
+	/**
+	 * Ver una factura de proveedor
+	 *
+	 * Con su estado, su orden de compra, su contrarecibo y sus fechas de pago. Su XML y su PDF: GET /v1/sat_invoices/{sat_invoice}/xml y /pdf.
+	 *
+	 * GET /v1/supplier_invoices/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/portal-de-proveedores/get-supplier-invoice
+	 */
+	get(id: string, options?: RequestOptions): Promise<SupplierInvoice> {
+		return this.#client.request({ method: "GET", path: `/v1/supplier_invoices/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Programar el pago de una factura de proveedor
+	 *
+	 * El día en que la pagará, como «Programar pago» en la app: el proveedor lo ve en su portal y llega supplier_invoice.scheduled. Solo una aprobada o ya programada; si el SAT la reporta cancelada, 400 supplier_invoice_invalid.
+	 *
+	 * POST /v1/supplier_invoices/{id}/schedule
+	 * @see https://fiscalisto.com/docs/api/referencia/portal-de-proveedores/schedule-supplier-invoice
+	 */
+	schedule(id: string, params: ScheduleSupplierInvoiceParams, options?: RequestOptions): Promise<SupplierInvoice> {
+		return this.#client.request({ method: "POST", path: `/v1/supplier_invoices/${encodeURIComponent(id)}/schedule`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Marcar pagada una factura de proveedor
+	 *
+	 * El pago que hizo su ERP o su banco, como «Marcar pagada» en la app: el proveedor lo ve, y si es PPD le pedimos su complemento de pago. Llega supplier_invoice.paid.
+	 *
+	 * POST /v1/supplier_invoices/{id}/mark_paid
+	 * @see https://fiscalisto.com/docs/api/referencia/portal-de-proveedores/mark-supplier-invoice-paid
+	 */
+	markPaid(id: string, params: MarkSupplierInvoicePaidParams, options?: RequestOptions): Promise<SupplierInvoice> {
+		return this.#client.request({ method: "POST", path: `/v1/supplier_invoices/${encodeURIComponent(id)}/mark_paid`, body: params, idempotent: true }, options);
+	}
+}
+
 /** Declaraciones del SAT: fiscalisto.satDeclarations. */
 export class SatDeclarationsResource {
 	readonly #client: Client;
@@ -12119,6 +12418,8 @@ export class FiscalistoApi extends Core {
 	readonly satDownloads = new SatDownloadsResource(this);
 	readonly satInvoices = new SatInvoicesResource(this);
 	readonly satRetentions = new SatRetentionsResource(this);
+	readonly portalSuppliers = new PortalSuppliersResource(this);
+	readonly supplierInvoices = new SupplierInvoicesResource(this);
 	readonly satDeclarations = new SatDeclarationsResource(this);
 	readonly tickets = new TicketsResource(this);
 	readonly accounting = new AccountingResource(this);
