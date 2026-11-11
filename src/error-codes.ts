@@ -93,6 +93,8 @@ export const ErrorCode = {
 	IssuerCreationLimit: "issuer_creation_limit",
 	/** Ese RFC ya es un emisor de la cuenta en este modo. */
 	IssuerExists: "issuer_exists",
+	/** El emisor es una empresa de la app conectada a la cuenta (source empresa): con la API solo se usa su Portal de proveedores. */
+	IssuerLinkedEmpresa: "issuer_linked_empresa",
 	/** No existe ese emisor en la cuenta (o es del otro modo). */
 	IssuerMissing: "issuer_missing",
 	/** La llave no puede usar ese emisor. */

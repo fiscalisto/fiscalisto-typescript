@@ -75,6 +75,8 @@ export interface Issuer {
 	livemode: boolean;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "issuer";
+	/** api si lo creó con la API o en Desarrolladores; empresa si es una empresa de la app conectada a su cuenta (Desarrolladores › Emisores › Conectar una empresa): con ella solo se usa su Portal de proveedores, y status siempre es active. */
+	source: "api" | "empresa";
 	/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
 	tax_id: string;
 	/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
