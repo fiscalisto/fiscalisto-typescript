@@ -67,6 +67,26 @@ export interface Balance {
 	}[];
 }
 
+/** Las solicitudes de producción de los últimos 30 días contra las que tiene. */
+export interface Usage {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "usage";
+	/** Siempre true: solo cuenta producción. */
+	livemode: boolean;
+	/** Los días que cuenta: los últimos 30. */
+	period_days: number;
+	/** Solicitudes de producción en esos días. */
+	requests: number;
+	/** Las que tiene: 10,000 en el plan Gratis o 100,000 con un plan de paga, más 500 por cada timbre de la API que usó en esos días. */
+	allowance: number;
+	/** Llega al usar el 80 % y otra vez al 100 %. */
+	percent_used: 80 | 100;
+	/** free: la empresa está en Gratis (o en su prueba); paid: tiene un plan de paga. */
+	plan: "free" | "paid";
+	/** Qué pasa al pasarlas: refused (Gratis: 429 monthly_allowance) o slowed (de paga: 10 solicitudes cada 10 segundos). */
+	over_allowance: "refused" | "slowed";
+}
+
 /** Un emisor: un RFC que timbra desde su cuenta API. */
 export interface Issuer {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
@@ -77,6 +97,8 @@ export interface Issuer {
 	object: "issuer";
 	/** api si lo creó con la API o en Desarrolladores; empresa si es una empresa de la app conectada a su cuenta (Desarrolladores › Emisores › Conectar una empresa): con ella solo se usa su Portal de proveedores, y status siempre es active. */
 	source: "api" | "empresa";
+	/** own: un RFC de la empresa de esta API (lo da de alta la empresa en la app; no se archiva por la API). connected: un emisor conectado, que su plataforma agregó con POST /v1/issuers. portal: otra empresa de Fiscalisto conectada por su Portal de proveedores. */
+	type: "own" | "connected" | "portal";
 	/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
 	tax_id: string;
 	/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
@@ -4072,7 +4094,7 @@ export interface WebhookTest {
 }
 
 /** Lo que puede pasar: el tipo de cada evento. */
-export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "issuer.ready" | "balance.low" | "test_clock.ready";
+export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready";
 
 /** Algo que pasó en su cuenta: el objeto completo como quedó. Se manda a sus webhooks firmado (Standard Webhooks). */
 export interface EventBase<T extends EventType = EventType, O = unknown> {
@@ -4080,7 +4102,7 @@ export interface EventBase<T extends EventType = EventType, O = unknown> {
 	id: string;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "event";
-	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, invoice.paid, invoice.partially_paid, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, payroll_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, sat_declaration.created, sat_declaration.updated, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, quote.withdrawn, sales_order.confirmed, sales_order.customer_confirmed, sales_order.delivered, sales_order.paid, sales_order.canceled, supplier_invoice.received, supplier_invoice.approved, supplier_invoice.rejected, supplier_invoice.scheduled, supplier_invoice.paid, portal_supplier.approved, issuer.ready, balance.low o test_clock.ready. */
+	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, invoice.paid, invoice.partially_paid, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, payroll_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, sat_declaration.created, sat_declaration.updated, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, quote.withdrawn, sales_order.confirmed, sales_order.customer_confirmed, sales_order.delivered, sales_order.paid, sales_order.canceled, supplier_invoice.received, supplier_invoice.approved, supplier_invoice.rejected, supplier_invoice.scheduled, supplier_invoice.paid, portal_supplier.approved, issuer.ready, balance.low, usage.high o test_clock.ready. */
 	type: T;
 	/** Versión de la API con que se armó el objeto. */
 	api_version: string;
@@ -4134,6 +4156,7 @@ export type Event =
 	| EventBase<"portal_supplier.approved", PortalSupplier>
 	| EventBase<"issuer.ready", Issuer>
 	| EventBase<"balance.low", Balance>
+	| EventBase<"usage.high", Usage>
 	| EventBase<"test_clock.ready", TestClock>;
 
 /** Confirmación de que se borró. */
@@ -8877,7 +8900,7 @@ export interface RollWebhookSecretParams {
 
 export interface TestWebhookEndpointParams {
 	/** El evento a mandar. Por omisión invoice.stamped. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "issuer.ready" | "balance.low" | "test_clock.ready";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready";
 }
 
 /** Los parámetros de GET /v1/events. */
@@ -8887,7 +8910,7 @@ export interface ListEventsParams {
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
 	/** Solo de este tipo (invoice.stamped), o todos los de un recurso con un comodín (invoice.*). */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "issuer.ready" | "balance.low" | "test_clock.ready" | "invoice.*" | "invoice_batch.*" | "payroll_batch.*" | "recurring_invoice.*" | "quote.*" | "sales_order.*" | "supplier_invoice.*" | "portal_supplier.*" | "ticket.*" | "retention.*" | "customer_data_request.*" | "sat_download.*" | "sat_declaration.*" | "issuer.*" | "balance.*" | "test_clock.*";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready" | "invoice.*" | "invoice_batch.*" | "payroll_batch.*" | "recurring_invoice.*" | "quote.*" | "sales_order.*" | "supplier_invoice.*" | "portal_supplier.*" | "ticket.*" | "retention.*" | "customer_data_request.*" | "sat_download.*" | "sat_declaration.*" | "issuer.*" | "balance.*" | "usage.*" | "test_clock.*";
 	/** Solo los de este objeto (inv_…, ret_…, bat_…). */
 	object?: string;
 	/** false: los que algún webhook no recibió (su último intento falló). true: los que recibieron todos los webhooks a los que se mandaron. */
