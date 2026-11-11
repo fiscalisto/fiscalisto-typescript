@@ -1633,6 +1633,81 @@ export interface SatInvoice {
 	downloaded_at: string | null;
 }
 
+/** Un CFDI de retenciones e información de pagos del emisor, recibido (la constancia que le dio un banco, una plataforma o quien le pagó) o emitido, como lo muestra Facturas › Retenciones. */
+export interface SatRetention {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "sat_retention";
+	/** El emisor de su cuenta (iss_…) a quien pertenece esta constancia. */
+	issuer: string;
+	/** El folio fiscal (UUID del timbre). */
+	uuid: string;
+	/** received (se la dieron al emisor: un banco, una plataforma, quien le pagó) o issued (la emitió). */
+	direction: "received" | "issued";
+	/** La fecha de expedición (FechaExp). */
+	date: string;
+	/** Folio interno (FolioInt), o null. */
+	internal_folio: string | null;
+	/** Clave de la retención (CveRetenc), como 14 dividendos, 16 intereses o 26 plataformas. */
+	code: string | null;
+	/** Descripción de la retención (DescRetenc), o null. */
+	description: string | null;
+	/** Quien retuvo (Emisor). */
+	issued_by: {
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string | null;
+		/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+		legal_name: string | null;
+	};
+	/** A quien le retuvieron (Receptor). */
+	issued_to: {
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string | null;
+		/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+		legal_name: string | null;
+	};
+	/** Los meses y el ejercicio que cubre (Periodo), o null si no se pudo leer. */
+	period: {
+		/** Ejercicio (Ejercicio). */
+		year: number;
+		/** Mes inicial (MesIni), 1 a 12. */
+		month_start: number;
+		/** Mes final (MesFin), 1 a 12. */
+		month_end: number;
+	} | null;
+	/** Los montos de Totales. */
+	totals: {
+		/** Monto total de la operación (MontoTotOperacion). */
+		operation: number | null;
+		/** Monto gravado (MontoTotGrav). Por omisión, operation menos exempt. */
+		taxed: number | null;
+		/** Monto exento (MontoTotExent). Por omisión 0. */
+		exempt: number | null;
+		/** Total retenido (MontoTotRet). */
+		withheld: number | null;
+	};
+	/** Cada impuesto retenido (ImpRetenidos). */
+	withheld_taxes: {
+		/** Base del impuesto retenido (BaseRet). */
+		base: number | null;
+		/** Impuesto: isr, iva o ieps (ImpuestoRet 001, 002, 003). */
+		tax: string | null;
+		/** Importe. */
+		amount: number | null;
+		/** Tipo de pago de la retención (TipoPagoRet): 01 definitivo IVA, 02 definitivo IEPS, 03 definitivo ISR, 04 provisional ISR. Por omisión el usual de cada impuesto. */
+		payment_type: string | null;
+	}[];
+	/** active o canceled: la canceló el emisor en Fiscalisto, o el SAT la reporta cancelada (se revisa cada mes). Una cancelada ya no es impuesto retenido. */
+	status: "active" | "canceled";
+	/** Si su XML no se pudo leer, por qué; sus campos quedan en null. Si no, null. */
+	read_error: string | null;
+	/** Cuándo llegó a Fiscalisto. */
+	downloaded_at: string | null;
+}
+
 /** Una declaración que el emisor presentó ante el SAT (provisional o definitiva, anual o del servicio anterior Declaraciones y pagos), con sus cifras y sus archivos. */
 export interface SatDeclaration {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
@@ -4289,6 +4364,17 @@ export interface SatInvoiceList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: SatInvoice[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface SatRetentionList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: SatRetention[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -7436,6 +7522,28 @@ export interface ListSatInvoicesParams {
 export interface UpdateSatInvoiceParams {
 	/** Su centro de costo (ccn_…), o null para quitárselo. Los complementos de pago y los traslados no llevan. */
 	cost_center?: string | null;
+}
+
+/** Los parámetros de GET /v1/sat_retentions. */
+export interface ListSatRetentionsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** received (por omisión) o issued. */
+	direction?: "received" | "issued";
+	/** active o canceled. Sin él, las dos. */
+	status?: "active" | "canceled";
+	/** El RFC de quien retuvo (recibidas) o a quien le retuvo (emitidas). */
+	counterparty_tax_id?: string;
+	/** Clave de la retención (CveRetenc) de dos dígitos, como 16 o 26. */
+	code?: string;
+	/** Solo las de un ejercicio, como 2025. */
+	year?: number;
+	/** Solo las que cubren este mes (1 a 12): una anual de enero a diciembre cubre todos. */
+	month?: number;
 }
 
 export interface RefreshSatDeclarationsParams {
@@ -11009,6 +11117,62 @@ export class SatInvoicesResource {
 	}
 }
 
+/** Descargas del SAT: fiscalisto.satRetentions. */
+export class SatRetentionsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar constancias de retenciones
+	 *
+	 * Los CFDI de retenciones e información de pagos del emisor, como los muestra Facturas › Retenciones: los que recibió (descargados del SAT o subidos) o los que emitió, del más reciente al más antiguo, con las canceladas marcadas. Las que emite por la API también están en GET /v1/retentions.
+	 *
+	 * GET /v1/sat_retentions
+	 * @see https://fiscalisto.com/docs/api/referencia/descargas-del-sat/list-sat-retentions
+	 */
+	list(params?: ListSatRetentionsParams, options?: RequestOptions): List<SatRetention> {
+		return this.#client.list({ path: "/v1/sat_retentions", query: params }, options);
+	}
+
+	/**
+	 * Ver una constancia de retenciones
+	 *
+	 * Una constancia de retenciones del emisor, con sus montos, impuestos y estado.
+	 *
+	 * GET /v1/sat_retentions/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/descargas-del-sat/get-sat-retention
+	 */
+	get(id: string, options?: RequestOptions): Promise<SatRetention> {
+		return this.#client.request({ method: "GET", path: `/v1/sat_retentions/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Descargar el XML de una constancia de retenciones
+	 *
+	 * El CFDI de retenciones tal como llegó.
+	 *
+	 * GET /v1/sat_retentions/{id}/xml
+	 * @see https://fiscalisto.com/docs/api/referencia/descargas-del-sat/get-sat-retention-xml
+	 */
+	xml(id: string, options?: RequestOptions): Promise<string> {
+		return this.#client.request({ method: "GET", path: `/v1/sat_retentions/${encodeURIComponent(id)}/xml`, as: "text" }, options);
+	}
+
+	/**
+	 * Descargar el PDF de una constancia de retenciones
+	 *
+	 * La constancia en PDF, como la ofrece Facturas › Retenciones. El XML es el documento válido ante el SAT.
+	 *
+	 * GET /v1/sat_retentions/{id}/pdf
+	 * @see https://fiscalisto.com/docs/api/referencia/descargas-del-sat/get-sat-retention-pdf
+	 */
+	pdf(id: string, options?: RequestOptions): Promise<Uint8Array> {
+		return this.#client.request({ method: "GET", path: `/v1/sat_retentions/${encodeURIComponent(id)}/pdf`, as: "bytes" }, options);
+	}
+}
+
 /** Declaraciones del SAT: fiscalisto.satDeclarations. */
 export class SatDeclarationsResource {
 	readonly #client: Client;
@@ -11954,6 +12118,7 @@ export class FiscalistoApi extends Core {
 	readonly satLists = new SatListsResource(this);
 	readonly satDownloads = new SatDownloadsResource(this);
 	readonly satInvoices = new SatInvoicesResource(this);
+	readonly satRetentions = new SatRetentionsResource(this);
 	readonly satDeclarations = new SatDeclarationsResource(this);
 	readonly tickets = new TicketsResource(this);
 	readonly accounting = new AccountingResource(this);
