@@ -5,7 +5,7 @@
  * `if (error.code === ErrorCode.InvoiceRejected)`. Vea https://fiscalisto.com/docs/api/errores.
  */
 export const ErrorCode = {
-	/** Suspendimos la cuenta API (todas sus llaves, o solo las de producción) por un uso que rompe los términos del servicio. El mensaje dice por qué; escríbanos a soporte@fiscalisto.com para reactivarla. */
+	/** Suspendimos la API de la empresa (todas sus llaves, o solo las de producción) por un uso que rompe los términos del servicio. El mensaje dice por qué; escríbanos a soporte@fiscalisto.com para reactivarla. */
 	AccountSuspended: "account_suspended",
 	/** No existe esa versión de la API (en Fiscalisto-Version o api_version). El mensaje dice cuáles hay; vea Versiones. */
 	ApiVersionInvalid: "api_version_invalid",

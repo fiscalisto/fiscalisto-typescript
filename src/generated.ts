@@ -445,6 +445,8 @@ export interface Invoice {
 	amount_due: number | null;
 	/** Lo cobrado: complementos de pago y notas de crédito vigentes, o todo si es PUE pagada. null si no aplica. */
 	amount_paid: number | null;
+	/** Una PUE que estuvo por cobrar (paid_later o mark_unpaid): el día en que el cliente pagó (AAAA-MM-DD), el que dijo POST /v1/invoices/{id}/mark_paid o el del depósito conciliado con ella. null si no hay fecha de pago registrada (una PUE pagada al timbrarse), si no se ha pagado o si es PPD (sus pagos están en sus complementos). */
+	paid_on: string | null;
 	/** CFDI relacionados (CfdiRelacionados): tipo de relación de c_TipoRelacion y los UUID. */
 	related: Record<string, unknown> | null;
 	/** Solo en un complemento de pago (type P). */
@@ -5883,6 +5885,11 @@ export interface CancelInvoiceParams {
 	substitution?: string;
 }
 
+export interface MarkInvoicePaidParams {
+	/** El día en que el cliente pagó (AAAA-MM-DD, no antes de la factura ni después de hoy); hoy si no se indica. Queda en paid_on. */
+	paid_on?: string;
+}
+
 /** Los parámetros de GET /v1/receivables. */
 export interface ListReceivablesParams {
 	/** Cuántos por página, de 1 a 100. Por omisión 10. */
@@ -9443,13 +9450,13 @@ export class InvoicesResource {
 	/**
 	 * Marcar pagada
 	 *
-	 * Una factura PUE timbrada con paid_later (o marcada por cobrar) ya se pagó: queda paid y llega invoice.paid. Una PPD se paga con su complemento de pago (POST /v1/payments).
+	 * Una factura PUE timbrada con paid_later (o marcada por cobrar) ya se pagó: queda paid, con paid_on el día que indique (hoy si no), y llega invoice.paid. Una PPD se paga con su complemento de pago (POST /v1/payments).
 	 *
 	 * POST /v1/invoices/{id}/mark_paid
 	 * @see https://fiscalisto.com/docs/api/referencia/cuentas-por-cobrar/mark-invoice-paid
 	 */
-	markPaid(id: string, options?: RequestOptions): Promise<Invoice> {
-		return this.#client.request({ method: "POST", path: `/v1/invoices/${encodeURIComponent(id)}/mark_paid`, idempotent: true }, options);
+	markPaid(id: string, params?: MarkInvoicePaidParams, options?: RequestOptions): Promise<Invoice> {
+		return this.#client.request({ method: "POST", path: `/v1/invoices/${encodeURIComponent(id)}/mark_paid`, body: params, idempotent: true }, options);
 	}
 
 	/**
