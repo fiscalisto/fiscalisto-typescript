@@ -118,9 +118,9 @@ export interface Issuer {
 		/** Cuándo vence. */
 		expires_at: string | null;
 	} | null;
-	/** Si puede pedirle al SAT sus facturas (POST /v1/sat_downloads): available es true en pruebas, y en producción mientras su e.firma guardada esté vigente (efirma_expires_at). */
+	/** Si puede pedirle al SAT sus facturas (POST /v1/sat_downloads): available es true en pruebas, y en producción mientras su e.firma guardada esté vigente (efirma_expires_at); un RFC de su empresa (type own) usa la que la empresa guardó en la app. */
 	sat_downloads: {
-		/** true si puede pedir descargas al SAT ahora: siempre en pruebas; en producción con su e.firma guardada y vigente. */
+		/** true si puede pedir descargas al SAT ahora: siempre en pruebas; en producción con su e.firma guardada y vigente (la de la app, en un RFC de su empresa). */
 		available: boolean;
 		/** Cuándo vence la e.firma guardada para las descargas, o null si no hay una. */
 		efirma_expires_at: string | null;
