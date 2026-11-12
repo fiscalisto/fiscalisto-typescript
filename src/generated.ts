@@ -136,7 +136,7 @@ export interface Issuer {
 		/** Fecha del oficio, AAAA-MM-DD; no puede ser futura. */
 		date: string | null;
 	} | null;
-	/** RFC con el que se timbra: el del emisor en producción y el de pruebas del SAT (EKU9003173C9) en pruebas, con régimen 601 o, si el emisor es donataria (tax_system 603), 603. */
+	/** RFC con el que se timbra: el del emisor en producción y, en pruebas, el contribuyente de pruebas del SAT de su tipo: EKU9003173C9 para una persona moral, CACX7605101P8 para una persona física (con su CURP en la nómina). Se timbra con el régimen y el código postal del emisor. */
 	stamps_as: string;
 	/** El entorno de prueba (sbx_…) al que pertenece, o null si es de la cuenta. Vea /v1/sandboxes. */
 	sandbox: string | null;
@@ -4706,8 +4706,8 @@ export interface InvoiceCreate {
 	cost_center?: string;
 	/** Almacén (whs_…) de donde salen sus productos con track_stock. Por omisión, el de su sucursal (o el de la Matriz). */
 	warehouse?: string;
-	/** Cliente (Receptor): el id de uno de su catálogo (cus_…) o sus datos en un objeto. */
-	customer: string | {
+	/** El cliente (Receptor): el id de uno de su catálogo (cus_…) o sus datos. Obligatorio salvo en un traslado (type T), cuyo receptor es el propio emisor. */
+	customer?: string | {
 		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
 		tax_id: string;
 		/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
@@ -6125,7 +6125,7 @@ export interface CreateCreditNoteParams {
 export interface CreateAdvanceParams {
 	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
 	issuer?: string;
-	/** Cliente (Receptor): el id de uno de su catálogo (cus_…) o sus datos en un objeto. */
+	/** El cliente (Receptor): el id de uno de su catálogo (cus_…) o sus datos. Obligatorio salvo en un traslado (type T), cuyo receptor es el propio emisor. */
 	customer: string | {
 		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
 		tax_id: string;
