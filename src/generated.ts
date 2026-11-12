@@ -54,8 +54,12 @@ export interface Balance {
 		/** Como máximo tantas compras al mes. */
 		max_per_month: number;
 	} | null;
+	/** true si, al acabarse `available`, la API sigue timbrando con los timbres del plan de la empresa (Desarrolladores › Timbres › Si se acaban, usar los timbres de la empresa). false: responde 402 insufficient_balance. */
+	use_plan_timbres: boolean;
 	/** Los paquetes con timbres, el que vence antes primero (en ese orden se usan). */
 	packs: {
+		/** welcome: los timbres de bienvenida (no vencen); purchase: un paquete comprado o una recarga automática; referral: los de una recomendación. */
+		type: "welcome" | "purchase" | "referral";
 		/** Timbres del paquete. */
 		timbres: number;
 		/** Los que le quedan. */
