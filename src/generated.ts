@@ -122,11 +122,11 @@ export interface Issuer {
 		/** Cuándo vence. */
 		expires_at: string | null;
 	} | null;
-	/** Si puede pedirle al SAT sus facturas (POST /v1/sat_downloads): available es true en pruebas, y en producción mientras su e.firma guardada esté vigente (efirma_expires_at); un RFC de su empresa (type own) usa la que la empresa guardó en la app. */
+	/** Si puede pedirle al SAT sus facturas (POST /v1/sat_downloads): available es true en pruebas, y en producción mientras su e.firma guardada esté vigente (efirma_expires_at); un RFC de su empresa (type own) usa la que la empresa guardó en la app. En pruebas, efirma_expires_at muestra la del mismo RFC en producción, o la que mande en pruebas. */
 	sat_downloads: {
 		/** true si puede pedir descargas al SAT ahora: siempre en pruebas; en producción con su e.firma guardada y vigente (la de la app, en un RFC de su empresa). */
 		available: boolean;
-		/** Cuándo vence la e.firma guardada para las descargas, o null si no hay una. */
+		/** Cuándo vence la e.firma guardada para las descargas, o null si no hay una. En pruebas, la que mandó en pruebas o, si no, la que guarda en producción para el mismo RFC. */
 		efirma_expires_at: string | null;
 	};
 	/** Registro patronal ante el IMSS (RegistroPatronal), 11 caracteres. Necesario para timbrar nómina. */
@@ -9215,7 +9215,7 @@ export class IssuersResource {
 	/**
 	 * Firmar el contrato con el PAC
 	 *
-	 * Una sola vez por RFC antes de timbrar en producción: firma el contrato de servicio del PAC con la e.firma del emisor. La e.firma se usa en memoria para esa firma y no se guarda, salvo que mande keep_for_downloads: true para pedirle al SAT las facturas del emisor (POST /v1/sat_downloads); entonces se guarda cifrada y puede borrarla con DELETE.
+	 * Una sola vez por RFC antes de timbrar en producción: firma el contrato de servicio del PAC con la e.firma del emisor. La e.firma se usa en memoria para esa firma y no se guarda, salvo que mande keep_for_downloads: true para pedirle al SAT las facturas del emisor (POST /v1/sat_downloads); entonces se guarda cifrada y puede borrarla con DELETE. En pruebas no firma nada ni se guarda: con keep_for_downloads se revisa igual y queda su vencimiento en sat_downloads.efirma_expires_at.
 	 *
 	 * POST /v1/issuers/{id}/efirma
 	 * @see https://fiscalisto.com/docs/api/referencia/emisores/sign-efirma
