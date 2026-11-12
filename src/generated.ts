@@ -129,7 +129,14 @@ export interface Issuer {
 	employer_registration: string | null;
 	/** CURP, 18 caracteres. */
 	curp: string | null;
-	/** RFC con el que se timbra: el del emisor en producción y el de pruebas del SAT (EKU9003173C9) en pruebas. */
+	/** Donataria autorizada (régimen 603): el oficio del SAT que la autoriza a recibir donativos deducibles (o su renovación). Va en cada recibo de donativo (`donation` de POST /v1/invoices); null lo quita. El emisor debe tener tax_system 603. En pruebas sirve cualquier número y una fecha pasada. */
+	donation_authorization: {
+		/** Número del oficio de autorización, hasta 100 caracteres. */
+		number: string;
+		/** Fecha del oficio, AAAA-MM-DD; no puede ser futura. */
+		date: string | null;
+	} | null;
+	/** RFC con el que se timbra: el del emisor en producción y el de pruebas del SAT (EKU9003173C9) en pruebas, con régimen 601 o, si el emisor es donataria (tax_system 603), 603. */
 	stamps_as: string;
 	/** El entorno de prueba (sbx_…) al que pertenece, o null si es de la cuenta. Vea /v1/sandboxes. */
 	sandbox: string | null;
@@ -3993,7 +4000,7 @@ export interface PurchaseReceipt {
 		/** Lo que dice el ticket en ese dato. */
 		value: string;
 	}[];
-	/** El uso de la factura que se pide, o null: G03 si el régimen del emisor lo permite, si no S01. */
+	/** El uso del CFDI que se pide, o null: G03 si el régimen del emisor lo permite, si no S01. */
 	use: string | null;
 	/** Una nota, o null. */
 	note: string | null;
@@ -5331,11 +5338,11 @@ export interface InvoiceCreate {
 		/** Norma o artículo (norma). */
 		norm?: string;
 	}[];
-	/** Complemento de donatarias. */
+	/** Complemento de donatarias: un recibo de donativo. El emisor debe ser donataria (tax_system 603) con su oficio en donation_authorization (POST /v1/issuers/{id}). */
 	donation?: {
-		/** true si el donativo es en especie (va sin forma de pago en efectivo). */
+		/** true si el donativo es en especie (bienes): va con forma de pago 12 (dación en pago) y un concepto por cada tipo de bien. */
 		in_kind?: boolean;
-		/** true si el donativo es deducible para quien lo da. */
+		/** true si el donante ya había deducido los bienes que dona: el recibo dice que el donativo no es deducible. */
 		deducted?: boolean;
 	};
 	/** Impuestos locales (complemento implocal): traslados y retenciones estatales. */
@@ -5764,6 +5771,13 @@ export interface CreateIssuerParams {
 	employer_registration?: string | null;
 	/** CURP, 18 caracteres. */
 	curp?: string | null;
+	/** Donataria autorizada (régimen 603): el oficio del SAT que la autoriza a recibir donativos deducibles (o su renovación). Va en cada recibo de donativo (`donation` de POST /v1/invoices); null lo quita. El emisor debe tener tax_system 603. En pruebas sirve cualquier número y una fecha pasada. */
+	donation_authorization?: {
+		/** Número del oficio de autorización, hasta 100 caracteres. */
+		number: string;
+		/** Fecha del oficio, AAAA-MM-DD; no puede ser futura. */
+		date: string;
+	} | null;
 	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
 	metadata?: Record<string, string>;
 }
@@ -5791,6 +5805,13 @@ export interface UpdateIssuerParams {
 	employer_registration?: string | null;
 	/** CURP, 18 caracteres. */
 	curp?: string | null;
+	/** Donataria autorizada (régimen 603): el oficio del SAT que la autoriza a recibir donativos deducibles (o su renovación). Va en cada recibo de donativo (`donation` de POST /v1/invoices); null lo quita. El emisor debe tener tax_system 603. En pruebas sirve cualquier número y una fecha pasada. */
+	donation_authorization?: {
+		/** Número del oficio de autorización, hasta 100 caracteres. */
+		number: string;
+		/** Fecha del oficio, AAAA-MM-DD; no puede ser futura. */
+		date: string;
+	} | null;
 	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
 	metadata?: Record<string, string> | null;
 }
@@ -5978,7 +5999,7 @@ export interface CreatePurchaseReceiptParams {
 	portal_url?: string | null;
 	/** El correo de facturación de la tienda. */
 	store_email?: string | null;
-	/** El uso de la factura (G03, I01…). Por omisión G03 si el régimen del emisor lo permite. */
+	/** El uso del CFDI (G03, I01…). Por omisión G03 si el régimen del emisor lo permite. */
 	use?: string | null;
 	/** Una nota para su equipo. */
 	note?: string | null;
@@ -6020,7 +6041,7 @@ export interface UpdatePurchaseReceiptParams {
 	portal_url?: string | null;
 	/** El correo de facturación de la tienda. */
 	store_email?: string | null;
-	/** El uso de la factura (G03, I01…). Por omisión G03 si el régimen del emisor lo permite. */
+	/** El uso del CFDI (G03, I01…). Por omisión G03 si el régimen del emisor lo permite. */
 	use?: string | null;
 	/** Una nota para su equipo. */
 	note?: string | null;
