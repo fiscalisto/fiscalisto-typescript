@@ -43,7 +43,7 @@ export interface Balance {
 	available: number;
 	/** true si la cuenta timbra sin usar timbres. */
 	unlimited: boolean;
-	/** Con esta cantidad o menos llega balance.low (y otra vez al acabarse). Se elige en Desarrolladores › Timbres. */
+	/** Con esta cantidad o menos llega balance.low (y otra vez al acabarse). Se elige en Desarrolladores › Timbres y pagos. */
 	low_balance_at: number;
 	/** La recarga automática con la tarjeta guardada, o null si está apagada. */
 	auto_recharge: {
@@ -54,7 +54,7 @@ export interface Balance {
 		/** Como máximo tantas compras al mes. */
 		max_per_month: number;
 	} | null;
-	/** true si, al acabarse `available`, la API sigue timbrando con los timbres del plan de la empresa (Desarrolladores › Timbres › Si se acaban, usar los timbres de la empresa). false: responde 402 insufficient_balance. */
+	/** true si, al acabarse `available`, la API sigue timbrando con los timbres del plan de la empresa (Desarrolladores › Timbres y pagos › Si se acaban, usar los timbres de la empresa). false: responde 402 insufficient_balance. */
 	use_plan_timbres: boolean;
 	/** Los paquetes con timbres, el que vence antes primero (en ese orden se usan). */
 	packs: {
@@ -1149,6 +1149,148 @@ export interface InvoicePreview {
 	}[];
 	/** El XML que se mandaría al PAC, sin sello ni timbre. */
 	unsigned_xml: string;
+}
+
+/** Las facturas de un emisor en un periodo, en un ZIP o en Excel. */
+export interface Export {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "export";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** zip (los archivos de cada factura) o xlsx (un Excel con una fila por factura). */
+	format: "zip" | "xlsx";
+	/** Qué archivos de cada factura lleva el ZIP; null en un Excel. */
+	files: "xml" | "pdf" | "xml_and_pdf" | null;
+	/** EntradaSalidaMerc: Entrada o Salida. */
+	direction: "issued" | "received";
+	/** Desde qué día (incluido), por la fecha de emisión. */
+	from: string | null;
+	/** Hasta qué día (incluido), por la fecha de emisión. */
+	to: string | null;
+	/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
+	type: "I" | "E" | "P" | "T" | "N" | null;
+	/** processing: se está generando. completed: listo para descargar. failed: falló (ver error); pídala otra vez. expired: pasaron 30 días y el archivo se borró. */
+	status: "processing" | "completed" | "failed" | "expired";
+	/** Cuántas facturas lleva. */
+	invoice_count: number;
+	/** El tamaño del archivo en bytes, cuando está listo. */
+	size_bytes: number | null;
+	/** Por qué falló la exportación, en palabras; null si no falló. */
+	error: string | null;
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string | null;
+	/** Cuándo terminó. */
+	completed_at: string | null;
+	/** Hasta cuándo se descarga (30 días después de completed). */
+	expires_at: string | null;
+}
+
+/** Una persona que entra a la empresa en la app. */
+export interface Member {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "member";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Nombre. */
+	name: string | null;
+	/** Correo a donde se envía (varios separados por comas). Solo se usa si se pide enviarlo. */
+	email: string;
+	/** El rol (id de GET /v1/roles). */
+	role: string;
+	/** true: todos los permisos, incluidos los que se agreguen después. */
+	all_permissions: boolean;
+	/** Permisos además de los del rol. */
+	permissions_added: string[];
+	/** Permisos del rol que esta persona no tiene. */
+	permissions_removed: string[];
+	/** Solo trabaja con estos RFC de la empresa; null: con todos. */
+	tax_ids: string[] | null;
+	/** Solo emite desde estas sucursales (brn_…, o "matriz"); null: desde todas. */
+	branches: string[] | null;
+	/** Lo que puede hacer al final: los permisos del rol, más los agregados, menos los quitados. */
+	permissions: string[];
+	/** Si entra con verificación en dos pasos. */
+	two_factor_enabled: boolean;
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string;
+}
+
+/** Una invitación a la empresa que aún no se acepta. */
+export interface Invitation {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "invitation";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Correo a donde se envía (varios separados por comas). Solo se usa si se pide enviarlo. */
+	email: string;
+	/** El rol (id de GET /v1/roles). */
+	role: string;
+	/** true: todos los permisos, incluidos los que se agreguen después. */
+	all_permissions: boolean;
+	/** Permisos además de los del rol. */
+	permissions_added: string[];
+	/** Permisos del rol que esta persona no tiene. */
+	permissions_removed: string[];
+	/** Solo trabaja con estos RFC de la empresa; null: con todos. */
+	tax_ids: string[] | null;
+	/** Solo emite desde estas sucursales (brn_…, o "matriz"); null: desde todas. */
+	branches: string[] | null;
+	/** pending: su enlace sirve. canceled: se canceló. */
+	status: "pending" | "canceled";
+	/** Hasta cuándo sirve su enlace (7 días). */
+	expires_at: string;
+}
+
+/** Un rol de la empresa: un nombre y sus permisos. */
+export interface Role {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "role";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Nombre. */
+	name: string;
+	/** Descripción. */
+	description: string | null;
+	/** true: el rol tiene todos los permisos, incluidos los futuros. */
+	all_permissions: boolean;
+	/** Sus permisos (vacío con all_permissions). */
+	permissions: string[];
+	/** owner: Propietario. starter: uno de los de Fiscalisto (se puede cambiar, no borrar). custom: uno de la empresa. */
+	type: "owner" | "starter" | "custom";
+	/** Cuántos miembros lo tienen. */
+	members: number;
+	/** Cuántas invitaciones pendientes lo dan. */
+	invitations: number;
+}
+
+/** Algo que una persona puede hacer en la empresa. */
+export interface Permission {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "permission";
+	/** Nombre. */
+	name: string;
+	/** Su grupo, como en Ajustes › Roles. */
+	group: string;
+	/** Delicado (equipo, credenciales, seguridad, plan): darlo o quitarlo se hace en la app. */
+	sensitive: boolean;
 }
 
 /** Un anticipo timbrado que aún no se aplica. */
@@ -4775,6 +4917,61 @@ export interface SatListCheckList {
 	url: string;
 }
 
+export interface MemberList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: Member[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface InvitationList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: Invitation[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface RoleList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: Role[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface PermissionList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: Permission[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface ExportList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: Export[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
 export interface SatDownloadList {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "list";
@@ -5762,6 +5959,8 @@ export interface InvoiceCreate {
 	email_cc?: string | null;
 	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
 	metadata?: Record<string, string>;
+	/** Solo en POST /v1/invoices. true: responde 202 en cuanto la factura queda guardada con su folio (status processing) y la timbra después de responder; invoice.stamped o invoice.failed dicen cómo terminó. En las demás rutas que reciben una factura no cambia nada. */
+	async?: boolean;
 }
 
 /** Un recibo de nómina que calculó su sistema, con todos sus conceptos e importes: se timbra tal cual. */
@@ -7992,6 +8191,119 @@ export interface VerifyCfdiParams {
 	total?: number;
 }
 
+/** Los parámetros de GET /v1/members. */
+export interface ListMembersParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface UpdateMemberParams {
+	/** El rol (id de GET /v1/roles, como admin, contador, facturista o uno suyo). owner es Propietario: solo un propietario da o quita ese rol. */
+	role?: string;
+	/** true: todos los permisos, incluidos los que se agreguen después (además de los del rol). */
+	all_permissions?: boolean;
+	/** Permisos además de los del rol (GET /v1/permissions). */
+	permissions_added?: string[];
+	/** Permisos del rol que esta persona no tiene. */
+	permissions_removed?: string[];
+	/** Solo trabaja con estos RFC de la empresa. null: con todos. */
+	tax_ids?: string[] | null;
+	/** Solo emite desde estas sucursales (brn_…, o "matriz" para el domicilio fiscal). null: desde todas. */
+	branches?: string[] | null;
+}
+
+/** Los parámetros de GET /v1/invitations. */
+export interface ListInvitationsParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface CreateInvitationParams {
+	/** El emisor (iss_…) de la empresa. Por omisión, su único emisor. */
+	issuer?: string;
+	/** El correo de la persona: le llega la invitación, válida 7 días. */
+	email: string;
+	/** El rol (id de GET /v1/roles, como admin, contador, facturista o uno suyo). owner es Propietario: solo un propietario da o quita ese rol. */
+	role: string;
+	/** true: todos los permisos, incluidos los que se agreguen después (además de los del rol). */
+	all_permissions?: boolean;
+	/** Permisos además de los del rol (GET /v1/permissions). */
+	permissions_added?: string[];
+	/** Permisos del rol que esta persona no tiene. */
+	permissions_removed?: string[];
+	/** Solo trabaja con estos RFC de la empresa. null: con todos. */
+	tax_ids?: string[] | null;
+	/** Solo emite desde estas sucursales (brn_…, o "matriz" para el domicilio fiscal). null: desde todas. */
+	branches?: string[] | null;
+}
+
+/** Los parámetros de GET /v1/roles. */
+export interface ListRolesParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface CreateRoleParams {
+	/** El emisor (iss_…) de la empresa. Por omisión, su único emisor. */
+	issuer?: string;
+	/** Como se ve en la app. */
+	name: string;
+	/** Descripción. */
+	description?: string | null;
+	/** true: todos los permisos, incluidos los que se agreguen después. */
+	all_permissions?: boolean;
+	/** Sus permisos (GET /v1/permissions). Los que otro necesita se agregan solos (timbrar pide ver facturas). */
+	permissions?: string[];
+}
+
+export interface UpdateRoleParams {
+	/** El emisor (iss_…) de la empresa. Por omisión, su único emisor. */
+	issuer?: string;
+	/** Descripción. */
+	description?: string | null;
+	/** true: todos los permisos, incluidos los que se agreguen después. */
+	all_permissions?: boolean;
+	/** Sus permisos (GET /v1/permissions). Los que otro necesita se agregan solos (timbrar pide ver facturas). */
+	permissions?: string[];
+	/** Como se ve en la app. */
+	name?: string;
+}
+
+/** Los parámetros de DELETE /v1/roles/{id}. */
+export interface DeleteRoleParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface CreateExportParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** Un mes completo (AAAA-MM), por la fecha de emisión en hora de la Ciudad de México. Mande month, o from y to. */
+	month?: string;
+	/** Desde qué día (incluido), en lugar de month. */
+	from?: string;
+	/** Hasta qué día (incluido), en lugar de month. A lo más 7 ejercicios. */
+	to?: string;
+	/** issued (las facturas que emitió el emisor, por omisión) o received (las que le hicieron). */
+	direction?: "issued" | "received";
+	/** Solo un tipo de comprobante: I, E, P, T o N. Por omisión, todos. */
+	type?: "I" | "E" | "P" | "T" | "N";
+	/** zip (los archivos de cada factura, por omisión) o xlsx (un Excel con una fila por factura). */
+	format?: "zip" | "xlsx";
+	/** Con format zip: xml (por omisión), pdf, o xml_and_pdf (los dos de cada factura). */
+	files?: "xml" | "pdf" | "xml_and_pdf";
+}
+
+/** Los parámetros de GET /v1/exports. */
+export interface ListExportsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
 export interface CreateSatDownloadParams {
 	/** El emisor (iss_…). Por omisión, su único emisor. */
 	issuer?: string;
@@ -9718,7 +10030,7 @@ export class InvoicesResource {
 	/**
 	 * Timbrar una factura
 	 *
-	 * Revisa la factura con las reglas del SAT, la sella y la timbra en una sola llamada. Responde con la factura timbrada (status valid) o, si el PAC tarda, en processing (escuche invoice.stamped). Lo que puede omitir tiene el valor usual: PUE, MXN, uso G03 (S01 con régimen 616), objeto de impuesto 02, IVA 16%, cantidad 1, unidad E48.
+	 * Revisa la factura con las reglas del SAT, la sella y la timbra en una sola llamada. Responde con la factura timbrada (status valid) o, si el PAC tarda o el SAT no responde, 202 en processing: Fiscalisto la reintenta sola y invoice.stamped avisa. Con async: true responde 202 de inmediato y timbra después. Lo que puede omitir tiene el valor usual: PUE, MXN, uso G03 (S01 con régimen 616), objeto de impuesto 02, IVA 16%, cantidad 1, unidad E48.
 	 *
 	 * POST /v1/invoices
 	 * @see https://fiscalisto.com/docs/api/referencia/facturas/create-invoice
@@ -11676,6 +11988,238 @@ export class CfdiVerificationsResource {
 	}
 }
 
+/** Equipo: fiscalisto.members. */
+export class MembersResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar miembros
+	 *
+	 * Quién entra a la empresa en la app, con su rol, sus permisos y los RFC y sucursales a su alcance, como Ajustes › Miembros. Todos, los más antiguos primero. Pide que quien creó la llave tenga el permiso de ver el equipo.
+	 *
+	 * GET /v1/members
+	 * @see https://fiscalisto.com/docs/api/referencia/equipo/list-members
+	 */
+	list(params?: ListMembersParams, options?: RequestOptions): Promise<MemberList> {
+		return this.#client.request({ method: "GET", path: "/v1/members", query: params }, options);
+	}
+
+	/**
+	 * Ver un miembro
+	 *
+	 * Su rol, sus permisos (los agregados, los quitados y los que tiene al final) y su alcance.
+	 *
+	 * GET /v1/members/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/equipo/get-member
+	 */
+	get(id: string, options?: RequestOptions): Promise<Member> {
+		return this.#client.request({ method: "GET", path: `/v1/members/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Cambiar el acceso de un miembro
+	 *
+	 * Su rol, los permisos que se le agregan o quitan y los RFC y sucursales a su alcance; lo que no mande se queda como está. Nadie da más de lo que tiene quien creó la llave. Dar, quitar o tocar un permiso delicado (equipo, credenciales, seguridad, plan) contesta 403 team_change_requires_app: se hace en la app, que confirma la identidad.
+	 *
+	 * POST /v1/members/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/equipo/update-member
+	 */
+	update(id: string, params?: UpdateMemberParams, options?: RequestOptions): Promise<Member> {
+		return this.#client.request({ method: "POST", path: `/v1/members/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Quitar a un miembro
+	 *
+	 * La persona deja de entrar a la empresa y sus invitaciones se cancelan. Siempre queda al menos un propietario; quitar a alguien con permisos delicados se hace en la app.
+	 *
+	 * DELETE /v1/members/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/equipo/delete-member
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/members/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Equipo: fiscalisto.invitations. */
+export class InvitationsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar invitaciones
+	 *
+	 * Las invitaciones pendientes de la empresa, las más antiguas primero.
+	 *
+	 * GET /v1/invitations
+	 * @see https://fiscalisto.com/docs/api/referencia/equipo/list-invitations
+	 */
+	list(params?: ListInvitationsParams, options?: RequestOptions): Promise<InvitationList> {
+		return this.#client.request({ method: "GET", path: "/v1/invitations", query: params }, options);
+	}
+
+	/**
+	 * Invitar a alguien a la empresa
+	 *
+	 * Le manda un correo con un enlace para entrar a la empresa con ese rol, válido 7 días, como Invitar en Ajustes › Miembros. Invitar otra vez al mismo correo reemplaza la invitación. Una invitación con permisos delicados (equipo, credenciales, seguridad, plan) o como propietario se hace en la app.
+	 *
+	 * POST /v1/invitations
+	 * @see https://fiscalisto.com/docs/api/referencia/equipo/create-invitation
+	 */
+	create(params: CreateInvitationParams, options?: RequestOptions): Promise<Invitation> {
+		return this.#client.request({ method: "POST", path: "/v1/invitations", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Cancelar una invitación
+	 *
+	 * Su enlace deja de servir. Contesta la invitación con status canceled.
+	 *
+	 * DELETE /v1/invitations/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/equipo/cancel-invitation
+	 */
+	cancel(id: string, options?: RequestOptions): Promise<Invitation> {
+		return this.#client.request({ method: "DELETE", path: `/v1/invitations/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Equipo: fiscalisto.roles. */
+export class RolesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar roles
+	 *
+	 * Propietario, los roles de Fiscalisto (como se editaron en la empresa) y los suyos, con sus permisos y cuántas personas los tienen.
+	 *
+	 * GET /v1/roles
+	 * @see https://fiscalisto.com/docs/api/referencia/equipo/list-roles
+	 */
+	list(params?: ListRolesParams, options?: RequestOptions): Promise<RoleList> {
+		return this.#client.request({ method: "GET", path: "/v1/roles", query: params }, options);
+	}
+
+	/**
+	 * Crear un rol
+	 *
+	 * Un rol de la empresa con su nombre y sus permisos (GET /v1/permissions), como Ajustes › Roles. No puede tener permisos que no tenga quien creó la llave; uno con permisos delicados se hace en la app.
+	 *
+	 * POST /v1/roles
+	 * @see https://fiscalisto.com/docs/api/referencia/equipo/create-role
+	 */
+	create(params: CreateRoleParams, options?: RequestOptions): Promise<Role> {
+		return this.#client.request({ method: "POST", path: "/v1/roles", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Cambiar un rol
+	 *
+	 * Su nombre, su descripción o sus permisos; lo que no mande se queda. Cambia el acceso de todos los que lo tienen. Propietario no se cambia.
+	 *
+	 * POST /v1/roles/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/equipo/update-role
+	 */
+	update(id: string, params?: UpdateRoleParams, options?: RequestOptions): Promise<Role> {
+		return this.#client.request({ method: "POST", path: `/v1/roles/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Borrar un rol
+	 *
+	 * Solo uno de la empresa (type custom), cuando nadie lo tiene ni lo da una invitación pendiente.
+	 *
+	 * DELETE /v1/roles/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/equipo/delete-role
+	 */
+	delete(id: string, params?: DeleteRoleParams, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/roles/${encodeURIComponent(id)}`, query: params }, options);
+	}
+}
+
+/** Equipo: fiscalisto.permissions. */
+export class PermissionsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar permisos
+	 *
+	 * Cada permiso que un rol o una persona puede tener, con su nombre en la app, su grupo y si es delicado.
+	 *
+	 * GET /v1/permissions
+	 * @see https://fiscalisto.com/docs/api/referencia/equipo/list-permissions
+	 */
+	list(options?: RequestOptions): Promise<PermissionList> {
+		return this.#client.request({ method: "GET", path: "/v1/permissions" }, options);
+	}
+}
+
+/** Exportaciones: fiscalisto.exports. */
+export class ExportsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Exportar las facturas de un mes
+	 *
+	 * Un ZIP con el XML (y si quiere el PDF) de cada factura que el emisor emitió o recibió en un mes o un periodo, o un Excel con una fila por factura: los mismos archivos que Facturas › Exportar en la app, para su contador, un respaldo o una auditoría. Contesta 202 de inmediato con status processing; consulte GET /v1/exports/{id} hasta completed y descárguelo con GET /v1/exports/{id}/download durante 30 días. No usa timbres y sirve con una llave de solo lectura.
+	 *
+	 * POST /v1/exports
+	 * @see https://fiscalisto.com/docs/api/referencia/exportaciones/create-export
+	 */
+	create(params?: CreateExportParams, options?: RequestOptions): Promise<Export> {
+		return this.#client.request({ method: "POST", path: "/v1/exports", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar exportaciones
+	 *
+	 * Las exportaciones del emisor pedidas por la API, las más recientes primero.
+	 *
+	 * GET /v1/exports
+	 * @see https://fiscalisto.com/docs/api/referencia/exportaciones/list-exports
+	 */
+	list(params?: ListExportsParams, options?: RequestOptions): List<Export> {
+		return this.#client.list({ path: "/v1/exports", query: params }, options);
+	}
+
+	/**
+	 * Ver una exportación
+	 *
+	 * Su estado (processing, completed, failed o expired), cuántas facturas lleva, su tamaño y hasta cuándo se descarga.
+	 *
+	 * GET /v1/exports/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/exportaciones/get-export
+	 */
+	get(id: string, options?: RequestOptions): Promise<Export> {
+		return this.#client.request({ method: "GET", path: `/v1/exports/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Descargar una exportación
+	 *
+	 * El ZIP o el Excel, cuando status es completed. Antes, 409 export_not_ready; pasados 30 días, 410 export_expired.
+	 *
+	 * GET /v1/exports/{id}/download
+	 * @see https://fiscalisto.com/docs/api/referencia/exportaciones/download-export
+	 */
+	download(id: string, options?: RequestOptions): Promise<string> {
+		return this.#client.request({ method: "GET", path: `/v1/exports/${encodeURIComponent(id)}/download`, as: "text" }, options);
+	}
+}
+
 /** Descargas del SAT: fiscalisto.satDownloads. */
 export class SatDownloadsResource {
 	readonly #client: Client;
@@ -12900,6 +13444,11 @@ export class FiscalistoApi extends Core {
 	readonly satCatalogs = new SatCatalogsResource(this);
 	readonly satLists = new SatListsResource(this);
 	readonly cfdiVerifications = new CfdiVerificationsResource(this);
+	readonly members = new MembersResource(this);
+	readonly invitations = new InvitationsResource(this);
+	readonly roles = new RolesResource(this);
+	readonly permissions = new PermissionsResource(this);
+	readonly exports = new ExportsResource(this);
 	readonly satDownloads = new SatDownloadsResource(this);
 	readonly satInvoices = new SatInvoicesResource(this);
 	readonly satRetentions = new SatRetentionsResource(this);
