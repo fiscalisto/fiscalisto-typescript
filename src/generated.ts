@@ -1076,6 +1076,81 @@ export interface ExternalPayrollReceiptPreview {
 	unsigned_xml: string;
 }
 
+/** Una factura revisada y sin timbrar: lo que se timbraría ahora con POST /v1/invoices y el mismo cuerpo. */
+export interface InvoicePreview {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "invoice_preview";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Sucursal (brn_…) desde donde se factura: su código postal va en LugarExpedicion, su dirección en el PDF y, si las tiene, sus series. Sin ella, el domicilio fiscal del emisor (la Matriz). */
+	branch: string | null;
+	/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
+	type: "I" | "E" | "T";
+	/** Serie (Serie), hasta 25 caracteres. Cada serie lleva sus propios folios. */
+	series: string | null;
+	/** El folio que tendría si se timbrara ahora; otra factura timbrada antes puede tomarlo. */
+	folio: string | null;
+	/** Fecha de emisión (Fecha), hora de la Ciudad de México. */
+	date: string | null;
+	/** Cliente (Receptor): el id de uno de su catálogo (cus_…) o sus datos en un objeto. */
+	customer: {
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string | null;
+		/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+		legal_name: string | null;
+		/** Régimen fiscal (RegimenFiscal), clave de c_RegimenFiscal: 601, 612, 626… */
+		tax_system?: string;
+		/** Código postal del domicilio fiscal del cliente (DomicilioFiscalReceptor), 5 dígitos. */
+		zip?: string;
+		/** Si es extranjero: su país de residencia (ResidenciaFiscal, c_Pais) y su número de registro tributario (NumRegIdTrib), con el RFC genérico XEXX010101000. */
+		foreign?: Record<string, unknown>;
+	};
+	/** Uso del CFDI (UsoCFDI), clave de c_UsoCFDI. Por omisión G03, o S01 con régimen 616. */
+	use: string | null;
+	/** Forma de pago (FormaPago), clave de c_FormaPago: 01 efectivo, 03 transferencia, 04 tarjeta de crédito, 28 débito, 99 por definir… Obligatoria con PUE; con PPD es 99. */
+	payment_form: string | null;
+	/** Método de pago (MetodoPago): PUE (una sola exhibición, por omisión) o PPD (en parcialidades o diferido, se cobra con complementos de pago). */
+	payment_method: string | null;
+	/** Moneda, clave ISO 4217 de c_Moneda (MXN, USD, EUR…). Por omisión MXN. */
+	currency: string;
+	/** Tipo de cambio a pesos (TipoCambio). Obligatorio si la moneda no es MXN; use el del DOF del día anterior. */
+	exchange_rate: number | null;
+	/** Conceptos (Conceptos), al menos uno. */
+	items: InvoiceItem[];
+	/** Suma de los importes antes de impuestos y descuentos (SubTotal). */
+	subtotal: number | null;
+	/** Descuento (Descuento). */
+	discount: number | null;
+	/** Los impuestos de la factura, por tipo: IVA e IEPS trasladados, IVA e ISR retenidos e impuestos locales. */
+	taxes: {
+		/** IVA trasladado. */
+		iva: number | null;
+		/** IEPS trasladado. */
+		ieps: number | null;
+		/** IVA retenido. */
+		iva_withheld: number | null;
+		/** ISR retenido. */
+		isr_withheld: number | null;
+		/** Impuestos locales trasladados. */
+		local_transferred: number | null;
+		/** Impuestos locales retenidos. */
+		local_withheld: number | null;
+	} | null;
+	/** Total en la moneda del comprobante (Total). */
+	total: number;
+	/** Lo que conviene revisar antes de timbrar (un cliente en las listas 69 o 69-B del SAT, una factura que parece duplicada); no impide timbrar. */
+	warnings: {
+		/** Clave de la retención (CveRetenc), c_CveRetenc: 01 servicios profesionales, 05 arrendamiento, 14 dividendos, 16 intereses, 18 pagos al extranjero… Las claves 14, 16, 17 y 18 a 24 llevan su complemento (dividends, interest, trust_lease, foreign_payment, share_sale, prize, trust, retirement_plan, mortgage_interest, financial_derivatives); la 26 (plataformas tecnológicas) lleva platform, y sus totals y taxes se calculan de las operaciones. */
+		code: string;
+		/** Qué pasó y cómo corregirlo, para una persona. */
+		message: string;
+	}[];
+	/** El XML que se mandaría al PAC, sin sello ni timbre. */
+	unsigned_xml: string;
+}
+
 /** Un anticipo timbrado que aún no se aplica. */
 export interface Advance {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -1385,6 +1460,47 @@ export interface SatListCheck {
 	lists_updated_at: string | null;
 	/** Las listas que no se pudieron confirmar (su última actualización falló, falta o tiene más de dos días). Vacía si todas están al día. */
 	lists_unavailable: string[];
+}
+
+/** Si los sellos del XML son auténticos, como los revisa el SAT: el Sello del emisor contra la cadena original y su certificado, y el SelloSAT del timbre contra el certificado del SAT. */
+export interface CfdiSeals {
+	/** true si no hay ningún problema: el Sello corresponde a los datos y al certificado del emisor (un CSD de su RFC, vigente en la fecha de emisión) y el timbre es de este comprobante y del SAT. */
+	valid: boolean;
+	/** Si el Sello del emisor firma la cadena original de este XML con la llave del certificado que trae. false si alguien cambió un monto, un nombre o una fecha después de sellar. */
+	issuer_seal_valid: boolean;
+	/** El certificado del emisor que trae el XML (Certificado): número, RFC, nombre, si es CSD o e.firma y su vigencia. null si no se pudo leer. */
+	certificate: {
+		/** El número del certificado (20 dígitos), como lo da el SAT. */
+		number: string;
+		/** El RFC dueño del certificado. */
+		tax_id: string | null;
+		/** El nombre o razón social en el certificado. */
+		name: string | null;
+		/** csd si es un sello digital; fiel si es una e.firma (no se debe sellar con ella). */
+		kind: "csd" | "fiel";
+		/** Desde cuándo vale el certificado. */
+		valid_from: string;
+		/** Hasta cuándo vale el certificado. */
+		valid_to: string;
+	} | null;
+	/** El timbre (TimbreFiscalDigital): si su SelloSAT es del SAT, con qué certificado del SAT y qué PAC lo timbró. null si el XML no está timbrado. */
+	stamp: {
+		/** Si el SelloSAT firma el timbre con el certificado del SAT (NoCertificadoSAT). null si el certificado del SAT no se pudo obtener en ese momento. */
+		sat_seal_valid: boolean | null;
+		/** El número del certificado del SAT que selló el timbre. */
+		sat_certificate_number: string;
+		/** El RFC del PAC que timbró (RfcProvCertif). */
+		pac_tax_id: string | null;
+	} | null;
+	/** Cada problema, con su código y qué significa. Vacía si valid es true. */
+	problems: {
+		/** Clave de la retención (CveRetenc), c_CveRetenc: 01 servicios profesionales, 05 arrendamiento, 14 dividendos, 16 intereses, 18 pagos al extranjero… Las claves 14, 16, 17 y 18 a 24 llevan su complemento (dividends, interest, trust_lease, foreign_payment, share_sale, prize, trust, retirement_plan, mortgage_interest, financial_derivatives); la 26 (plataformas tecnológicas) lleva platform, y sus totals y taxes se calculan de las operaciones. */
+		code: "malformed_xml" | "missing_seal" | "certificate_unreadable" | "certificate_number_mismatch" | "certificate_not_issuer" | "certificate_not_csd" | "certificate_not_valid_at_issue" | "seal_mismatch" | "stamp_not_for_this_seal" | "sat_seal_mismatch";
+		/** Qué pasó y cómo corregirlo, para una persona. */
+		message: string;
+	}[];
+	/** La cadena original del comprobante, como la arma el SAT con sus XSLT. null si el XML no se pudo leer. */
+	original_string: string | null;
 }
 
 /** Si los datos fiscales de un cliente van a pasar el SAT. */
@@ -4116,6 +4232,56 @@ export interface EventResend {
 	deliveries: number;
 }
 
+/** Cómo se ven los documentos de un emisor: nombre comercial, estilo y color del PDF, y logo. */
+export interface IssuerBranding {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "issuer_branding";
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Su nombre comercial: va en grande en el PDF, el correo y la página de la factura; null: la razón social. */
+	trade_name: string | null;
+	/** Estilo del PDF: clasico, moderno, compacto o minimalista; null: clasico. */
+	pdf_style: "clasico" | "moderno" | "compacto" | "minimalista" | null;
+	/** Color del PDF (#RRGGBB); null: el de Fiscalisto (#5B48EE). */
+	pdf_color: string | null;
+	/** Dirección pública del logo; null si no tiene. */
+	logo_url: string | null;
+}
+
+/** Lo que pasó con un evento en un webhook: su último intento, cuántos lleva y cuándo va el siguiente. */
+export interface WebhookDelivery {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "webhook_delivery";
+	/** El último intento (whd_…). Úselo en starting_after para la página siguiente. */
+	id: string;
+	/** El webhook (whe_…). */
+	webhook_endpoint: string;
+	/** El evento (evt_…). Reenvíelo con POST /v1/events/{id}/resend. */
+	event: string;
+	/** El tipo del evento (invoice.stamped…). */
+	event_type: string | null;
+	/** true si su servidor contestó 2xx en el último intento. */
+	succeeded: boolean;
+	/** El código HTTP que contestó su servidor; null si no se pudo conectar. */
+	status: number | null;
+	/** Qué falló (tiempo de espera, DNS, o el inicio de su respuesta); null si llegó. */
+	error: string | null;
+	/** Cuánto tardó su servidor en contestar el último intento. */
+	duration_ms: number;
+	/** Cuántas veces se ha mandado a este webhook, reenvíos incluidos. */
+	attempts: number;
+	/** true si el último intento fue un reenvío (POST /v1/events/{id}/resend). */
+	resent: boolean;
+	/** true si es un evento de prueba (POST /v1/webhook_endpoints/{id}/test); no se reintenta. */
+	test: boolean;
+	/** Cuándo fue el último intento. */
+	created_at: string;
+	/** Cuándo va el siguiente reintento automático; null si llegó o ya no hay más. */
+	next_retry_at: string | null;
+}
+
 /** Lo que dice el SAT de un CFDI: si existe, si está vigente o cancelado y si se puede cancelar, con su emisor y su receptor en las listas del SAT. */
 export interface CfdiVerification {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -4170,6 +4336,8 @@ export interface CfdiVerification {
 		/** Moneda, clave ISO 4217 de c_Moneda (MXN, USD, EUR…). Por omisión MXN. */
 		currency: string | null;
 	} | null;
+	/** Los sellos del XML, si mandó xml de un CFDI 4.0: si el comprobante no se modificó después de sellarse y si el timbre es del SAT. null con qr o fields, o con un CFDI 3.3. */
+	seals: CfdiSeals | null;
 	/** El emisor en las listas del SAT (69-B, 69-B Bis y art. 69), como GET /v1/sat_lists/{tax_id}, sin costo. Solo cuando el SAT tiene el comprobante (active o canceled); null si no, o si las listas no se pudieron leer. */
 	issuer_sat_lists: SatListCheck | null;
 	/** El receptor en las listas del SAT, igual que el emisor. */
@@ -4755,6 +4923,17 @@ export interface WebhookEndpointList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: WebhookEndpoint[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface WebhookDeliveryList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: WebhookDelivery[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -5903,6 +6082,20 @@ export interface UploadCertificateParams {
 	password: string;
 }
 
+export interface UpdateIssuerBrandingParams {
+	/** Su nombre comercial, si se presenta con otra marca: va en grande en el PDF, en el correo y en la página de la factura. null: la razón social. */
+	trade_name?: string | null;
+	/** Estilo del PDF: clasico (por omisión), moderno (encabezado y total con color, renglones alternados), compacto (letra chica, márgenes cortos) o minimalista (sin rellenos, el color solo en el total). */
+	pdf_style?: "clasico" | "moderno" | "compacto" | "minimalista" | null;
+	/** Color del PDF, como #2563EB. null: el de Fiscalisto (#5B48EE). */
+	pdf_color?: string | null;
+}
+
+export interface UploadIssuerLogoParams {
+	/** El logo, PNG o JPG de hasta 1 MB, en base64 (con o sin el prefijo data:image/png;base64,). Uno muy grande se reduce para el PDF. */
+	file: string;
+}
+
 export interface SignEfirmaParams {
 	/** El archivo .cer en base64 (puede traer el prefijo data:). */
 	cer: string;
@@ -5966,6 +6159,12 @@ export interface GetInvoicePdfParams {
 
 /** Los parámetros de GET /v1/invoices/{id}/xml. */
 export interface GetInvoiceXmlParams {
+	/** Con un UUID en vez del id, el emisor (iss_…) si la cuenta tiene varios. */
+	issuer?: string;
+}
+
+/** Los parámetros de GET /v1/invoices/{id}/cancellation_receipt. */
+export interface GetInvoiceCancellationReceiptParams {
 	/** Con un UUID en vez del id, el emisor (iss_…) si la cuenta tiene varios. */
 	issuer?: string;
 }
@@ -9024,6 +9223,16 @@ export interface TestWebhookEndpointParams {
 	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready";
 }
 
+/** Los parámetros de GET /v1/webhook_endpoints/{id}/deliveries. */
+export interface ListWebhookDeliveriesParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** false: solo los que fallaron en su último intento. true: solo los que llegaron. */
+	succeeded?: boolean;
+}
+
 /** Los parámetros de GET /v1/events. */
 export interface ListEventsParams {
 	/** Cuántos por página, de 1 a 100. Por omisión 10. */
@@ -9307,6 +9516,54 @@ export class IssuersResource {
 	}
 
 	/**
+	 * Ver el diseño del PDF
+	 *
+	 * Cómo se ven los documentos del emisor: su nombre comercial, el estilo y el color del PDF y su logo. Es lo mismo que Ajustes › Marca y documentos en la app.
+	 *
+	 * GET /v1/issuers/{id}/branding
+	 * @see https://fiscalisto.com/docs/api/referencia/emisores/get-issuer-branding
+	 */
+	getBranding(id: string, options?: RequestOptions): Promise<IssuerBranding> {
+		return this.#client.request({ method: "GET", path: `/v1/issuers/${encodeURIComponent(id)}/branding` }, options);
+	}
+
+	/**
+	 * Cambiar el diseño del PDF
+	 *
+	 * Cambia el nombre comercial, el estilo (clasico, moderno, compacto o minimalista) y el color del PDF de las facturas, notas, pagos, recibos y cotizaciones del emisor, y de sus correos. Lo que no mande se queda como está; null vuelve al de omisión. Se ve en el siguiente PDF que pida, también de lo ya timbrado. Una sucursal puede tener el suyo (POST /v1/branches/{id}).
+	 *
+	 * POST /v1/issuers/{id}/branding
+	 * @see https://fiscalisto.com/docs/api/referencia/emisores/update-issuer-branding
+	 */
+	updateBranding(id: string, params?: UpdateIssuerBrandingParams, options?: RequestOptions): Promise<IssuerBranding> {
+		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}/branding`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Subir el logo
+	 *
+	 * El logo del emisor (PNG o JPG de hasta 1 MB, en base64): va en sus PDF, sus correos y la página de la factura que ve su cliente. Reemplaza el anterior.
+	 *
+	 * POST /v1/issuers/{id}/logo
+	 * @see https://fiscalisto.com/docs/api/referencia/emisores/upload-issuer-logo
+	 */
+	uploadLogo(id: string, params: UploadIssuerLogoParams, options?: RequestOptions): Promise<IssuerBranding> {
+		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}/logo`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Quitar el logo
+	 *
+	 * Sus PDF y correos van sin logo, con su nombre.
+	 *
+	 * DELETE /v1/issuers/{id}/logo
+	 * @see https://fiscalisto.com/docs/api/referencia/emisores/delete-issuer-logo
+	 */
+	deleteLogo(id: string, options?: RequestOptions): Promise<IssuerBranding> {
+		return this.#client.request({ method: "DELETE", path: `/v1/issuers/${encodeURIComponent(id)}/logo` }, options);
+	}
+
+	/**
 	 * Firmar el contrato con el PAC
 	 *
 	 * Una sola vez por RFC antes de timbrar en producción: firma el contrato de servicio del PAC con la e.firma del emisor. La e.firma se usa en memoria para esa firma y no se guarda, salvo que mande keep_for_downloads: true para pedirle al SAT las facturas del emisor (POST /v1/sat_downloads); entonces se guarda cifrada y puede borrarla con DELETE. En pruebas no firma nada ni se guarda: con keep_for_downloads se revisa igual y queda su vencimiento en sat_downloads.efirma_expires_at.
@@ -9483,6 +9740,18 @@ export class InvoicesResource {
 	}
 
 	/**
+	 * Revisar una factura sin timbrar
+	 *
+	 * El mismo cuerpo y las mismas revisiones que POST /v1/invoices, sin timbrar ni usar timbres: devuelve la factura como se timbraría ahora (con los datos fiscales del emisor, el siguiente folio, el subtotal, los impuestos y el total que calcula Fiscalisto), los avisos (un cliente en las listas del SAT, un duplicado) y el XML sin sellar (unsigned_xml). Úsela para mostrar el total antes de cobrar o para validar en su sistema; si algo falla, invoice_invalid como al timbrar. No pide Idempotency-Key y sirve con una llave de solo lectura.
+	 *
+	 * POST /v1/invoices/preview
+	 * @see https://fiscalisto.com/docs/api/referencia/facturas/preview-invoice
+	 */
+	preview(params: InvoiceCreate, options?: RequestOptions): Promise<InvoicePreview> {
+		return this.#client.request({ method: "POST", path: "/v1/invoices/preview", body: params, idempotent: true }, options);
+	}
+
+	/**
 	 * Ver una factura
 	 *
 	 * Por su id (inv_…) o por su folio fiscal (UUID).
@@ -9528,6 +9797,18 @@ export class InvoicesResource {
 	 */
 	xml(id: string, params?: GetInvoiceXmlParams, options?: RequestOptions): Promise<string> {
 		return this.#client.request({ method: "GET", path: `/v1/invoices/${encodeURIComponent(id)}/xml`, query: params, as: "text" }, options);
+	}
+
+	/**
+	 * Descargar el acuse de cancelación
+	 *
+	 * El acuse de cancelación del SAT (XML firmado por el SAT) de una factura cancelada: la prueba de que el SAT la canceló y cuándo. Antes de que el SAT la cancele (status valid o pending), 409 invoice_not_canceled.
+	 *
+	 * GET /v1/invoices/{id}/cancellation_receipt
+	 * @see https://fiscalisto.com/docs/api/referencia/facturas/get-invoice-cancellation-receipt
+	 */
+	cancellationReceipt(id: string, params?: GetInvoiceCancellationReceiptParams, options?: RequestOptions): Promise<string> {
+		return this.#client.request({ method: "GET", path: `/v1/invoices/${encodeURIComponent(id)}/cancellation_receipt`, query: params, as: "text" }, options);
 	}
 
 	/**
@@ -12516,6 +12797,18 @@ export class WebhookEndpointsResource {
 	 */
 	test(id: string, params?: TestWebhookEndpointParams, options?: RequestOptions): Promise<WebhookTest> {
 		return this.#client.request({ method: "POST", path: `/v1/webhook_endpoints/${encodeURIComponent(id)}/test`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar entregas
+	 *
+	 * Qué pasó con cada evento en este webhook, el más reciente primero: una fila por evento con su último intento, cuántos lleva y cuándo va el siguiente reintento. Con succeeded=false ve los que su servidor no recibió, para reenviarlos con POST /v1/events/{id}/resend.
+	 *
+	 * GET /v1/webhook_endpoints/{id}/deliveries
+	 * @see https://fiscalisto.com/docs/api/referencia/webhooks/list-webhook-deliveries
+	 */
+	listDeliveries(id: string, params?: ListWebhookDeliveriesParams, options?: RequestOptions): List<WebhookDelivery> {
+		return this.#client.list({ path: `/v1/webhook_endpoints/${encodeURIComponent(id)}/deliveries`, query: params }, options);
 	}
 }
 
