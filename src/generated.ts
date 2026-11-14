@@ -4071,7 +4071,7 @@ export interface WebhookEndpoint {
 	events: string[];
 	/** enabled: entregando. failing: sus entregas fallan (se apaga tras 5 días así). disabled: apagado. */
 	status: "enabled" | "failing" | "disabled";
-	/** Por qué se apagó (sus entregas fallaron 5 días seguidos, o usted lo apagó). */
+	/** Por qué se apagó: failing (sus entregas fallaron 5 días seguidos), gone (su servidor contestó 410 Gone) o manual (usted lo apagó). */
 	disabled_reason?: string | null;
 	/** Desde cuándo fallan las entregas, o null. */
 	failing_since?: string | null;
@@ -4104,6 +4104,78 @@ export interface WebhookTest {
 		/** Cuánto tardó su servidor, en milisegundos. */
 		duration_ms: number;
 	};
+}
+
+/** Un evento que se mandó otra vez: a cuántos webhooks salió. Cada entrega es un intento aparte, ahora; véalo en las entregas del webhook. */
+export interface EventResend {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "event_resend";
+	/** El evento (evt_…) que se mandó otra vez. */
+	event: string;
+	/** A cuántos webhooks salió. 0 si ninguno encendido escucha ese tipo de evento. */
+	deliveries: number;
+}
+
+/** Lo que dice el SAT de un CFDI: si existe, si está vigente o cancelado y si se puede cancelar, con su emisor y su receptor en las listas del SAT. */
+export interface CfdiVerification {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "cfdi_verification";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Folio fiscal que asigna el SAT (UUID del Timbre Fiscal Digital), en mayúsculas. */
+	uuid: string;
+	/** El RFC del emisor que se consultó. */
+	issuer_tax_id: string;
+	/** El RFC del receptor que se consultó. */
+	receiver_tax_id: string;
+	/** Total en la moneda del comprobante (Total). */
+	total: number;
+	/** De dónde se leyeron el UUID, los RFC y el total: xml, qr o fields. */
+	source: "xml" | "qr" | "fields";
+	/** Lo que dice el SAT: active (vigente), canceled (cancelado), not_found (no lo tiene: no se timbró, se timbró hace minutos o es de pruebas) o data_mismatch (el UUID existe pero los RFC o el total no coinciden). */
+	sat_status: "active" | "canceled" | "not_found" | "data_mismatch";
+	/** Si está vigente, cómo se cancela: without_acceptance (sin que el receptor acepte), with_acceptance (el receptor tiene 3 días hábiles para aceptar) o not_cancellable (por ejemplo, tiene documentos relacionados vigentes). null si no está vigente o el SAT no lo dijo. */
+	cancellable: "without_acceptance" | "with_acceptance" | "not_cancellable" | null;
+	/** Una cancelación en curso o terminada: in_process (esperando al receptor), rejected (el receptor la rechazó), deadline_passed (pasó el plazo y se canceló), accepted o without_acceptance (cancelado con o sin aceptación). null si nadie la pidió. */
+	cancellation_status: "in_process" | "rejected" | "deadline_passed" | "accepted" | "without_acceptance" | null;
+	/** true si el SAT dice que el emisor está en la lista 69-B como definitivo (EFOS); false si no; null si no lo dijo. */
+	issuer_efos: boolean | null;
+	/** La respuesta del SAT tal cual (CodigoEstatus, Estado, EsCancelable, EstatusCancelacion, ValidacionEFOS), por si la necesita igual que el SAT. */
+	sat: {
+		/** Clave de la retención (CveRetenc), c_CveRetenc: 01 servicios profesionales, 05 arrendamiento, 14 dividendos, 16 intereses, 18 pagos al extranjero… Las claves 14, 16, 17 y 18 a 24 llevan su complemento (dividends, interest, trust_lease, foreign_payment, share_sale, prize, trust, retirement_plan, mortgage_interest, financial_derivatives); la 26 (plataformas tecnológicas) lleva platform, y sus totals y taxes se calculan de las operaciones. */
+		code: string;
+		/** Entidad federativa donde trabaja (ClaveEntFed): JAL, CMX, NLE… */
+		state: string;
+		/** EsCancelable, tal cual lo dijo el SAT. */
+		cancellable: string | null;
+		/** EstatusCancelacion, tal cual lo dijo el SAT. */
+		cancellation_status: string | null;
+		/** ValidacionEFOS: 200 si el emisor no es EFOS, 100 si lo es. */
+		efos_validation: string | null;
+	};
+	/** Lo que trae el XML además (versión, tipo, fechas, nombres, moneda), si mandó xml; null si no. */
+	xml: {
+		/** La versión del CFDI (4.0 o 3.3). */
+		version: string | null;
+		/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
+		type: string | null;
+		/** La fecha de emisión (Fecha), como viene en el XML. */
+		issued_at: string | null;
+		/** La fecha de timbrado (FechaTimbrado), como viene en el XML. */
+		stamped_at: string | null;
+		/** El nombre del emisor en el XML. */
+		issuer_name: string | null;
+		/** El nombre del receptor en el XML. */
+		receiver_name: string | null;
+		/** Moneda, clave ISO 4217 de c_Moneda (MXN, USD, EUR…). Por omisión MXN. */
+		currency: string | null;
+	} | null;
+	/** El emisor en las listas del SAT (69-B, 69-B Bis y art. 69), como GET /v1/sat_lists/{tax_id}, sin costo. Solo cuando el SAT tiene el comprobante (active o canceled); null si no, o si las listas no se pudieron leer. */
+	issuer_sat_lists: SatListCheck | null;
+	/** El receptor en las listas del SAT, igual que el emisor. */
+	receiver_sat_lists: SatListCheck | null;
+	/** Cuándo se le preguntó al SAT. */
+	checked_at: string;
 }
 
 /** Lo que puede pasar: el tipo de cada evento. */
@@ -5463,7 +5535,7 @@ export interface InvoiceCreate {
 		periodicity: string;
 		/** Meses (Meses), c_Meses: 01 a 12, o 13 a 18 bimestres. */
 		months: string;
-		/** Año (Año). */
+		/** Año (Año): el de la fecha de la factura o hasta cinco años antes (CFDI40136). */
 		year: number;
 		/** Solo emisores con régimen 603 (donatarias y asociaciones): true conserva la descripción, claves, unidad y cantidad de cada concepto en vez de «Venta», 01010101, ACT. */
 		keep_concepts?: boolean;
@@ -7706,6 +7778,21 @@ export interface CheckSatListsParams {
 	tax_ids: string[];
 }
 
+export interface VerifyCfdiParams {
+	/** El XML del CFDI, como texto. Se leen de él el UUID, los dos RFC y el total. Hasta 4 millones de caracteres. */
+	xml?: string;
+	/** El texto del QR del PDF (https://verificacfdi.facturaelectronica.sat.gob.mx/default.aspx?id=…&re=…&rr=…&tt=…&fe=…), si no tiene el XML. */
+	qr?: string;
+	/** El folio fiscal, sin XML ni QR. Va con issuer_tax_id, receiver_tax_id y total. */
+	uuid?: string;
+	/** El RFC del emisor, sin XML ni QR. */
+	issuer_tax_id?: string;
+	/** El RFC del receptor, sin XML ni QR. */
+	receiver_tax_id?: string;
+	/** El total del comprobante, sin XML ni QR. El SAT lo compara como número. */
+	total?: number;
+}
+
 export interface CreateSatDownloadParams {
 	/** El emisor (iss_…). Por omisión, su único emisor. */
 	issuer?: string;
@@ -8949,6 +9036,11 @@ export interface ListEventsParams {
 	object?: string;
 	/** false: los que algún webhook no recibió (su último intento falló). true: los que recibieron todos los webhooks a los que se mandaron. */
 	delivery_success?: boolean;
+}
+
+export interface ResendEventParams {
+	/** El webhook (whe_…) al que mandarlo otra vez. Sin mandar: a todos los webhooks encendidos que escuchan ese tipo de evento. */
+	endpoint?: string;
 }
 
 /** Cuenta: fiscalisto.account. */
@@ -11283,6 +11375,26 @@ export class SatListsResource {
 	}
 }
 
+/** Verificar comprobantes: fiscalisto.cfdiVerifications. */
+export class CfdiVerificationsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Verificar un CFDI en el SAT
+	 *
+	 * Si cualquier CFDI (suyo, de un proveedor o de un cliente) existe en el SAT y está vigente o cancelado, si se puede cancelar, y si su emisor y su receptor están en las listas del SAT. Mande su XML, el texto de su QR, o el UUID con los dos RFC y el total. Consulta el servicio público del SAT, sin e.firma. No usa timbres. En pruebas también consulta el SAT real: los comprobantes de prueba no están ahí y responden not_found.
+	 *
+	 * POST /v1/cfdi_verifications
+	 * @see https://fiscalisto.com/docs/api/referencia/verificar-comprobantes/verify-cfdi
+	 */
+	create(params?: VerifyCfdiParams, options?: RequestOptions): Promise<CfdiVerification> {
+		return this.#client.request({ method: "POST", path: "/v1/cfdi_verifications", body: params, idempotent: true }, options);
+	}
+}
+
 /** Descargas del SAT: fiscalisto.satDownloads. */
 export class SatDownloadsResource {
 	readonly #client: Client;
@@ -12437,6 +12549,18 @@ export class EventsResource {
 	get(id: string, options?: RequestOptions): Promise<Event> {
 		return this.#client.request({ method: "GET", path: `/v1/events/${encodeURIComponent(id)}` }, options);
 	}
+
+	/**
+	 * Reenviar un evento
+	 *
+	 * Manda otra vez, ahora, un evento de los últimos 30 días: a un webhook (endpoint) o a todos los encendidos que escuchan ese tipo. Es un intento aparte, firmado con el mismo webhook-id: no cambia los reintentos automáticos, y si llega, ya no se reintenta. Úselo después de arreglar su servidor, con GET /v1/events?delivery_success=false.
+	 *
+	 * POST /v1/events/{id}/resend
+	 * @see https://fiscalisto.com/docs/api/referencia/eventos/resend-event
+	 */
+	resend(id: string, params?: ResendEventParams, options?: RequestOptions): Promise<EventResend> {
+		return this.#client.request({ method: "POST", path: `/v1/events/${encodeURIComponent(id)}/resend`, body: params, idempotent: true }, options);
+	}
 }
 
 /** Cada recurso de la API. Úselo por medio de Fiscalisto (index.ts). */
@@ -12482,6 +12606,7 @@ export class FiscalistoApi extends Core {
 	readonly stockAdjustments = new StockAdjustmentsResource(this);
 	readonly satCatalogs = new SatCatalogsResource(this);
 	readonly satLists = new SatListsResource(this);
+	readonly cfdiVerifications = new CfdiVerificationsResource(this);
 	readonly satDownloads = new SatDownloadsResource(this);
 	readonly satInvoices = new SatInvoicesResource(this);
 	readonly satRetentions = new SatRetentionsResource(this);

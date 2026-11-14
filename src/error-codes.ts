@@ -53,6 +53,8 @@ export const ErrorCode = {
 	EfirmaRequired: "efirma_required",
 	/** No se pudo mandar el correo; lo demás sí se hizo: el comprobante está timbrado o la cotización quedó enviada (su url funciona). Repita el envío con su ruta /send. */
 	EmailFailed: "email_failed",
+	/** Ese webhook está apagado, así que no se le puede reenviar un evento. Enciéndalo con disabled: false y reenvíe. */
+	EndpointDisabled: "endpoint_disabled",
 	/** Ya hay un webhook con esa dirección en este modo; el mensaje dice cuál. Cámbielo en vez de crear otro. */
 	EndpointExists: "endpoint_exists",
 	/** La cuenta llegó al máximo de webhooks en este modo. */
@@ -87,7 +89,7 @@ export const ErrorCode = {
 	InvoiceNotMarkable: "invoice_not_markable",
 	/** La acción es para facturas timbradas (enviar, cancelar, sustituir). */
 	InvoiceNotStamped: "invoice_not_stamped",
-	/** El PAC o el SAT no la aceptaron. sat_code trae su código (CFDI40xxx) y message qué corregir. La factura queda como rejected; no se usó ningún timbre. */
+	/** El PAC o el SAT no la aceptaron. sat_code trae su código (CFDI40xxx), message qué corregir y doc_url su explicación en [Rechazos del SAT](/docs/api/rechazos-del-sat). La factura queda como rejected; no se usó ningún timbre. */
 	InvoiceRejected: "invoice_rejected",
 	/** El emisor está archivado: ya no timbra. Sus comprobantes se pueden consultar y cancelar. */
 	IssuerArchived: "issuer_archived",
