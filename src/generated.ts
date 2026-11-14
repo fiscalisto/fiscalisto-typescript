@@ -5465,6 +5465,8 @@ export interface InvoiceCreate {
 		months: string;
 		/** Año (Año). */
 		year: number;
+		/** Solo emisores con régimen 603 (donatarias y asociaciones): true conserva la descripción, claves, unidad y cantidad de cada concepto en vez de «Venta», 01010101, ACT. */
+		keep_concepts?: boolean;
 	};
 	/** Uso del CFDI (UsoCFDI), clave de c_UsoCFDI. Por omisión G03, o S01 con régimen 616. */
 	use?: string;
