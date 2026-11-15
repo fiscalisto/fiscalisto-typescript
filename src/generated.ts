@@ -54,7 +54,7 @@ export interface Balance {
 		/** Como máximo tantas compras al mes. */
 		max_per_month: number;
 	} | null;
-	/** true si, al acabarse `available`, la API sigue timbrando con los timbres del plan de la empresa (Desarrolladores › Timbres y pagos › Si se acaban, usar los timbres de la empresa). false: responde 402 insufficient_balance. */
+	/** Los RFC de la empresa (type own) timbran primero con los timbres del mes de su plan y después con `available`. true si, al acabarse `available`, la API sigue timbrando esos RFC con los paquetes de la app de la empresa; los emisores conectados no (Desarrolladores › Timbres y pagos › Si se acaban, usar los timbres de la empresa). false: responde 402 insufficient_balance. */
 	use_plan_timbres: boolean;
 	/** Los paquetes con timbres, el que vence antes primero (en ese orden se usan). */
 	packs: {
