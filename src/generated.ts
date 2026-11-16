@@ -596,6 +596,8 @@ export interface Invoice {
 	payment_form: string | null;
 	/** Método de pago (MetodoPago): PUE (una sola exhibición, por omisión) o PPD (en parcialidades o diferido, se cobra con complementos de pago). */
 	payment_method: string | null;
+	/** Condiciones de pago (CondicionesDePago), hasta 1,000 caracteres sin «|»: «Crédito a 30 días», «50 % anticipo». Van en el XML y en el PDF; solo en ingresos y egresos. No cambian cuándo vence (due_date usa los días de crédito del cliente). */
+	payment_terms: string | null;
 	/** Moneda, clave ISO 4217 de c_Moneda (MXN, USD, EUR…). Por omisión MXN. */
 	currency: string;
 	/** Tipo de cambio a pesos (TipoCambio). Obligatorio si la moneda no es MXN; use el del DOF del día anterior. */
@@ -631,7 +633,7 @@ export interface Invoice {
 	amount_paid: number | null;
 	/** Una PUE que estuvo por cobrar (paid_later o mark_unpaid): el día en que el cliente pagó (AAAA-MM-DD), el que dijo POST /v1/invoices/{id}/mark_paid o el del depósito conciliado con ella. null si no hay fecha de pago registrada (una PUE pagada al timbrarse), si no se ha pagado o si es PPD (sus pagos están en sus complementos). */
 	paid_on: string | null;
-	/** Mientras falta cobrarla (unpaid o partial): el día en que vence (AAAA-MM-DD), su fecha más los días de crédito de la ficha del cliente o, sin ellos, los de la empresa (30 si no los cambió); una PUE con paid_later, el último día de su mes. Son los días que usan Cuentas por cobrar y los recordatorios de cobranza. null si ya se pagó o no aplica. */
+	/** Mientras falta cobrarla (unpaid o partial): el día en que vence (AAAA-MM-DD), su fecha más los días de crédito de la ficha del cliente (o de su grupo de clientes) o, sin ellos, los de la empresa (30 si no los cambió); una PUE con paid_later, el último día de su mes. Son los días que usan Cuentas por cobrar y los recordatorios de cobranza. null si ya se pagó o no aplica. */
 	due_date: string | null;
 	/** CFDI relacionados (CfdiRelacionados): tipo de relación de c_TipoRelacion y los UUID. */
 	related: Record<string, unknown> | null;
@@ -4203,7 +4205,7 @@ export interface PortalSupplier {
 	object: "portal_supplier";
 	/** El emisor de su cuenta (iss_…) cuyo portal es. */
 	issuer: string;
-	/** El RFC del proveedor. */
+	/** El RFC del proveedor; uno del extranjero, sin RFC, trae su clave `EXT-<país>-<tax ID>` (país en c_Pais del SAT, «EXT-USA-123456789»). */
 	tax_id: string;
 	/** Su nombre o razón social, o null si aún no lo da. */
 	name: string | null;
@@ -4279,9 +4281,9 @@ export interface SupplierInvoice {
 	issuer: string;
 	/** El proveedor (sup_…) que la mandó. */
 	supplier: string;
-	/** El RFC del proveedor. */
+	/** El RFC del proveedor, o la clave `EXT-<país>-<tax ID>` de uno del extranjero. */
 	supplier_tax_id: string;
-	/** El folio fiscal (UUID del timbre). */
+	/** El folio fiscal (UUID del timbre); la factura de un proveedor del extranjero, que no lleva CFDI, trae `EXT-…` y sat_invoice null. */
 	uuid: string;
 	/** La misma factura en sus facturas recibidas (sat_…), para su XML y su PDF, o null. */
 	sat_invoice: string | null;
@@ -4408,7 +4410,7 @@ export interface CustomerPaymentBehavior {
 	customer: string;
 	/** Su RFC. */
 	tax_id: string;
-	/** Sus días de crédito: los suyos (Clientes) o los de la empresa (Ajustes › Cobranza automática). Contra ellos se mide el atraso. */
+	/** Sus días de crédito: los suyos (Clientes, o los de su grupo) o los de la empresa (Ajustes › Cobranza automática). Contra ellos se mide el atraso. */
 	credit_days: number;
 	/** on_time (80 % o más llega a tiempo y atraso promedio de 5 días o menos), sometimes_late (hasta 15 días), late (hasta 45), very_late (más) o no_history (menos de 2 facturas pagadas y nada vencido). */
 	rating: "on_time" | "sometimes_late" | "late" | "very_late" | "no_history";
@@ -6453,6 +6455,8 @@ export interface InvoiceCreate {
 	series?: string;
 	/** Observaciones que aparecen en el PDF (no van en el XML). */
 	notes?: string;
+	/** Condiciones de pago (CondicionesDePago), hasta 1,000 caracteres sin «|»: «Crédito a 30 días», «50 % anticipo». Van en el XML y en el PDF; solo en ingresos y egresos. No cambian cuándo vence (due_date usa los días de crédito del cliente). */
+	payment_terms?: string;
 	/** Idioma del PDF: es (por omisión) o en. */
 	pdf_language?: "es" | "en" | "bi";
 	/** Addenda del receptor (Walmart, Soriana…), con sus propios campos. */
