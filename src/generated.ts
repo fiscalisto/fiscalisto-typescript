@@ -770,7 +770,7 @@ export interface Customer {
 		/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
 		tax_id: string | null;
 	} | null;
-	/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio. */
+	/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio, salvo el del alcohol y los tabacos (tasas 0.5, 1.6 y 0.304), que va en el precio siempre (LIEPS art. 19 fr. II). */
 	ieps_taxpayer: boolean;
 	/** Su grupo de clientes (cgr_…), o null si no está en ninguno. */
 	group: string | null;
@@ -2960,6 +2960,102 @@ export interface SatFindingCounterparty {
 	}[];
 }
 
+/** Un proveedor del emisor en el periodo: cuánto le facturó, cuánto de eso tiene su evidencia completa (acuerdo, entrega y pago) y, si está en la lista 69-B, su plazo. */
+export interface MaterialitySupplier {
+	/** Su RFC (el mismo que tax_id). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "materiality_supplier";
+	/** El emisor que recibió sus facturas. */
+	issuer: string;
+	/** El RFC del proveedor. */
+	tax_id: string;
+	/** Su nombre como viene en el CFDI, o null. */
+	name: string | null;
+	/** Cuántas facturas recibidas (ingresos, no canceladas) le dio en el periodo. */
+	invoices: number;
+	/** Lo que suman, en pesos (las de otra moneda, a su tipo de cambio). */
+	total: number;
+	/** Lo que suman las que no tienen su evidencia completa, en pesos. */
+	unproven: number;
+	/** Cuántas facturas están complete (acuerdo, entrega y pago), partial (alguna) y none (ninguna). */
+	states: {
+		/** Facturas con acuerdo, entrega y pago. */
+		complete: number;
+		/** Facturas con alguna de las tres pruebas, no todas. */
+		partial: number;
+		/** Facturas sin ninguna prueba. */
+		none: number;
+	};
+	/** A cuántas facturas les falta el acuerdo, la entrega y el pago. */
+	missing: {
+		/** Facturas sin acuerdo (contrato u orden de compra). */
+		agreement: number;
+		/** Facturas sin entrega (recepción, entregables o fotos). */
+		delivery: number;
+		/** Facturas sin pago (complemento, pago en el portal o en la orden, banco o comprobante). */
+		payment: number;
+	};
+	/** Si está en la lista 69-B: definitive (definitivo) o presumed (presunto); en definitivo, el día que se publicó, el último día de los 30 días hábiles para acreditar las operaciones o corregir y cuántos días hábiles quedan (negativo: ya venció). null: no está. */
+	sat_list: {
+		/** definitive (69-B definitivo) o presumed (69-B presunto). */
+		status: "definitive" | "presumed";
+		/** El día que el SAT lo publicó como definitivo (AAAA-MM-DD), o null. */
+		published_on: string | null;
+		/** El último de los 30 días hábiles para acreditar las operaciones o corregir (AAAA-MM-DD), o null. */
+		deadline: string | null;
+		/** Días hábiles que quedan, sin contar hoy; negativo si ya venció. null si no es definitivo. */
+		business_days_left: number | null;
+	} | null;
+	/** Si está en el Portal de proveedores del emisor (para pedirle la evidencia desde la app). */
+	in_supplier_portal: boolean;
+	/** Cuándo se le pidió evidencia que todavía no manda, o null. */
+	evidence_requested_at: string | null;
+}
+
+/** Una factura recibida (ingreso) con lo que prueba que la operación existió: qué tiene, qué le falta y de dónde salió cada evidencia. */
+export interface MaterialityInvoice {
+	/** El UUID de la factura (el mismo que uuid). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "materiality_invoice";
+	/** El emisor que la recibió. */
+	issuer: string;
+	/** El folio fiscal (UUID). */
+	uuid: string;
+	/** Su serie, o null. */
+	series: string | null;
+	/** Su folio, o null. */
+	folio: string | null;
+	/** Su fecha (AAAA-MM-DD). */
+	date: string;
+	/** El RFC del proveedor que la emitió. */
+	supplier_tax_id: string;
+	/** Su nombre como viene en el CFDI, o null. */
+	supplier_name: string | null;
+	/** Su total en pesos (de otra moneda, a su tipo de cambio). */
+	total: number;
+	/** complete (tiene acuerdo, entrega y pago), partial (alguno) o none (ninguno). */
+	state: "complete" | "partial" | "none";
+	/** Lo que ya tiene: agreement (contrato u orden de compra), delivery (recepción, entregables o fotos), payment (complemento, pago en el portal o en la orden, banco o comprobante). */
+	has: ("agreement" | "delivery" | "payment")[];
+	/** Lo que le falta, de lo mismo. */
+	missing: ("agreement" | "delivery" | "payment")[];
+	/** De dónde salió cada evidencia: source es un código estable (orden_compra, recepcion, complemento_pago, pago_banco, foto, mensaje_portal…), proves lo que prueba (null: respaldo que no prueba nada solo) y label lo dice en palabras. */
+	evidence: {
+		/** De dónde salió: orden_compra, recepcion, complemento_pago, pago_banco, foto, mensaje_portal… */
+		source: string;
+		/** Lo que prueba: agreement, delivery o payment; null si solo respalda. */
+		proves: "agreement" | "delivery" | "payment" | null;
+		/** De dónde salió, en palabras. */
+		label: string;
+	}[];
+}
+
 /** Una venta que su comprador puede facturar él mismo en el portal del emisor (autofactura). */
 export interface Ticket {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
@@ -4918,6 +5014,28 @@ export interface SatFindingCounterpartyList {
 	url: string;
 }
 
+export interface MaterialitySupplierList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: MaterialitySupplier[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface MaterialityInvoiceList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: MaterialityInvoice[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
 export interface WarehouseList {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "list";
@@ -5244,7 +5362,7 @@ export interface InvoiceCreate {
 			/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
 			tax_id: string;
 		};
-		/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio. */
+		/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio, salvo el del alcohol y los tabacos (tasas 0.5, 1.6 y 0.304), que va en el precio siempre (LIEPS art. 19 fr. II). */
 		ieps_taxpayer?: boolean;
 	};
 	/** Conceptos (Conceptos), al menos uno. */
@@ -6698,7 +6816,7 @@ export interface CreateAdvanceParams {
 			/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
 			tax_id: string;
 		};
-		/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio. */
+		/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio, salvo el del alcohol y los tabacos (tasas 0.5, 1.6 y 0.304), que va en el precio siempre (LIEPS art. 19 fr. II). */
 		ieps_taxpayer?: boolean;
 	};
 	/** Uso del CFDI (UsoCFDI), clave de c_UsoCFDI. Por omisión G03, o S01 con régimen 616. */
@@ -7941,7 +8059,7 @@ export interface CreateCustomerParams {
 	price_list?: string | null;
 	/** Su propio descuento en cada concepto, en %; null: el de su grupo. */
 	discount_percent?: number | null;
-	/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio. */
+	/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio, salvo el del alcohol y los tabacos (tasas 0.5, 1.6 y 0.304), que va en el precio siempre (LIEPS art. 19 fr. II). */
 	ieps_taxpayer?: boolean;
 }
 
@@ -7983,7 +8101,7 @@ export interface UpdateCustomerParams {
 	price_list?: string | null;
 	/** Su propio descuento en cada concepto, en %; null: el de su grupo. */
 	discount_percent?: number | null;
-	/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio. */
+	/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio, salvo el del alcohol y los tabacos (tasas 0.5, 1.6 y 0.304), que va en el precio siempre (LIEPS art. 19 fr. II). */
 	ieps_taxpayer?: boolean;
 }
 
@@ -8202,6 +8320,32 @@ export interface ListSatFindingCounterpartiesParams {
 	severity?: "critical" | "warning" | "info";
 	/** Solo quienes tienen este hallazgo (efos_definitivo, cancelado, regla_12…; el code de GET /v1/sat_findings). */
 	code?: string;
+}
+
+/** Los parámetros de GET /v1/materiality_suppliers. */
+export interface ListMaterialitySuppliersParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Facturas desde este día (AAAA-MM-DD). */
+	date_gte?: string;
+	/** Facturas hasta este día (AAAA-MM-DD, completo). */
+	date_lte?: string;
+	/** Solo este proveedor (su RFC). */
+	supplier_tax_id?: string;
+}
+
+/** Los parámetros de GET /v1/materiality_invoices. */
+export interface ListMaterialityInvoicesParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Facturas desde este día (AAAA-MM-DD). */
+	date_gte?: string;
+	/** Facturas hasta este día (AAAA-MM-DD, completo). */
+	date_lte?: string;
+	/** Solo las de este proveedor (su RFC). */
+	supplier_tax_id?: string;
+	/** Solo las de este estado: complete, partial o none. Sin él, las que no están completas. */
+	state?: "complete" | "partial" | "none";
 }
 
 /** Los parámetros de GET /v1/warehouses. */
@@ -8726,8 +8870,10 @@ export interface ListLedgerAccountsParams {
 
 /** Los parámetros de GET /v1/accounting/electronic_accounting. */
 export interface GetElectronicAccountingParams {
-	/** El mes (AAAA-MM). */
+	/** El mes (AAAA-MM), o AAAA-13 para la balanza de cierre de un ejercicio ya terminado. */
 	month: string;
+	/** Solo con AAAA-13: true (por omisión) incluye la póliza de cierre, que cancela ingresos, costos y gastos contra el resultado del ejercicio (305.01 utilidad o 305.02 pérdida); false manda los saldos de diciembre sin movimientos. */
+	closing_entry?: "true" | "false";
 	/** normal (BN, por omisión) o complementary (BC, con modified_on). */
 	type?: "normal" | "complementary";
 	/** complementary: el día en que se modificó (AAAA-MM-DD). */
@@ -8933,7 +9079,7 @@ export interface CreateQuoteParams {
 			/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
 			tax_id: string;
 		};
-		/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio. */
+		/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio, salvo el del alcohol y los tabacos (tasas 0.5, 1.6 y 0.304), que va en el precio siempre (LIEPS art. 19 fr. II). */
 		ieps_taxpayer?: boolean;
 	} | {
 		/** A quién va dirigida. */
@@ -9099,7 +9245,7 @@ export interface UpdateQuoteParams {
 			/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
 			tax_id: string;
 		};
-		/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio. */
+		/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio, salvo el del alcohol y los tabacos (tasas 0.5, 1.6 y 0.304), que va en el precio siempre (LIEPS art. 19 fr. II). */
 		ieps_taxpayer?: boolean;
 	} | {
 		/** A quién va dirigida. */
@@ -9278,7 +9424,7 @@ export interface CreateSalesOrderParams {
 			/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
 			tax_id: string;
 		};
-		/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio. */
+		/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio, salvo el del alcohol y los tabacos (tasas 0.5, 1.6 y 0.304), que va en el precio siempre (LIEPS art. 19 fr. II). */
 		ieps_taxpayer?: boolean;
 	};
 	/** Los conceptos, como en POST /v1/invoices (hasta 200). */
@@ -9453,7 +9599,7 @@ export interface UpdateSalesOrderParams {
 			/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
 			tax_id: string;
 		};
-		/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio. */
+		/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio, salvo el del alcohol y los tabacos (tasas 0.5, 1.6 y 0.304), que va en el precio siempre (LIEPS art. 19 fr. II). */
 		ieps_taxpayer?: boolean;
 	};
 	/** Los conceptos, como en POST /v1/invoices (hasta 200). */
@@ -11953,6 +12099,46 @@ export class SatFindingCounterpartiesResource {
 	}
 }
 
+/** Cumplimiento SAT: fiscalisto.materialitySuppliers. */
+export class MaterialitySuppliersResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar la materialidad por proveedor
+	 *
+	 * Como Materialidad en la app: los proveedores de las facturas recibidas (ingresos) del emisor en un periodo, con cuánto de lo que facturaron tiene evidencia completa de que la operación existió (acuerdo, entrega y pago). Primero los que están en 69-B definitivo (corre su plazo de 30 días hábiles), después los de más importe sin probar. Una página, hasta 500. Sin fechas, este año hasta hoy. No usa timbres.
+	 *
+	 * GET /v1/materiality_suppliers
+	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/list-materiality-suppliers
+	 */
+	list(params?: ListMaterialitySuppliersParams, options?: RequestOptions): Promise<MaterialitySupplierList> {
+		return this.#client.request({ method: "GET", path: "/v1/materiality_suppliers", query: params }, options);
+	}
+}
+
+/** Cumplimiento SAT: fiscalisto.materialityInvoices. */
+export class MaterialityInvoicesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar facturas recibidas por probar
+	 *
+	 * Las facturas recibidas (ingresos) del emisor en un periodo que no tienen su evidencia completa, de mayor a menor importe, cada una con lo que tiene, lo que le falta y de dónde salió cada evidencia (orden de compra, recepción, complemento de pago, banco, archivos). Con state, solo las de ese estado. Una página, hasta 300; has_more dice que hay más (acorte el periodo o filtre por proveedor). No usa timbres.
+	 *
+	 * GET /v1/materiality_invoices
+	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/list-materiality-invoices
+	 */
+	list(params?: ListMaterialityInvoicesParams, options?: RequestOptions): Promise<MaterialityInvoiceList> {
+		return this.#client.request({ method: "GET", path: "/v1/materiality_invoices", query: params }, options);
+	}
+}
+
 /** Inventario: fiscalisto.warehouses. */
 export class WarehousesResource {
 	readonly #client: Client;
@@ -12875,7 +13061,7 @@ export class AccountingResource {
 	/**
 	 * Descargar la contabilidad electrónica
 	 *
-	 * El ZIP del mes para el Buzón Tributario: el catálogo (CT) y la balanza (BN, o BC si es complementaria), cada uno en su ZIP con el nombre que espera el SAT, en el formato 1.3 del Anexo 24. Con journal_request, también las pólizas (PL), que se entregan cuando el SAT las pide.
+	 * El ZIP del mes para el Buzón Tributario: el catálogo (CT) y la balanza (BN, o BC si es complementaria), cada uno en su ZIP con el nombre que espera el SAT, en el formato 1.3 del Anexo 24. Con journal_request, también las pólizas (PL), que se entregan cuando el SAT las pide. Con month AAAA-13, la balanza de comprobación ajustada al cierre del ejercicio (regla 2.8.1.6 RMF): solo la balanza, con los saldos finales de diciembre como saldos iniciales y, con closing_entry, la póliza de cierre.
 	 *
 	 * GET /v1/accounting/electronic_accounting
 	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-electronic-accounting
@@ -13595,6 +13781,8 @@ export class FiscalistoApi extends Core {
 	readonly satMailboxMessages = new SatMailboxMessagesResource(this);
 	readonly satFindings = new SatFindingsResource(this);
 	readonly satFindingCounterparties = new SatFindingCounterpartiesResource(this);
+	readonly materialitySuppliers = new MaterialitySuppliersResource(this);
+	readonly materialityInvoices = new MaterialityInvoicesResource(this);
 	readonly warehouses = new WarehousesResource(this);
 	readonly stockMovements = new StockMovementsResource(this);
 	readonly stockAdjustments = new StockAdjustmentsResource(this);
