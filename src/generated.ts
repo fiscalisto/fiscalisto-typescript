@@ -33,6 +33,134 @@ export interface Account {
 	};
 }
 
+/** Una marca de entrada o salida de Asistencia (registro electrónico de jornada, LFT art. 132). */
+export interface AttendanceMark {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "attendance_mark";
+	/** El empleado (emp_…). */
+	employee: string;
+	/** in: entrada; out: salida. */
+	kind: "in" | "out";
+	/** Cuándo marcó (UTC). */
+	at: string;
+	/** El día al que cuenta, AAAA-MM-DD en la hora del lugar. */
+	date: string;
+	/** La hora en el lugar, HH:MM. */
+	time: string;
+	/** Cómo marcó: kiosk_qr (el código del checador), kiosk_pin (número y NIP en el checador), printed_qr (el QR impreso), remote (fuera de la sucursal, con su ubicación), manual (corrección en la app), api. */
+	method: "kiosk_qr" | "kiosk_pin" | "printed_qr" | "remote" | "manual" | "api";
+	/** El lugar donde marcó, o null. */
+	place: string | null;
+	/** A cuántos metros del lugar estaba, si dio su ubicación; si no, null. */
+	distance_m: number | null;
+	/** Notas para revisar (la marca nunca se rechaza por ellas): no_location (no dio su ubicación), far (lejos del lugar), imprecise (ubicación imprecisa), remote (fuera de la sucursal), new_device (un celular nuevo). */
+	flags: ("no_location" | "far" | "imprecise" | "remote" | "new_device")[];
+	/** Por qué se agregó, en una corrección o desde la API (el empleado lo ve); null si la hizo él. */
+	reason: string | null;
+	/** Quién la agregó, en una corrección; null si la hizo él. */
+	created_by: string | null;
+	/** true si se quitó: queda tachada, no cuenta, y se ve con su motivo. */
+	voided: boolean;
+	/** Por qué se quitó, o null. */
+	void_reason: string | null;
+	/** Quién la quitó, o null. */
+	voided_by: string | null;
+	/** Cuándo se quitó, o null. */
+	voided_at: string | null;
+}
+
+/** La asistencia de un periodo, por empleado: horas contra su horario, faltas, retardos y horas extra dobles y triples por semana, como Nómina › Asistencia › Registro. */
+export interface AttendanceReport {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "attendance_report";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…), el patrón. */
+	issuer: string;
+	/** Primer día del periodo, AAAA-MM-DD. */
+	from: string;
+	/** Último día del periodo, AAAA-MM-DD. */
+	to: string;
+	/** Cada empleado del emisor en el periodo. */
+	employees: {
+		/** El empleado (emp_…). */
+		employee: string;
+		/** Su nombre. */
+		name: string;
+		/** Su número de empleado, o null. */
+		number: string | null;
+		/** Donde marca, o null (cualquier lugar). */
+		place: string | null;
+		/** Minutos trabajados en el periodo. */
+		worked_minutes: number;
+		/** Minutos de su horario en el periodo. */
+		scheduled_minutes: number;
+		/** Faltas: días de trabajo sin marcas ni nota. */
+		absences: number;
+		/** Días con nota de incapacidad. */
+		disability_days: number;
+		/** Días con nota de vacaciones. */
+		vacation_days: number;
+		/** Cuántos días llegó tarde. */
+		late_count: number;
+		/** Minutos de retardo en total. */
+		late_minutes: number;
+		/** Días con una marca sin su pareja (sin salida). */
+		incomplete_days: number;
+		/** Marcas con una nota para revisar (flags). */
+		flagged_marks: number;
+		/** Horas extra que se pagan dobles (hasta 9 por semana en 2026, 12 desde 2027). */
+		overtime_double_minutes: number;
+		/** Horas extra que se pagan triples (las que pasan del límite de la semana). */
+		overtime_triple_minutes: number;
+		/** Días de descanso en que trabajó. */
+		rest_days_worked: number;
+		/** Días festivos en que trabajó. */
+		holidays_worked: number;
+		/** Semanas que el empleado confirmó en su enlace. */
+		weeks_confirmed: number;
+		/** Las semanas con las que el empleado no está de acuerdo. */
+		weeks_disputed: {
+			/** El lunes de la semana, AAAA-MM-DD. */
+			week: string;
+			/** Lo que el empleado dijo que no coincide. */
+			text: string;
+		}[];
+		/** Cada día del periodo, solo cuando se pide un employee; si no, null. */
+		days: {
+			/** AAAA-MM-DD. */
+			date: string;
+			/** worked (trabajó), incomplete (falta una marca), absent (falta), rest (descanso), holiday (día festivo), excused (justificado con una nota), upcoming (por venir), before (antes de empezar su registro). */
+			status: "worked" | "incomplete" | "absent" | "rest" | "holiday" | "excused" | "upcoming" | "before";
+			/** Su horario ese día, o null si descansa. */
+			scheduled: {
+				/** Hora de entrada, HH:MM. */
+				start: string;
+				/** Hora de salida, HH:MM (antes de la entrada: al día siguiente). */
+				end: string;
+				/** Minutos de comida que no se pagan. */
+				break_minutes: number;
+			} | null;
+			/** Minutos trabajados ese día. */
+			worked_minutes: number;
+			/** Minutos de retardo, pasada la tolerancia. */
+			late_minutes: number;
+			/** Minutos de más ese día (horas extra). */
+			overtime_minutes: number;
+			/** La nota del día que puso la empresa, o null. */
+			note: "vacaciones" | "incapacidad" | "permiso_con_goce" | "permiso_sin_goce" | "descanso" | "festivo" | "falta" | null;
+			/** El nombre del día festivo, o null. */
+			holiday: string | null;
+		}[] | null;
+		/** Sus marcas, también las quitadas, solo cuando se pide un employee; si no, null. */
+		marks: AttendanceMark[] | null;
+	}[];
+}
+
 /** Timbres de producción de la cuenta, por paquete, el que vence antes primero. */
 export interface Balance {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -8061,6 +8189,34 @@ export interface QuotePricesParams {
 	}[];
 }
 
+/** Los parámetros de GET /v1/attendance. */
+export interface GetAttendanceParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Primer día, AAAA-MM-DD. */
+	from: string;
+	/** Último día, AAAA-MM-DD (hasta 92 días después de from). */
+	to: string;
+	/** Solo este empleado (emp_…), con sus días y marcas. */
+	employee?: string;
+}
+
+export interface CreateAttendanceMarkParams {
+	/** El empleado (emp_…). */
+	employee: string;
+	/** in: entrada; out: salida. */
+	kind: "in" | "out";
+	/** Cuándo marcó, con su zona horaria (2027-01-04T09:02:00-06:00). No en el futuro ni de hace más de 400 días. */
+	at: string;
+	/** Por qué se registra (se guarda y el empleado lo ve en su enlace). Por omisión «Registrada por la API». */
+	reason?: string;
+}
+
+export interface VoidAttendanceMarkParams {
+	/** Por qué se quita: queda tachada con este motivo y el empleado lo ve. */
+	reason: string;
+}
+
 export interface CreateExpensePersonParams {
 	/** El emisor (iss_…). Por omisión, su único emisor. */
 	issuer?: string;
@@ -11925,6 +12081,50 @@ export class PricesResource {
 	}
 }
 
+/** Asistencia: fiscalisto.attendance. */
+export class AttendanceResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ver la asistencia de un periodo
+	 *
+	 * El registro de jornada del emisor (LFT art. 132) del periodo, por empleado: minutos trabajados contra su horario, faltas, retardos, días sin salida, marcas con notas y horas extra dobles y triples por semana. Con employee, también cada día y cada marca (con sus correcciones). Hasta 92 días a la vez.
+	 *
+	 * GET /v1/attendance
+	 * @see https://fiscalisto.com/docs/api/referencia/asistencia/get-attendance
+	 */
+	get(params: GetAttendanceParams, options?: RequestOptions): Promise<AttendanceReport> {
+		return this.#client.request({ method: "GET", path: "/v1/attendance", query: params }, options);
+	}
+
+	/**
+	 * Registrar una marca
+	 *
+	 * Una entrada o salida que viene de otro reloj checador. Queda con method api y su motivo, y el empleado la ve en su enlace. Una marca igual del mismo empleado dentro de 60 segundos no se duplica.
+	 *
+	 * POST /v1/attendance/marks
+	 * @see https://fiscalisto.com/docs/api/referencia/asistencia/create-attendance-mark
+	 */
+	createMark(params: CreateAttendanceMarkParams, options?: RequestOptions): Promise<AttendanceMark> {
+		return this.#client.request({ method: "POST", path: "/v1/attendance/marks", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Quitar una marca
+	 *
+	 * La marca deja de contar y queda tachada con su motivo, quién y cuándo (nunca se borra). En la app se puede restaurar.
+	 *
+	 * POST /v1/attendance/marks/{id}/void
+	 * @see https://fiscalisto.com/docs/api/referencia/asistencia/void-attendance-mark
+	 */
+	voidMark(id: string, params: VoidAttendanceMarkParams, options?: RequestOptions): Promise<AttendanceMark> {
+		return this.#client.request({ method: "POST", path: `/v1/attendance/marks/${encodeURIComponent(id)}/void`, body: params, idempotent: true }, options);
+	}
+}
+
 /** Viáticos y gastos: fiscalisto.expensePeople. */
 export class ExpensePeopleResource {
 	readonly #client: Client;
@@ -14096,6 +14296,7 @@ export class FiscalistoApi extends Core {
 	readonly priceLists = new PriceListsResource(this);
 	readonly customerGroups = new CustomerGroupsResource(this);
 	readonly prices = new PricesResource(this);
+	readonly attendance = new AttendanceResource(this);
 	readonly expensePeople = new ExpensePeopleResource(this);
 	readonly expenseReports = new ExpenseReportsResource(this);
 	readonly expensePolicy = new ExpensePolicyResource(this);
