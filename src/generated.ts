@@ -4319,6 +4319,169 @@ export interface CustomerPaymentBehavior {
 	}[];
 }
 
+/** El flujo de efectivo de las próximas 13 semanas: lo que le deben (con lo que cada cliente suele tardar), lo que debe a proveedores, la nómina, las declaraciones, las facturas recurrentes y sus movimientos previstos, desde el saldo que usted dio. Una estimación: no cambia nada. */
+export interface CashForecast {
+	/** Siempre cash_forecast. */
+	object: "cash_forecast";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Hoy en la Ciudad de México (AAAA-MM-DD): el inicio. */
+	today: string;
+	/** El último día de la semana 13. */
+	end: string;
+	/** Todo en pesos: lo de otra moneda, a su tipo de cambio. */
+	currency: "MXN";
+	/** El saldo de hoy que usted dio; null si no lo ha dado (el flujo parte de 0). */
+	starting_balance: {
+		/** Lo que tenía en el banco, en pesos. */
+		amount: number;
+		/** El día de ese saldo. */
+		date: string;
+	} | null;
+	/** Lo menos que quiere tener; cada semana debajo trae un aviso. 0 si no lo dio. */
+	minimum_balance: number;
+	/** El saldo de sus últimos estados de cuenta en Conciliación (60 días), solo como sugerencia; null sin ellos. */
+	suggested_starting_balance: {
+		/** La suma de los saldos, en pesos. */
+		amount: number;
+		/** El día del estado de cuenta más reciente. */
+		date: string;
+	} | null;
+	/** El escenario con que se calculó: el de los parámetros de la consulta. */
+	scenario: {
+		/** Días que se movieron los cobros (0 como siempre). */
+		customers_pay_days_later: number;
+		/** Días que se movieron los pagos a proveedores. */
+		pay_suppliers_days_later: number;
+		/** Si cuenta lo que lleva más de 90 días de atraso. */
+		include_doubtful: boolean;
+		/** Si cuenta las facturas recurrentes que aún no se emiten. */
+		include_recurring: boolean;
+		/** Por ciento que cambiaron las recurrentes (−20 a +10…). */
+		recurring_sales_change: number;
+	};
+	/** Las 13 semanas juntas. */
+	totals: {
+		/** Lo que entra en las 13 semanas. */
+		inflows: number;
+		/** Lo que sale en las 13 semanas. */
+		outflows: number;
+		/** El saldo al final de la semana 13. */
+		ending_balance: number;
+		/** El saldo más bajo al cierre de una semana. */
+		lowest_balance: number;
+		/** La semana de ese saldo (1 a 13). */
+		lowest_week: number;
+		/** Cuántas semanas cierran debajo de minimum_balance (o de 0). */
+		weeks_below_minimum: number;
+		/** Lo que se dejó fuera por llevar más de 90 días de atraso. */
+		doubtful_left_out: number;
+	};
+	/** Las 13 semanas, en orden. */
+	weeks: {
+		/** 1 a 13; la 1 va de hoy al domingo. */
+		week: number;
+		/** El primer día (AAAA-MM-DD). */
+		start: string;
+		/** El último día, un domingo. */
+		end: string;
+		/** El saldo al empezar la semana. */
+		starting_balance: number;
+		/** Lo que entra. */
+		inflows: number;
+		/** Lo que sale. */
+		outflows: number;
+		/** El saldo al cerrar la semana. */
+		ending_balance: number;
+		/** Lo de cada tipo de renglón (lines[].type) esa semana, en pesos. */
+		by_type: Record<string, number>;
+	}[];
+	/** Cada cosa que entra o sale, de la que se suman las semanas. */
+	lines: {
+		/** El renglón, para cambiarlo con POST /v1/cash_forecast/adjustments. */
+		line: string;
+		/** receivable: lo que le deben sus clientes; recurring_invoice: lo que facturarán sus recurrentes; planned_inflow / planned_outflow: un movimiento previsto que usted agregó; payable: lo que debe a proveedores; payroll: la nómina; taxes: las declaraciones mensuales. */
+		type: "receivable" | "recurring_invoice" | "planned_inflow" | "payable" | "payroll" | "taxes" | "planned_outflow";
+		/** inflow entra; outflow sale. */
+		direction: "inflow" | "outflow";
+		/** El día en que se cuenta, con cambios y escenario. */
+		date: string;
+		/** El día que se estimó. */
+		estimated_date: string;
+		/** La semana en que cae; null si se dejó fuera (left_out). */
+		week: number | null;
+		/** Lo que se cuenta, en pesos. */
+		amount: number;
+		/** Lo que se estimó, en pesos. */
+		estimated_amount: number;
+		/** Qué es, como en la app. */
+		description: string;
+		/** El RFC del cliente o proveedor, o null. */
+		tax_id: string | null;
+		/** Cuántas facturas suma, o null. */
+		invoices: number | null;
+		/** Cuándo vencía, o null. */
+		due_date: string | null;
+		/** Días de atraso si ya pasó el día esperado, o null. */
+		days_overdue: number | null;
+		/** Cómo se estimó, en palabras. */
+		basis: string;
+		/** high: un monto y día conocidos; medium: un promedio; low: atrasado o sin historial. */
+		confidence: "high" | "medium" | "low";
+		/** Por qué no cuenta: excluded usted lo quitó; doubtful más de 90 días de atraso; scenario el escenario lo quitó; after_horizon cae después de la semana 13. null si cuenta. */
+		left_out: "excluded" | "doubtful" | "scenario" | "after_horizon" | null;
+		/** true si usted le cambió el día, monto o lo quitó. */
+		adjusted: boolean;
+		/** El movimiento previsto (cfi_…) del que viene, o null. */
+		planned_item: string | null;
+	}[];
+	/** Avisos con lo que puede hacer; usted decide. */
+	warnings: {
+		/** no_starting_balance: falta el saldo de hoy; stale_starting_balance: tiene más de 7 días; shortfall: una semana cierra debajo del mínimo; overdue_receivables: mucho por cobrar está atrasado; customer_concentration: un cliente es 40 % o más de lo que entra; doubtful_left_out: se dejó fuera lo de más de 90 días. */
+		type: "no_starting_balance" | "stale_starting_balance" | "shortfall" | "overdue_receivables" | "customer_concentration" | "doubtful_left_out";
+		/** Qué tan urgente es. */
+		severity: "critical" | "warning" | "info";
+		/** El aviso, en palabras. */
+		title: string;
+		/** Qué puede hacer; nada cambia solo. */
+		detail: string;
+		/** La semana, o null. */
+		week: number | null;
+		/** Lo que faltaría, en pesos, o null. */
+		shortfall: number | null;
+	}[];
+	/** Sus movimientos previstos. */
+	planned_items: CashForecastItem[];
+	/** Lo que no se pudo estimar y por qué. */
+	notes: string[];
+}
+
+/** Algo que espera pagar o cobrar y que ninguna factura dice (una renta, un crédito, una venta de contado), que cuenta en el flujo de efectivo. */
+export interface CashForecastItem {
+	/** El movimiento previsto (cfi_…). */
+	id: string;
+	/** Siempre cash_forecast_item. */
+	object: "cash_forecast_item";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Qué es: «Renta», «Crédito del banco». */
+	description: string;
+	/** inflow entra dinero; outflow sale. */
+	direction: "inflow" | "outflow";
+	/** Cuánto, en pesos. */
+	amount: number;
+	/** El día (AAAA-MM-DD), o la primera vez si se repite. */
+	date: string;
+	/** once una vez; weekly cada semana; biweekly cada dos; monthly cada mes. */
+	frequency: "once" | "weekly" | "biweekly" | "monthly";
+	/** El último día en que se repite; null sin fin. */
+	until: string | null;
+}
+
 /** Un depósito de la cuenta del emisor, y las facturas que pagó. */
 export interface BankTransaction {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
@@ -6593,6 +6756,85 @@ export interface ListReceivablesParams {
 	issuer?: string;
 	/** Solo este cliente: su RFC o su id (cus_…). */
 	customer?: string;
+}
+
+/** Los parámetros de GET /v1/cash_forecast. */
+export interface GetCashForecastParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Escenario: sus clientes le pagan estos días después (0 a 120). */
+	customers_pay_days_later?: number;
+	/** Escenario: usted paga a sus proveedores estos días después (0 a 120). */
+	pay_suppliers_days_later?: number;
+	/** true cuenta lo que lleva más de 90 días de atraso (por omisión no). */
+	include_doubtful?: boolean;
+	/** false deja fuera las facturas recurrentes que aún no se emiten. */
+	include_recurring?: boolean;
+	/** Escenario: por ciento que cambian sus recurrentes (−100 a 100). */
+	recurring_sales_change?: number;
+}
+
+export interface UpdateCashForecastParams {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** El saldo de hoy en sus cuentas de banco; null lo quita. */
+	starting_balance?: {
+		/** Lo que tiene en el banco, en pesos. */
+		amount: number;
+		/** El día de ese saldo (AAAA-MM-DD); hoy si no se indica. */
+		date?: string;
+	} | null;
+	/** Lo menos que quiere tener: cada semana debajo trae un aviso. 0 para ninguno. */
+	minimum_balance?: number;
+}
+
+export interface CreateCashForecastItemParams {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** Qué es: «Renta», «Crédito del banco». */
+	description: string;
+	/** inflow si es dinero que entra; outflow si sale. */
+	direction: "inflow" | "outflow";
+	/** Cuánto, en pesos. */
+	amount: number;
+	/** El día (o la primera vez, si se repite). */
+	date: string;
+	/** once (por omisión), weekly, biweekly (cada dos semanas) o monthly. */
+	frequency?: "once" | "weekly" | "biweekly" | "monthly";
+	/** El último día en que se repite; null sin fin. */
+	until?: string | null;
+}
+
+export interface UpdateCashForecastItemParams {
+	/** Qué es: «Renta», «Crédito del banco». */
+	description?: string;
+	/** inflow si es dinero que entra; outflow si sale. */
+	direction?: "inflow" | "outflow";
+	/** Cuánto, en pesos. */
+	amount?: number;
+	/** El día (o la primera vez, si se repite). */
+	date?: string;
+	/** once (por omisión), weekly, biweekly (cada dos semanas) o monthly. */
+	frequency?: "once" | "weekly" | "biweekly" | "monthly";
+	/** El último día en que se repite; null sin fin. */
+	until?: string | null;
+}
+
+export interface AdjustCashForecastParams {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** El renglón (lines[].line de GET /v1/cash_forecast). */
+	line: string;
+	/** Otro día para ese renglón; null el estimado. */
+	date?: string | null;
+	/** Otro monto, en pesos; null el estimado. */
+	amount?: number | null;
+	/** true para no contarlo. */
+	excluded?: boolean;
+	/** Por qué (lo ve quien abra la semana en la app). */
+	note?: string | null;
+	/** true lo regresa a lo estimado; lo demás se ignora. */
+	reset?: boolean;
 }
 
 export interface CreateBankTransactionsParams {
@@ -10587,6 +10829,86 @@ export class CustomersResource {
 	}
 }
 
+/** Flujo de efectivo: fiscalisto.cashForecast. */
+export class CashForecastResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ver el flujo de efectivo
+	 *
+	 * Las próximas 13 semanas del emisor, como «Flujo de efectivo» en la app: lo que le deben, con lo que cada cliente suele tardar en pagar; lo que debe a proveedores; la nómina; las declaraciones mensuales; las facturas recurrentes y sus movimientos previstos, desde el saldo que dio. Trae avisos con lo que puede hacer, y con los parámetros, un escenario (no se guarda). Una estimación: nada cambia solo.
+	 *
+	 * GET /v1/cash_forecast
+	 * @see https://fiscalisto.com/docs/api/referencia/flujo-de-efectivo/get-cash-forecast
+	 */
+	get(params?: GetCashForecastParams, options?: RequestOptions): Promise<CashForecast> {
+		return this.#client.request({ method: "GET", path: "/v1/cash_forecast", query: params }, options);
+	}
+
+	/**
+	 * Dar el saldo de hoy
+	 *
+	 * El saldo de hoy en sus cuentas de banco (de donde parte el flujo) y lo menos que quiere tener. Solo lo que mande cambia. Responde el flujo con el saldo nuevo.
+	 *
+	 * POST /v1/cash_forecast
+	 * @see https://fiscalisto.com/docs/api/referencia/flujo-de-efectivo/update-cash-forecast
+	 */
+	update(params?: UpdateCashForecastParams, options?: RequestOptions): Promise<CashForecast> {
+		return this.#client.request({ method: "POST", path: "/v1/cash_forecast", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Agregar un movimiento previsto
+	 *
+	 * Algo que espera pagar o cobrar y que ninguna factura dice: una renta, un crédito, una venta de contado. Una vez o cada semana, dos semanas o mes. Hasta 200.
+	 *
+	 * POST /v1/cash_forecast/planned_items
+	 * @see https://fiscalisto.com/docs/api/referencia/flujo-de-efectivo/create-cash-forecast-item
+	 */
+	createItem(params: CreateCashForecastItemParams, options?: RequestOptions): Promise<CashForecastItem> {
+		return this.#client.request({ method: "POST", path: "/v1/cash_forecast/planned_items", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Cambiar un movimiento previsto
+	 *
+	 * Solo lo que mande cambia.
+	 *
+	 * POST /v1/cash_forecast/planned_items/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/flujo-de-efectivo/update-cash-forecast-item
+	 */
+	updateItem(id: string, params?: UpdateCashForecastItemParams, options?: RequestOptions): Promise<CashForecastItem> {
+		return this.#client.request({ method: "POST", path: `/v1/cash_forecast/planned_items/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Borrar un movimiento previsto
+	 *
+	 * Ya no cuenta en el flujo.
+	 *
+	 * DELETE /v1/cash_forecast/planned_items/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/flujo-de-efectivo/delete-cash-forecast-item
+	 */
+	deleteItem(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/cash_forecast/planned_items/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Cambiar un renglón del flujo
+	 *
+	 * Otro día o monto para un renglón (lines[].line), o no contarlo: un cliente le avisó que paga después, o una factura ya se pagó por fuera. Solo cambia el pronóstico, nunca la factura. reset: true lo regresa a lo estimado. Responde el flujo con el cambio.
+	 *
+	 * POST /v1/cash_forecast/adjustments
+	 * @see https://fiscalisto.com/docs/api/referencia/flujo-de-efectivo/adjust-cash-forecast
+	 */
+	adjust(params: AdjustCashForecastParams, options?: RequestOptions): Promise<CashForecast> {
+		return this.#client.request({ method: "POST", path: "/v1/cash_forecast/adjustments", body: params, idempotent: true }, options);
+	}
+}
+
 /** Conciliación bancaria: fiscalisto.bankTransactions. */
 export class BankTransactionsResource {
 	readonly #client: Client;
@@ -13754,6 +14076,7 @@ export class FiscalistoApi extends Core {
 	readonly invoices = new InvoicesResource(this);
 	readonly receivables = new ReceivablesResource(this);
 	readonly customers = new CustomersResource(this);
+	readonly cashForecast = new CashForecastResource(this);
 	readonly bankTransactions = new BankTransactionsResource(this);
 	readonly purchaseReceipts = new PurchaseReceiptsResource(this);
 	readonly payments = new PaymentsResource(this);
