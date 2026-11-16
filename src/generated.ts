@@ -2822,6 +2822,8 @@ export interface ExpensePolicy {
 	notify_approvers: boolean;
 	/** true si avisa a la persona cuando se aprueba, se devuelve o se le paga. */
 	notify_people: boolean;
+	/** Cómo se suben los tickets y recibos: image (foto), pdf o los dos. El XML de una factura siempre se acepta. */
+	receipt_formats: ("image" | "pdf")[];
 }
 
 /** Un almacén del emisor: el de la Matriz y uno por sucursal se crean solos; cada factura saca existencias del de su sucursal. */
@@ -8480,6 +8482,8 @@ export interface UpdateExpensePolicyParams {
 	notify_approvers?: boolean;
 	/** Avisar a la persona cuando se aprueba, se devuelve o se le paga. */
 	notify_people?: boolean;
+	/** Cómo se suben los tickets y recibos: image (foto), pdf o los dos. Un archivo de otro tipo se rechaza con invalid_request_error. El XML de una factura siempre se acepta. */
+	receipt_formats?: ("image" | "pdf")[];
 }
 
 export interface CreateCustomerParams {
