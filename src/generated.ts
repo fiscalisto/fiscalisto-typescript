@@ -8928,6 +8928,12 @@ export interface UpdateMemberParams {
 	branches?: string[] | null;
 }
 
+/** Los parámetros de DELETE /v1/members/{id}. */
+export interface DeleteMemberParams {
+	/** El miembro (mem_…) que recibe su trabajo; sin él, cualquiera con permiso. */
+	transfer_to?: string;
+}
+
 /** Los parámetros de GET /v1/invitations. */
 export interface ListInvitationsParams {
 	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
@@ -12968,13 +12974,13 @@ export class MembersResource {
 	/**
 	 * Quitar a un miembro
 	 *
-	 * La persona deja de entrar a la empresa y sus invitaciones se cancelan. Siempre queda al menos un propietario; quitar a alguien con permisos delicados se hace en la app.
+	 * La persona deja de entrar a la empresa y sus invitaciones se cancelan; lo que hizo se queda con su nombre. Lo que le esperaba (pasos de aprobación que la nombran, aprobaciones pendientes, avisos, ausencias, viáticos que aprueba) pasa a `transfer_to` o, sin él, a cualquiera con el permiso. Siempre queda al menos un propietario; quitar a alguien con permisos delicados se hace en la app.
 	 *
 	 * DELETE /v1/members/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/equipo/delete-member
 	 */
-	delete(id: string, options?: RequestOptions): Promise<Deleted> {
-		return this.#client.request({ method: "DELETE", path: `/v1/members/${encodeURIComponent(id)}` }, options);
+	delete(id: string, params?: DeleteMemberParams, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/members/${encodeURIComponent(id)}`, query: params }, options);
 	}
 }
 
