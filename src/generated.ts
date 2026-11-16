@@ -87,6 +87,8 @@ export interface AttendanceReport {
 	to: string;
 	/** true: las horas extra cuentan solo hasta lo que la empresa autorizó cada día. */
 	overtime_approval: boolean;
+	/** Cómo llegan las horas extra a la nómina: approval (necesitan autorización), all (cuentan todas) o none (no hay horas extra: quedan en el registro y nunca cuentan). */
+	overtime_policy: "approval" | "all" | "none";
 	/** Cada empleado del emisor en el periodo. */
 	employees: {
 		/** El empleado (emp_…). */
@@ -123,6 +125,8 @@ export interface AttendanceReport {
 		overtime_minutes: number;
 		/** Minutos de más que nadie autorizó: quedan en el registro y no cuentan para la nómina. */
 		unapproved_overtime_minutes: number;
+		/** Minutos de más que la empresa rechazó: quedan en el registro, no cuentan para la nómina y ya no están por autorizar. */
+		rejected_overtime_minutes: number;
 		/** Días de descanso en que trabajó. */
 		rest_days_worked: number;
 		/** Días festivos en que trabajó. */
@@ -157,8 +161,10 @@ export interface AttendanceReport {
 			late_minutes: number;
 			/** Minutos de más ese día (horas extra). */
 			overtime_minutes: number;
-			/** De esos, los que cuentan para la nómina: hasta lo autorizado ese día cuando las horas extra necesitan autorización; si no, todos. */
+			/** De esos, los que cuentan para la nómina: con overtime_policy approval, hasta lo autorizado ese día; con all, todos; con none, ninguno. */
 			approved_overtime_minutes: number;
+			/** De esos, los que la empresa rechazó ese día: no cuentan para la nómina. */
+			rejected_overtime_minutes: number;
 			/** La nota del día que puso la empresa, o null. */
 			note: "vacaciones" | "incapacidad" | "permiso_con_goce" | "permiso_sin_goce" | "descanso" | "festivo" | "falta" | null;
 			/** El nombre del día festivo, o null. */
@@ -169,7 +175,7 @@ export interface AttendanceReport {
 	}[];
 }
 
-/** Las horas extra que la empresa autorizó para un día de un empleado, antes o después de ese día. */
+/** Las horas extra que la empresa autorizó o rechazó para un día de un empleado, antes o después de ese día. */
 export interface AttendanceOvertime {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "attendance_overtime";
@@ -179,8 +185,10 @@ export interface AttendanceOvertime {
 	employee: string;
 	/** El día, AAAA-MM-DD. */
 	date: string;
-	/** Hasta cuántos minutos de horas extra de ese día cuentan para la nómina; null: sin autorización. */
+	/** Hasta cuántos minutos de horas extra de ese día cuentan para la nómina (0 si se rechazaron); null: sin decisión. */
 	minutes: number | null;
+	/** true: la empresa rechazó las horas extra de ese día. */
+	rejected: boolean;
 	/** Por qué, o null. */
 	comment: string | null;
 }
@@ -8246,9 +8254,11 @@ export interface ApproveAttendanceOvertimeParams {
 	employee: string;
 	/** AAAA-MM-DD. */
 	date: string;
-	/** Hasta cuántos minutos de horas extra de ese día cuentan para la nómina (0 a 960); null quita la autorización. */
+	/** Hasta cuántos minutos de horas extra de ese día cuentan para la nómina (0 a 960); null quita la decisión. Con rejected: true se ignora. */
 	minutes: number | null;
-	/** Por qué (opcional). */
+	/** true rechaza todas las horas extra de ese día: quedan en el registro, no cuentan para la nómina y dejan de estar por autorizar. Pide comment. */
+	rejected?: boolean;
+	/** Por qué (obligatorio al rechazar; el empleado lo ve). */
 	comment?: string;
 }
 
@@ -12160,9 +12170,9 @@ export class AttendanceResource {
 	}
 
 	/**
-	 * Autorizar horas extra
+	 * Autorizar o rechazar horas extra
 	 *
-	 * Hasta cuántos minutos de horas extra de un día de un empleado cuentan para la nómina, antes o después de ese día (minutes null quita la autorización). Con la regla «Las horas extra necesitan autorización» encendida, lo demás queda en el registro como sin autorizar.
+	 * Hasta cuántos minutos de horas extra de un día de un empleado cuentan para la nómina, antes o después de ese día, o rechazarlas todas (rejected: true, con comment). minutes null quita la decisión. Con la regla de horas extra «Necesitan autorización», lo que nadie autorizó queda en el registro como sin autorizar.
 	 *
 	 * POST /v1/attendance/overtime
 	 * @see https://fiscalisto.com/docs/api/referencia/asistencia/approve-attendance-overtime
