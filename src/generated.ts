@@ -2330,12 +2330,44 @@ export interface SatDeclaration {
 		/** El total a pagar del acuse; si no hay acuse, la suma de las obligaciones cuando todas se conocen. */
 		total_to_pay: number | null;
 	};
-	/** Qué archivos ya tiene: pdf (GET …/pdf), receipt (GET …/receipt) y financial_statements (GET …/financial_statements, solo en la anual de persona moral). */
+	/** Su pago en el banco, de «Declaraciones pagadas» del SAT (solo las mensuales; null en las demás). status: paid (el SAT tiene el pago), unpaid (tiene algo a pagar y el SAT no lo tenía pagado en checked_at), overdue (igual, con la línea de captura vencida), nothing_to_pay o unchecked (aún no se revisa). paid_on, amount_paid y bank del pago más reciente, y cada pago en payments con su banco, día, línea de captura, medio (channel), importe, número de operación del banco y llave de pago. */
+	payment: {
+		/** paid, unpaid (algo a pagar que el SAT no tenía pagado), overdue (igual, línea de captura vencida), nothing_to_pay o unchecked. */
+		status: "paid" | "unpaid" | "overdue" | "nothing_to_pay" | "unchecked";
+		/** El día del pago más reciente (AAAA-MM-DD). */
+		paid_on: string | null;
+		/** Lo pagado, en pesos (la suma de los pagos). */
+		amount_paid: number | null;
+		/** El banco del pago más reciente. */
+		bank: string | null;
+		/** Cuándo se buscó por última vez en «Declaraciones pagadas». */
+		checked_at: string | null;
+		/** Cada pago como el SAT lo registró del banco. */
+		payments: {
+			/** La institución de crédito. */
+			bank: string | null;
+			/** El día del pago (AAAA-MM-DD). */
+			date: string | null;
+			/** La línea de captura pagada. */
+			payment_line: string | null;
+			/** Cómo se pagó, como lo dice el SAT («Ventanilla», «Internet»). */
+			channel: string | null;
+			/** El importe pagado. */
+			amount: number | null;
+			/** El número de operación del banco. */
+			bank_operation_number: string | null;
+			/** La llave de pago. */
+			payment_key: string | null;
+		}[];
+	} | null;
+	/** Qué archivos ya tiene: pdf (GET …/pdf), receipt (GET …/receipt), payment_record (GET …/payment_record, cuando el SAT la tiene como pagada) y financial_statements (GET …/financial_statements, solo en la anual de persona moral). */
 	files: {
 		/** Si ya tiene la declaración en PDF (GET …/pdf). */
 		pdf: boolean;
 		/** Si ya tiene el acuse (GET …/receipt). */
 		receipt: boolean;
+		/** Si ya tiene el registro del pago (GET …/payment_record). */
+		payment_record: boolean;
 		/** Si ya tiene el Excel de estados financieros (GET …/financial_statements), solo en la anual de persona moral. */
 		financial_statements: boolean;
 	};
@@ -3250,13 +3282,13 @@ export interface CompanyReport {
 	customers: {
 		/** Cuántos hay en el periodo. */
 		count: number;
-		/** Su concentración (índice Herfindahl-Hirschman, 0 a 10,000; más de 1,500 es concentrado). */
+		/** Su concentración (índice Herfindahl-Hirschman, 0 a 10,000; más de 1,500 es concentrado), sin el público en general. */
 		hhi: number | null;
-		/** Por ciento del total que suman los 10 principales. */
+		/** Por ciento del total que suman los 10 principales, sin el público en general. */
 		top10_share: number | null;
 		/** Los principales, de mayor a menor: 15, o 5 en executive. */
 		parties: {
-			/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+			/** Su RFC. XAXX010101000 y XEXX010101000 son una sola fila cada uno («Público en general», «Residentes en el extranjero») con todas las personas que facturaron con ese RFC. */
 			tax_id: string;
 			/** Nombre. */
 			name: string | null;
@@ -3274,13 +3306,13 @@ export interface CompanyReport {
 	suppliers: {
 		/** Cuántos hay en el periodo. */
 		count: number;
-		/** Su concentración (índice Herfindahl-Hirschman, 0 a 10,000; más de 1,500 es concentrado). */
+		/** Su concentración (índice Herfindahl-Hirschman, 0 a 10,000; más de 1,500 es concentrado), sin el público en general. */
 		hhi: number | null;
-		/** Por ciento del total que suman los 10 principales. */
+		/** Por ciento del total que suman los 10 principales, sin el público en general. */
 		top10_share: number | null;
 		/** Los principales, de mayor a menor: 15, o 5 en executive. */
 		parties: {
-			/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+			/** Su RFC. XAXX010101000 y XEXX010101000 son una sola fila cada uno («Público en general», «Residentes en el extranjero») con todas las personas que facturaron con ese RFC. */
 			tax_id: string;
 			/** Nombre. */
 			name: string | null;
@@ -13751,6 +13783,18 @@ export class SatDeclarationsResource {
 	 */
 	receipt(id: string, options?: RequestOptions): Promise<Uint8Array> {
 		return this.#client.request({ method: "GET", path: `/v1/sat_declarations/${encodeURIComponent(id)}/receipt`, as: "bytes" }, options);
+	}
+
+	/**
+	 * Descargar el registro del pago de una declaración
+	 *
+	 * La «Información registrada de pagos de contribuciones federales» de una declaración mensual pagada, como la da el SAT: el banco, el día, el importe, el número de operación del banco y la llave de pago. Existe cuando payment.status es paid. No usa timbres.
+	 *
+	 * GET /v1/sat_declarations/{id}/payment_record
+	 * @see https://fiscalisto.com/docs/api/referencia/declaraciones-del-sat/get-sat-declaration-payment-record
+	 */
+	paymentRecord(id: string, options?: RequestOptions): Promise<Uint8Array> {
+		return this.#client.request({ method: "GET", path: `/v1/sat_declarations/${encodeURIComponent(id)}/payment_record`, as: "bytes" }, options);
 	}
 
 	/**
