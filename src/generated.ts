@@ -3141,6 +3141,209 @@ export interface SatFindingCounterparty {
 	}[];
 }
 
+/** El Reporte de la empresa de un emisor en un periodo: su salud fiscal, sus indicadores de riesgo, sus años, sus clientes y proveedores, sus socios y los avisos de sus contrapartes. */
+export interface CompanyReport {
+	/** Siempre company_report. */
+	object: "company_report";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Su RFC. */
+	tax_id: string;
+	/** Su razón social, o null si Fiscalisto no la conoce. */
+	name: string | null;
+	/** El primer día del periodo (AAAA-MM-DD). */
+	date_gte: string;
+	/** El último día del periodo (AAAA-MM-DD), hoy a lo más. */
+	date_lte: string;
+	/** full: todo; executive: los indicadores principales y 5 clientes y proveedores. */
+	version: "full" | "executive";
+	/** La salud fiscal: una calificación de 0 a 1,000 que explica cada punto. */
+	fiscal_health: {
+		/** De 0 a 1,000; null si ningún factor tuvo datos. */
+		score: number | null;
+		/** attention (menos de 250), fair (250 a 499), good (500 a 749) o excellent (750 o más). */
+		band: "attention" | "fair" | "good" | "excellent" | null;
+		/** Factores con datos. */
+		factors_used: number;
+		/** Todos los factores. */
+		factors_total: number;
+		/** Cada factor, con su razón. */
+		factors: {
+			/** cumplimiento, listas, declaraciones, contrapartes, cancelaciones, concentracion, cobranza, buzon o crecimiento. */
+			key: string;
+			/** Su nombre, como en la app. */
+			label: string;
+			/** Los puntos que puede dar. */
+			max_points: number;
+			/** Los que dio; null sin datos (no cuenta en la calificación). */
+			points: number | null;
+			/** Por qué dio esos puntos. */
+			reason: string;
+			/** Qué daría los que faltan, o null si dio todos. */
+			to_improve: string | null;
+		}[];
+	};
+	/** Los indicadores de riesgo, cada uno contra su umbral. */
+	indicators: {
+		/** El indicador (el de PATCH del umbral en la app). */
+		key: string;
+		/** Su nombre, como en la app. */
+		label: string;
+		/** ok, risk (pasa el umbral) o no_data. */
+		state: "ok" | "risk" | "no_data";
+		/** La cifra: por ciento 0 a 100, HHI, cuántos, pesos o días; null sin datos. */
+		value: number | null;
+		/** La cifra en palabras («HHI 1,954», «3 %»). */
+		display: string;
+		/** Desde dónde se marca en riesgo. */
+		threshold: number | null;
+		/** El umbral es el que puso la empresa, no el de Fiscalisto. */
+		custom_threshold: boolean;
+	}[];
+	/** Los años lado a lado: este y al menos los dos anteriores. */
+	years: {
+		/** Año (Ejercicio). */
+		year: number;
+		/** El año en curso, hasta hoy. */
+		partial: boolean;
+		/** Ingresos facturados sin impuestos, no cancelados. */
+		income: number;
+		/** Ingresos facturados y cancelados. */
+		income_cancelled: number;
+		/** Por ciento de ingresos en PUE. */
+		cash_share: number | null;
+		/** Por ciento de ingresos en PPD. */
+		credit_share: number | null;
+		/** Por ciento de lo PPD ya cobrado (con complemento). */
+		collected_share: number | null;
+		/** Días promedio (ponderados) de la factura al cobro. */
+		days_to_collect: number | null;
+		/** Gastos recibidos sin impuestos, no cancelados. */
+		expenses: number;
+		/** Gastos recibidos y cancelados. */
+		expenses_cancelled: number;
+		/** Por ciento de lo PPD ya pagado. */
+		paid_share: number | null;
+		/** Días promedio de la factura al pago. */
+		days_to_pay: number | null;
+		/** Nómina que timbró. */
+		payroll_paid: number;
+		/** Ingresos menos gastos y nómina. */
+		profit: number;
+		/** Lo que queda, por ciento de ingresos. */
+		margin: number | null;
+	}[];
+	/** Totales del periodo, en pesos. */
+	totals: {
+		/** Ingresos del periodo, netos de notas de crédito. */
+		income: number;
+		/** Gastos del periodo, netos de notas de crédito. */
+		expenses: number;
+		/** Lo que le deben sus clientes del periodo. */
+		receivable: number;
+		/** Lo que debe a sus proveedores del periodo. */
+		payable: number;
+	};
+	/** Sus clientes del periodo. */
+	customers: {
+		/** Cuántos hay en el periodo. */
+		count: number;
+		/** Su concentración (índice Herfindahl-Hirschman, 0 a 10,000; más de 1,500 es concentrado). */
+		hhi: number | null;
+		/** Por ciento del total que suman los 10 principales. */
+		top10_share: number | null;
+		/** Los principales, de mayor a menor: 15, o 5 en executive. */
+		parties: {
+			/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+			tax_id: string;
+			/** Nombre. */
+			name: string | null;
+			/** Lo facturado en el periodo, sin impuestos. */
+			total: number;
+			/** Por ciento del total. */
+			share: number;
+			/** Cuántas facturas del periodo. */
+			invoices: number;
+			/** Lo pendiente de cobrar o pagar. */
+			balance: number;
+		}[];
+	};
+	/** Sus proveedores del periodo. */
+	suppliers: {
+		/** Cuántos hay en el periodo. */
+		count: number;
+		/** Su concentración (índice Herfindahl-Hirschman, 0 a 10,000; más de 1,500 es concentrado). */
+		hhi: number | null;
+		/** Por ciento del total que suman los 10 principales. */
+		top10_share: number | null;
+		/** Los principales, de mayor a menor: 15, o 5 en executive. */
+		parties: {
+			/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+			tax_id: string;
+			/** Nombre. */
+			name: string | null;
+			/** Lo facturado en el periodo, sin impuestos. */
+			total: number;
+			/** Por ciento del total. */
+			share: number;
+			/** Cuántas facturas del periodo. */
+			invoices: number;
+			/** Lo pendiente de cobrar o pagar. */
+			balance: number;
+		}[];
+	};
+	/** De los CFDI de retenciones por dividendos (clave 14), hasta 20 de cada lado; null en executive. */
+	shareholders: {
+		/** A quién pagó dividendos: sus socios. */
+		paid_to: {
+			/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+			tax_id: string;
+			/** Nombre. */
+			name: string | null;
+			/** Los dividendos de sus CFDI de retenciones, en pesos. */
+			total: number;
+			/** El día del más reciente. */
+			last_date: string;
+			/** Cuántos CFDI de retenciones. */
+			retentions: number;
+		}[];
+		/** Quién le pagó dividendos: dónde tiene acciones. */
+		received_from: {
+			/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+			tax_id: string;
+			/** Nombre. */
+			name: string | null;
+			/** Los dividendos de sus CFDI de retenciones, en pesos. */
+			total: number;
+			/** El día del más reciente. */
+			last_date: string;
+			/** Cuántos CFDI de retenciones. */
+			retentions: number;
+		}[];
+	} | null;
+	/** Clientes y proveedores que publicaron en los últimos 13 meses su liquidación, fusión, escisión, transformación o reducción de capital en las Publicaciones de Sociedades Mercantiles de la Secretaría de Economía; null en executive. */
+	counterparty_notices: {
+		/** El RFC del cliente o proveedor. */
+		tax_id: string;
+		/** Su nombre en sus facturas. */
+		name: string | null;
+		/** customer (cliente) o supplier (proveedor). */
+		side: "customer" | "supplier";
+		/** Qué publicó («Aviso de liquidación», «Fusión»…). */
+		type: string;
+		/** Su grupo de publicaciones. */
+		group: string | null;
+		/** El día que se publicó (AAAA-MM-DD). */
+		date: string;
+		/** Su número de publicación. */
+		number: string;
+		/** Su PDF, cuando ya se conoce. */
+		pdf_url: string | null;
+	}[] | null;
+}
+
 /** Un proveedor del emisor en el periodo: cuánto le facturó, cuánto de eso tiene su evidencia completa (acuerdo, entrega y pago) y, si está en la lista 69-B, su plazo. */
 export interface MaterialitySupplier {
 	/** Su RFC (el mismo que tax_id). */
@@ -8800,6 +9003,18 @@ export interface ListSatFindingCounterpartiesParams {
 	code?: string;
 }
 
+/** Los parámetros de GET /v1/company_report. */
+export interface GetCompanyReportParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Desde este día (AAAA-MM-DD). */
+	date_gte?: string;
+	/** Hasta este día (AAAA-MM-DD, completo; hoy a lo más). */
+	date_lte?: string;
+	/** full (por omisión) o executive: solo la calificación, los indicadores principales, los años y 5 clientes y proveedores. */
+	version?: "full" | "executive";
+}
+
 /** Los parámetros de GET /v1/materiality_suppliers. */
 export interface ListMaterialitySuppliersParams {
 	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
@@ -12719,6 +12934,26 @@ export class SatFindingCounterpartiesResource {
 	}
 }
 
+/** Cumplimiento SAT: fiscalisto.companyReport. */
+export class CompanyReportResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ver el reporte de la empresa
+	 *
+	 * Como Impuestos y SAT › Reporte de la empresa en la app: la salud fiscal del emisor en una calificación de 0 a 1,000 con la razón de cada factor, los indicadores de riesgo contra su umbral, los años lado a lado (ingresos, gastos, PUE y PPD, días de cobro y pago, margen), sus principales clientes y proveedores con su concentración (HHI), sus socios por los CFDI de retenciones por dividendos y los clientes y proveedores que publicaron su liquidación o fusión. Sale de lo que Fiscalisto ya tiene: no consulta al SAT y no usa timbres. Sin fechas, los últimos 12 meses.
+	 *
+	 * GET /v1/company_report
+	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/get-company-report
+	 */
+	get(params?: GetCompanyReportParams, options?: RequestOptions): Promise<CompanyReport> {
+		return this.#client.request({ method: "GET", path: "/v1/company_report", query: params }, options);
+	}
+}
+
 /** Cumplimiento SAT: fiscalisto.materialitySuppliers. */
 export class MaterialitySuppliersResource {
 	readonly #client: Client;
@@ -14403,6 +14638,7 @@ export class FiscalistoApi extends Core {
 	readonly satMailboxMessages = new SatMailboxMessagesResource(this);
 	readonly satFindings = new SatFindingsResource(this);
 	readonly satFindingCounterparties = new SatFindingCounterpartiesResource(this);
+	readonly companyReport = new CompanyReportResource(this);
 	readonly materialitySuppliers = new MaterialitySuppliersResource(this);
 	readonly materialityInvoices = new MaterialityInvoicesResource(this);
 	readonly warehouses = new WarehousesResource(this);
