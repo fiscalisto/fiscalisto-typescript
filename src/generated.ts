@@ -2437,6 +2437,116 @@ export interface SatDeclarationCalendar {
 	}[];
 }
 
+/** Lo que el SAT precargará en la declaración anual de una persona física: sus sueldos y retenciones, y sus deducciones personales. */
+export interface SatAnnualPreload {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "sat_annual_preload";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El ejercicio de la anual. */
+	year: number;
+	/** Lo que dice el visor de nómina del SAT: lo que le pagaron sus patrones y el ISR que le retuvieron, según sus recibos de nómina. null si aún no se lee. */
+	payroll: {
+		/** Hasta qué día tiene procesados el SAT los recibos (AAAA-MM-DD). */
+		updated_on: string | null;
+		/** Cuándo se leyó del SAT. */
+		read_at: string;
+		/** Los totales del ejercicio de todos sus patrones. */
+		concepts: {
+			/** La clave del SAT: PIRA1 ingresos por asimilados, PISR1 ISR retenido, y las de sueldos y salarios. */
+			code: string;
+			/** El grupo en que el SAT la muestra. */
+			group: string;
+			/** Su nombre en el SAT. */
+			title: string;
+			/** El monto del ejercicio, en pesos. */
+			amount: number;
+		}[];
+		/** Cada patrón (retenedor) con sus totales. */
+		employers: {
+			/** El RFC del patrón. */
+			tax_id: string;
+			/** Su nombre o razón social. */
+			name: string;
+			/** Sus totales del ejercicio por clave. */
+			concepts: {
+				/** La clave del SAT, como en concepts. */
+				code: string;
+				/** Su nombre en el SAT. */
+				title: string;
+				/** El monto del ejercicio de ese patrón, en pesos. */
+				amount: number;
+			}[];
+		}[];
+	} | null;
+	/** Lo que dice el visor de deducciones personales del SAT. null si aún no se lee. */
+	personal_deductions: {
+		/** Cuándo actualizó el SAT el visor. */
+		updated_at: string | null;
+		/** Cuándo se leyó del SAT. */
+		read_at: string;
+		/** Las deducciones personales que el SAT precarga. */
+		total_taken: number;
+		/** Lo que podría deducirse y el SAT no toma (gastos factibles de ser deducción personal). */
+		total_possible: number;
+		/** Lo que toma, por tipo de deducción. */
+		taken: {
+			/** La clave del tipo de deducción del SAT (A a J). */
+			code: string;
+			/** Su nombre en el SAT. */
+			description: string;
+			/** Cuántos CFDI. */
+			invoices: number;
+			/** La suma, en pesos. */
+			total: number;
+		}[];
+		/** Lo que no toma, por el tipo de deducción que parece. */
+		possible: {
+			/** La clave del tipo de deducción del SAT (A a J). */
+			code: string;
+			/** Su nombre en el SAT. */
+			description: string;
+			/** Cuántos CFDI. */
+			invoices: number;
+			/** La suma, en pesos. */
+			total: number;
+		}[];
+		/** Cada CFDI que el visor considera. */
+		invoices: {
+			/** El folio fiscal. */
+			uuid: string;
+			/** El RFC de quien lo emitió. */
+			issuer_tax_id: string;
+			/** Su nombre. */
+			issuer_name: string;
+			/** Su fecha de emisión (AAAA-MM-DD). */
+			date: string | null;
+			/** Su total, en pesos. */
+			total: number;
+			/** La forma de pago, como la da el SAT. */
+			payment_form: string | null;
+			/** El método de pago, como lo da el SAT. */
+			payment_method: string | null;
+			/** La clave de producto o servicio. */
+			product_code: string | null;
+			/** Sus conceptos. */
+			description: string | null;
+			/** El tipo de deducción en que lo puso el SAT (A a J), o L si no lo clasificó y podría deducirse. */
+			deduction_code: string | null;
+			/** Ese tipo, como lo nombra el SAT. */
+			deduction_type: string | null;
+			/** Si no lo tomó (L), el tipo que parece; null si lo tomó. */
+			possible_code: string | null;
+			/** Por qué no lo toma, o lo que el SAT observa al tomarlo, en sus palabras. */
+			reasons: string[];
+			/** Si es una aportación o depósito para el retiro que reportó su banco (sin CFDI), cuál; null si es un CFDI. */
+			retirement_deposit: string | null;
+		}[];
+	} | null;
+}
+
 /** Una sucursal del emisor: otro lugar desde donde factura, con su código postal (LugarExpedicion), su dirección en el PDF, sus series y, si quiere, su propia marca (nombre comercial, logo, color y estilo del PDF). */
 export interface Branch {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
@@ -9453,6 +9563,14 @@ export interface GetSatDeclarationCalendarParams {
 	year?: number;
 }
 
+/** Los parámetros de GET /v1/sat_declarations/annual_preload. */
+export interface GetSatAnnualPreloadParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** El ejercicio, como 2025. Por omisión, el anterior (el que se declara). */
+	year?: number;
+}
+
 export interface CreateTicketParams {
 	/** El emisor (iss_…) que vendió. Por omisión, su único emisor. */
 	issuer?: string;
@@ -13755,6 +13873,18 @@ export class SatDeclarationsResource {
 	 */
 	calendar(params?: GetSatDeclarationCalendarParams, options?: RequestOptions): Promise<SatDeclarationCalendar> {
 		return this.#client.request({ method: "GET", path: "/v1/sat_declarations/calendar", query: params }, options);
+	}
+
+	/**
+	 * Ver la precarga de la anual de una persona física
+	 *
+	 * Lo que el SAT precargará en la declaración anual de un emisor persona física, de sus visores: los sueldos o asimilados y el ISR que le retuvieron, por patrón, y las deducciones personales que toma de sus facturas, con las que podrían deducirse y no toma, y por qué. Se lee con la e.firma en cada consulta (POST /v1/sat_declarations/refresh), del ejercicio anterior y del actual; no usa timbres. Un emisor persona moral recibe parameter_invalid.
+	 *
+	 * GET /v1/sat_declarations/annual_preload
+	 * @see https://fiscalisto.com/docs/api/referencia/declaraciones-del-sat/get-sat-annual-preload
+	 */
+	annualPreload(params?: GetSatAnnualPreloadParams, options?: RequestOptions): Promise<SatAnnualPreload> {
+		return this.#client.request({ method: "GET", path: "/v1/sat_declarations/annual_preload", query: params }, options);
 	}
 
 	/**
