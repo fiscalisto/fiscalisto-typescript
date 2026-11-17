@@ -2302,6 +2302,8 @@ export interface SatDeclaration {
 			amount_due: number | null;
 			/** La cantidad a pagar. */
 			amount_to_pay: number | null;
+			/** El saldo a favor que dice el acuse (la anual de personas físicas); null si no lo trae. */
+			in_favor: number | null;
 		}[];
 		/** Total en la moneda del comprobante (Total). */
 		total: number | null;
@@ -2324,6 +2326,8 @@ export interface SatDeclaration {
 			amount_due: number | null;
 			/** La cantidad a pagar. */
 			amount_to_pay: number | null;
+			/** El saldo a favor, de la declaración o del acuse; null si no hay o no se pudo leer. */
+			in_favor: number | null;
 			/** Sus cifras con nombres fijos. ISR: income, invoiced_income, income_ytd, deductions, profit_coefficient, taxable_profit, losses_applied, tax_base, tax_caused, prior_payments, withheld. IVA: taxable_16, taxable_0, exempt, charged, paid_16, creditable, withheld, balance_applied. Salarios: workers, payments, exempt, withheld. Todas: surcharges, inflation, paid_before, due, in_favor, to_pay. null si no viene o no se pudo leer. */
 			figures: Record<string, number | null>;
 		}[];
