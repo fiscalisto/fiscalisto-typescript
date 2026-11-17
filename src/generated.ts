@@ -3268,6 +3268,8 @@ export interface CompanyReport {
 		payroll_paid: number;
 		/** Sueldos que recibió de sus patrones (recibos de nómina a su RFC), antes de deducciones: lo que gana una persona física asalariada. */
 		payroll_received: number;
+		/** Lo que de verdad recibió de esos sueldos: el total de los recibos, después del ISR retenido y las deducciones. */
+		payroll_received_net: number;
 		/** Ingresos menos gastos y nómina. */
 		profit: number;
 		/** Lo que queda, por ciento de ingresos. */
