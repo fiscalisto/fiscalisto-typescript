@@ -3260,8 +3260,10 @@ export interface CompanyReport {
 		paid_share: number | null;
 		/** Días promedio de la factura al pago. */
 		days_to_pay: number | null;
-		/** Nómina que timbró. */
+		/** Nómina que timbró: lo que percibieron sus trabajadores, antes de deducciones. */
 		payroll_paid: number;
+		/** Sueldos que recibió de sus patrones (recibos de nómina a su RFC), antes de deducciones: lo que gana una persona física asalariada. */
+		payroll_received: number;
 		/** Ingresos menos gastos y nómina. */
 		profit: number;
 		/** Lo que queda, por ciento de ingresos. */
