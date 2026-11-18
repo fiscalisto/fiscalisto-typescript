@@ -3670,6 +3670,72 @@ export interface Ticket {
 	created_at: string | null;
 }
 
+/** Cómo se ve el portal además de su tema, color y esquinas (Autofactura › Cómo se ve el portal). */
+export interface PortalStyle {
+	/** checkout: la factura se llena junto al formulario. compact: solo el formulario, la factura plegada. card: el formulario en una tarjeta al centro. */
+	layout: "checkout" | "compact" | "card";
+	/** comfortable o compact. */
+	density: "comfortable" | "compact";
+	/** Qué dice arriba: name_rfc, name, logo_name o logo. */
+	header: "logo" | "name" | "name_rfc" | "logo_name";
+	/** El tamaño del logo: s, m o l. */
+	logo_size: "s" | "m" | "l";
+	/** La forma del logo: square, rounded o circle. */
+	logo_shape: "square" | "rounded" | "circle";
+	/** La letra: system o una de Google Fonts. */
+	font: string;
+	/** La letra de los títulos, o null para la misma del texto. */
+	heading_font: string | null;
+	/** El tamaño del título: s, m o l. */
+	heading_size: "s" | "m" | "l";
+	/** Los bordes: none, subtle o strong. */
+	borders: "none" | "subtle" | "strong";
+	/** La sombra: none, soft o strong. */
+	shadow: "none" | "soft" | "strong";
+	/** Las formas de dar sus datos además de escribirlos. */
+	ways: {
+		/** Subir la constancia (PDF). */
+		constancia: boolean;
+		/** Escanear el QR de la constancia. */
+		qr: boolean;
+		/** Buscar los datos con RFC e idCIF. */
+		cif: boolean;
+		/** «Ya le hemos facturado antes»: RFC y correo. */
+		recall: boolean;
+		/** Facturar a clientes en el extranjero. */
+		abroad: boolean;
+	};
+	/** Si no se factura sin correo. */
+	email_required: boolean;
+	/** Si dice hasta cuándo se puede facturar. */
+	show_deadline: boolean;
+	/** El botón al terminar para volver a su sitio, o null. */
+	back: {
+		/** El texto del botón. */
+		label: string;
+		/** A dónde lleva (https). */
+		url: string;
+	} | null;
+	/** CSS propio, ya limpio. */
+	css: string;
+	/** Los colores de la página; null usa el del tema. */
+	colors: {
+		/** El fondo de la página, o null. */
+		background: string | null;
+		/** El fondo de los campos y tarjetas, o null. */
+		card: string | null;
+		/** El texto, o null. */
+		text: string | null;
+		/** El texto de los botones, o null. */
+		button_text: string | null;
+	};
+	/** Los textos propios por llave (step_ticket, submit, success_title…), cada uno con es y en. Uno que falta lleva el de Fiscalisto. */
+	texts: Record<string, {
+		es?: string;
+		en?: string;
+	}>;
+}
+
 /** El portal de autofactura de un emisor y sus reglas. */
 export interface SelfInvoicing {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -3702,6 +3768,8 @@ export interface SelfInvoicing {
 	portal_accent: string | null;
 	/** Las esquinas del portal en píxeles (0 a 24), o null para las de Fiscalisto. */
 	portal_radius: number | null;
+	/** Cómo se ve el portal además de su tema, color y esquinas: acomodo, encabezado, colores, letra, textos, formas de dar los datos, botón para volver y CSS. */
+	portal_style: PortalStyle;
 	/** Cuando se factura una persona moral que retiene (1.25% de ISR en RESICO, o lo del producto). keep_total: la base crece y la factura suma lo que se pagó. subtract: la base es la del ticket y el total es lo pagado menos la retención. */
 	retention_mode: "keep_total" | "subtract";
 	/** La serie de las facturas que se emiten desde el portal y desde un ticket, como AF, o null para la serie de facturas del emisor. La factura global no la usa. */
@@ -9752,6 +9820,140 @@ export interface UpdateSelfInvoicingParams {
 	portal_accent?: string | null;
 	/** Lo redondo de las esquinas del portal, en píxeles (0 a 24). `null` pone el de Fiscalisto (10). */
 	portal_radius?: number | null;
+	/** Todo lo demás de cómo se ve el portal (Autofactura › Cómo se ve el portal): acomodo, encabezado, colores, letra, bordes, textos en español e inglés, las formas de dar los datos, el botón para volver a su sitio y CSS propio. Mande solo lo que cambia: `colors`, `ways` y `texts` se combinan por llave (un texto en `null` lo quita); lo demás se reemplaza. `null` regresa todo al diseño de Fiscalisto. La leyenda «Facturado con Fiscalisto» no se puede ocultar. */
+	portal_style?: {
+		/** `checkout` (por omisión): la factura se llena junto al formulario. `compact`: solo el formulario, la factura plegada. `card`: el formulario en una tarjeta al centro. */
+		layout?: "checkout" | "compact" | "card";
+		/** `comfortable` o `compact`. */
+		density?: "comfortable" | "compact";
+		/** Qué dice arriba: `name_rfc` (por omisión), `name`, `logo_name` o `logo`. El logo y el nombre salen de Marca y documentos. */
+		header?: "logo" | "name" | "name_rfc" | "logo_name";
+		/** El tamaño del logo: `s`, `m` o `l`. */
+		logo_size?: "s" | "m" | "l";
+		/** La forma del logo: `square`, `rounded` o `circle`. */
+		logo_shape?: "square" | "rounded" | "circle";
+		/** Los colores de la página; cada uno se combina con lo guardado. */
+		colors?: {
+			/** El fondo de la página, como `#f5f1e8`; `null` usa el del tema. */
+			background?: string | null;
+			/** El fondo de los campos y tarjetas, como `#f5f1e8`; `null` usa el del tema. */
+			card?: string | null;
+			/** El texto, como `#f5f1e8`; `null` usa el del tema. */
+			text?: string | null;
+			/** El texto de los botones, como `#f5f1e8`; `null` usa el del tema. */
+			button_text?: string | null;
+		};
+		/** La letra: `system` (por omisión) o una de Google Fonts. */
+		font?: "system" | "inter" | "manrope" | "dm-sans" | "work-sans" | "nunito" | "space-grotesk" | "montserrat" | "lora" | "merriweather" | "playfair-display" | "cormorant-garamond";
+		/** La letra de los títulos; `null`, la misma del texto. */
+		heading_font?: "system" | "inter" | "manrope" | "dm-sans" | "work-sans" | "nunito" | "space-grotesk" | "montserrat" | "lora" | "merriweather" | "playfair-display" | "cormorant-garamond" | null;
+		/** El tamaño del título: `s`, `m` o `l`. */
+		heading_size?: "s" | "m" | "l";
+		/** Los bordes: `none`, `subtle` (por omisión) o `strong`. */
+		borders?: "none" | "subtle" | "strong";
+		/** La sombra: `none`, `soft` (por omisión) o `strong`. */
+		shadow?: "none" | "soft" | "strong";
+		/** Los textos, cada uno con `es` y `en`, combinados por llave con lo guardado. El título, el mensaje y dónde viene el código en español son `portal_title`, `portal_message` y `code_hint`; aquí van en inglés. */
+		texts?: {
+			/** El título (en español es `portal_title`); `null` vuelve al de Fiscalisto. */
+			title?: {
+				/** El título (en español es `portal_title`) en inglés. */
+				en?: string;
+			} | null;
+			/** El mensaje bajo el título (en español es `portal_message`); `null` vuelve al de Fiscalisto. */
+			message?: {
+				/** El mensaje bajo el título (en español es `portal_message`) en inglés. */
+				en?: string;
+			} | null;
+			/** Dónde viene el código (en español es `code_hint`); `null` vuelve al de Fiscalisto. */
+			code_hint?: {
+				/** Dónde viene el código (en español es `code_hint`) en inglés. */
+				en?: string;
+			} | null;
+			/** El nombre del paso 1; `null` vuelve al de Fiscalisto. */
+			step_ticket?: {
+				/** El nombre del paso 1 en español. */
+				es?: string;
+				/** El nombre del paso 1 en inglés. */
+				en?: string;
+			} | null;
+			/** El nombre del paso 2; `null` vuelve al de Fiscalisto. */
+			step_data?: {
+				/** El nombre del paso 2 en español. */
+				es?: string;
+				/** El nombre del paso 2 en inglés. */
+				en?: string;
+			} | null;
+			/** El nombre del paso 3; `null` vuelve al de Fiscalisto. */
+			step_invoice?: {
+				/** El nombre del paso 3 en español. */
+				es?: string;
+				/** El nombre del paso 3 en inglés. */
+				en?: string;
+			} | null;
+			/** El botón para buscar el ticket; `null` vuelve al de Fiscalisto. */
+			find_button?: {
+				/** El botón para buscar el ticket en español. */
+				es?: string;
+				/** El botón para buscar el ticket en inglés. */
+				en?: string;
+			} | null;
+			/** La pregunta de cómo dar los datos; `null` vuelve al de Fiscalisto. */
+			how_question?: {
+				/** La pregunta de cómo dar los datos en español. */
+				es?: string;
+				/** La pregunta de cómo dar los datos en inglés. */
+				en?: string;
+			} | null;
+			/** El botón para facturar; `null` vuelve al de Fiscalisto. */
+			submit?: {
+				/** El botón para facturar en español. */
+				es?: string;
+				/** El botón para facturar en inglés. */
+				en?: string;
+			} | null;
+			/** El título al terminar; `null` vuelve al de Fiscalisto. */
+			success_title?: {
+				/** El título al terminar en español. */
+				es?: string;
+				/** El título al terminar en inglés. */
+				en?: string;
+			} | null;
+			/** El mensaje al terminar; `null` vuelve al de Fiscalisto. */
+			success_message?: {
+				/** El mensaje al terminar en español. */
+				es?: string;
+				/** El mensaje al terminar en inglés. */
+				en?: string;
+			} | null;
+		};
+		/** Las formas de dar sus datos además de escribirlos. Todas `true` por omisión. */
+		ways?: {
+			/** Ofrecer subir la constancia (PDF). */
+			constancia?: boolean;
+			/** Ofrecer escanear el QR de la constancia. */
+			qr?: boolean;
+			/** Ofrecer buscar los datos con RFC e idCIF. */
+			cif?: boolean;
+			/** Ofrecer «Ya le hemos facturado antes» (RFC y correo). */
+			recall?: boolean;
+			/** Ofrecer facturar a clientes en el extranjero. */
+			abroad?: boolean;
+		};
+		/** `true`: no se factura sin correo. Por omisión `false`. */
+		email_required?: boolean;
+		/** Decir hasta cuándo se puede facturar. Por omisión `true`. */
+		show_deadline?: boolean;
+		/** Un botón al terminar para volver a su sitio; `null` lo quita. */
+		back?: {
+			/** El texto del botón. */
+			label: string;
+			/** A dónde lleva (https). */
+			url: string;
+		} | null;
+		/** CSS propio, dentro del portal y sin llegar a su pie. Se quitan @import, url() y lo que cargue o ejecute algo; la leyenda «Facturado con Fiscalisto» se queda. */
+		css?: string;
+	} | null;
 	/** Cuando se factura una persona moral y retiene (1.25% de ISR a un emisor en RESICO, artículo 113-J de la LISR, o lo que diga el producto): `keep_total` (por omisión), la base crece para que la factura sume lo que se pagó; `subtract`, la base es la del ticket y la retención se resta, así que el total de la factura es menor a lo pagado. */
 	retention_mode?: "keep_total" | "subtract";
 	/** La serie de las facturas que los compradores se hacen en el portal (y las que se emiten desde un ticket), como `AF`: hasta 25 caracteres, sin `|`. `null` o una vacía usa la serie de facturas del emisor. La factura global sigue con la serie de siempre. */
