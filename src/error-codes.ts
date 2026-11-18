@@ -185,6 +185,8 @@ export const ErrorCode = {
 	ResourceMissing: "resource_missing",
 	/** La constancia de retenciones no cumple una regla del SAT. No se usó ningún timbre. */
 	RetentionInvalid: "retention_invalid",
+	/** Solo quien emitió la constancia puede cancelarla; esta la recibió el emisor. */
+	RetentionNotIssued: "retention_not_issued",
 	/** La acción es para constancias timbradas. */
 	RetentionNotStamped: "retention_not_stamped",
 	/** El PAC o el SAT no aceptaron la constancia; sat_code trae su código. */

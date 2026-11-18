@@ -4155,6 +4155,63 @@ export interface CrossCheckCfdi {
 	}[];
 	/** Lo que Impuestos agrega sobre los CFDI: en vat_creditable, la proporción de gastos comunes, el IVA retenido enterado del mes anterior y las importaciones; 0 en las demás. */
 	adjustment: number;
+	/** Qué CFDI explicarían la diferencia; null si coincide. */
+	explanation: {
+		/** La diferencia. */
+		difference: number;
+		/** Los CFDI cuyo effect suma la diferencia; null si ninguno. */
+		exact: {
+			/** Los CFDI de la combinación. */
+			cfdi: {
+				/** El folio fiscal (UUID) del CFDI; el de la factura PPD en un pago. */
+				uuid: string | null;
+				/** La fecha del CFDI, o la del pago (AAAA-MM-DD). */
+				date: string | null;
+				/** El RFC de la contraparte: el cliente en lo emitido, el proveedor en lo recibido. */
+				tax_id: string | null;
+				/** El nombre de la contraparte, como viene en el CFDI. */
+				name: string | null;
+				/** Lo que aporta a la cifra, en pesos; negativo en una nota de crédito. */
+				amount: number;
+				/** Cuánto cambiaría invoiced. */
+				effect: number;
+				/** Por qué lo explicaría. */
+				reason: "cancelled" | "ppd_not_collected" | "other_month" | "month_edge" | "credit_note" | "ppd_payment" | "duplicate" | "left_out" | "withholding_certificate";
+				/** true si está en cfdi. */
+				in_invoiced: boolean;
+			}[];
+			/** Lo que queda (redondeo). */
+			remainder: number;
+		} | null;
+		/** true si varias combinaciones la suman. */
+		ambiguous: boolean;
+		/** Las posibles causas, por motivo. */
+		causes: {
+			/** El motivo que comparten. */
+			reason: "cancelled" | "ppd_not_collected" | "other_month" | "month_edge" | "credit_note" | "ppd_payment" | "duplicate" | "left_out" | "withholding_certificate";
+			/** La suma de su effect. */
+			total: number;
+			/** Sus CFDI. */
+			cfdi: {
+				/** El folio fiscal (UUID) del CFDI; el de la factura PPD en un pago. */
+				uuid: string | null;
+				/** La fecha del CFDI, o la del pago (AAAA-MM-DD). */
+				date: string | null;
+				/** El RFC de la contraparte: el cliente en lo emitido, el proveedor en lo recibido. */
+				tax_id: string | null;
+				/** El nombre de la contraparte, como viene en el CFDI. */
+				name: string | null;
+				/** Lo que aporta a la cifra, en pesos; negativo en una nota de crédito. */
+				amount: number;
+				/** Cuánto cambiaría invoiced. */
+				effect: number;
+				/** Por qué lo explicaría. */
+				reason: "cancelled" | "ppd_not_collected" | "other_month" | "month_edge" | "credit_note" | "ppd_payment" | "duplicate" | "left_out" | "withholding_certificate";
+				/** true si está en cfdi. */
+				in_invoiced: boolean;
+			}[];
+		}[];
+	} | null;
 }
 
 /** La DIOT de un mes: lo pagado a cada proveedor, por tipo de operación. */
@@ -9501,6 +9558,13 @@ export interface ListSatRetentionsParams {
 	month?: number;
 }
 
+export interface CancelSatRetentionParams {
+	/** Motivo de cancelación (c_MotivoCancelacion): 01 con errores con relación (lleva substitution), 02 con errores sin relación (por omisión), 03 no se llevó a cabo, 04 solo en una factura global, cuando una venta incluida se facturó a nombre del cliente. */
+	motive?: "01" | "02" | "03" | "04";
+	/** El comprobante que sustituye a este (su id o su UUID), con el motivo 01. */
+	substitution?: string;
+}
+
 /** Los parámetros de GET /v1/portal_suppliers. */
 export interface ListPortalSuppliersParams {
 	/** Cuántos por página, de 1 a 100. Por omisión 10. */
@@ -13779,6 +13843,18 @@ export class SatRetentionsResource {
 	pdf(id: string, options?: RequestOptions): Promise<Uint8Array> {
 		return this.#client.request({ method: "GET", path: `/v1/sat_retentions/${encodeURIComponent(id)}/pdf`, as: "bytes" }, options);
 	}
+
+	/**
+	 * Cancelar una constancia de retenciones emitida
+	 *
+	 * Una que el emisor emitió (direction issued), también si la timbró desde otro sistema con el mismo PAC y solo llegó del SAT. Se cancela en el momento (no espera aceptación) y no usa timbres. Una que timbró otro PAC se cancela en el portal del SAT: contesta cancellation_failed y lo explica. Con motive 01, substitution es la constancia que la sustituye (su srt_… o su UUID).
+	 *
+	 * POST /v1/sat_retentions/{id}/cancel
+	 * @see https://fiscalisto.com/docs/api/referencia/descargas-del-sat/cancel-sat-retention
+	 */
+	cancel(id: string, params?: CancelSatRetentionParams, options?: RequestOptions): Promise<SatRetention> {
+		return this.#client.request({ method: "POST", path: `/v1/sat_retentions/${encodeURIComponent(id)}/cancel`, body: params, idempotent: true }, options);
+	}
 }
 
 /** Portal de proveedores: fiscalisto.portalSuppliers. */
@@ -14111,7 +14187,7 @@ export class AccountingResource {
 	/**
 	 * Ver los CFDI de una cifra del cruce
 	 *
-	 * Los CFDI que forman lo facturado (invoiced) de una cifra del cruce de un mes, con los mismos cálculos de Impuestos: cada factura PUE o nota de crédito en su mes y cada factura PPD por lo que se pagó en el mes, con lo que aporta. La suma de cfdi más adjustment es invoiced. Sirve para ver por qué una cifra differs. Gratis: no consulta al SAT.
+	 * Los CFDI que forman lo facturado (invoiced) de una cifra del cruce de un mes, con los mismos cálculos de Impuestos: cada factura PUE o nota de crédito en su mes y cada factura PPD por lo que se pagó en el mes, con lo que aporta. La suma de cfdi más adjustment es invoiced. Sirve para ver por qué una cifra differs: con una diferencia, explanation trae los CFDI cuya combinación la suma (cancelados después, PPD sin cobro en el mes, de los días vecinos de otro mes, notas de crédito, cobros de PPD, repetidos o no declarados) y las posibles causas. Gratis: no consulta al SAT.
 	 *
 	 * GET /v1/accounting/cross_checks/cfdi
 	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-cross-check-cfdi
