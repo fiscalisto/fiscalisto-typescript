@@ -914,6 +914,15 @@ export interface Retention {
 	warnings?: string[];
 	/** Por qué no se pudo mandar el correo; el comprobante sí se timbró. */
 	email_error?: string;
+	/** Solo al timbrar con `replaces`: la constancia que corrige y si se canceló (motivo 01). Si no, `error` dice por qué y se cancela con POST /v1/sat_retentions/{id}/cancel. */
+	replaced?: {
+		/** Folio fiscal que asigna el SAT (UUID del Timbre Fiscal Digital), en mayúsculas. */
+		uuid: string;
+		/** true si la sustituida ya quedó cancelada. false no es definitivo: vea substitutes.cancellation. */
+		canceled: boolean;
+		/** Por qué no se pudo cancelar la anterior; `null` si se canceló. */
+		error: string | null;
+	};
 }
 
 /** Un cliente del catálogo de un emisor. */
@@ -8046,6 +8055,8 @@ export interface CreateRetentionParams {
 		/** Pérdida deducible (MontPerdDed). */
 		loss: number;
 	};
+	/** Folio fiscal (UUID) de la constancia que esta corrige: vigente, del mismo emisor y al mismo receptor (emitida aquí o en otro sistema). Va en CfdiRetenRelacionados (04) y, timbrada esta, la anterior se cancela con el motivo 01; `replaced` dice si se canceló. */
+	replaces?: string;
 	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
 	send_email?: boolean;
 	/** Correo a donde se envía (varios separados por comas). Solo se usa si se pide enviarlo. */
