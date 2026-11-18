@@ -4312,9 +4312,9 @@ export interface StoreConnection {
 	object: "store_connection";
 	/** El emisor dueño de la tienda. */
 	issuer: string;
-	/** shopify, woocommerce, tiendanube, mercadolibre o amazon. */
-	platform: "shopify" | "mercadolibre" | "amazon" | "tiendanube" | "woocommerce";
-	/** El dominio de la tienda (Shopify, WooCommerce), o el id de la tienda en Tiendanube o del vendedor en Mercado Libre y Amazon (al autorizar). */
+	/** shopify, woocommerce, tiendanube, mercadolibre, amazon, mercadopago, conekta u openpay. */
+	platform: "shopify" | "mercadolibre" | "amazon" | "tiendanube" | "woocommerce" | "mercadopago" | "conekta" | "openpay";
+	/** El dominio de la tienda (Shopify, WooCommerce), el id de la tienda en Tiendanube o del vendedor en Mercado Libre y Amazon (al autorizar), el id de la cuenta de Mercado Pago, el ID de comercio de Openpay, o una referencia de la cuenta de Conekta. */
 	shop: string | null;
 	/** El nombre de la tienda según su plataforma, o null. */
 	name: string | null;
@@ -9797,16 +9797,22 @@ export interface GetDiotFileParams {
 export interface CreateStoreConnectionParams {
 	/** El emisor (iss_…) dueño de la tienda. Por omisión, su único emisor. */
 	issuer?: string;
-	/** shopify, woocommerce, mercadolibre, tiendanube o amazon. */
-	platform: "shopify" | "mercadolibre" | "amazon" | "tiendanube" | "woocommerce";
+	/** shopify, woocommerce, mercadolibre, tiendanube, amazon, mercadopago, conekta u openpay. */
+	platform: "shopify" | "mercadolibre" | "amazon" | "tiendanube" | "woocommerce" | "mercadopago" | "conekta" | "openpay";
 	/** Shopify: el dominio de la tienda (mi-tienda.myshopify.com). */
 	shop?: string;
 	/** Shopify: el Client ID de la app de la tienda (Dev Dashboard). */
 	client_id?: string;
 	/** Shopify: el Client secret de esa app; con él se firman los webhooks. Se guarda cifrado y nunca se muestra. */
 	client_secret?: string;
-	/** Shopify, solo apps personalizadas antiguas: su token de la Admin API (shpat_…); client_secret es entonces su API secret key. */
+	/** Mercado Pago: el Access Token de producción (APP_USR-…), en Tus integraciones › su aplicación › Credenciales de producción. Shopify, solo apps personalizadas antiguas: su token de la Admin API (shpat_…); client_secret es entonces su API secret key. Se guarda cifrado y nunca se muestra. */
 	access_token?: string;
+	/** Conekta: la llave privada (key_…). Openpay: la llave privada (sk_…). Se guarda cifrada y nunca se muestra. */
+	private_key?: string;
+	/** Openpay: el ID de comercio (m…). */
+	merchant_id?: string;
+	/** Openpay: true para conectar su comercio de pruebas (sandbox). */
+	sandbox?: boolean;
 	/** WooCommerce: la dirección de la tienda (https://mitienda.com). */
 	site?: string;
 	/** WooCommerce: la Clave de cliente (ck_…) de una llave de la API REST con permisos de Lectura/Escritura. */
@@ -9829,11 +9835,11 @@ export interface CreateStoreConnectionParams {
 		folio_prefix?: string;
 		/** c_FormaPago cuando la forma de pago del pedido no está en payment_forms. Por omisión 04 (Shopify) o 31 (Mercado Libre). */
 		payment_form?: string;
-		/** c_FormaPago por pasarela de Shopify (shopify_payments, paypal, manual…) o tipo de pago de Mercado Libre (credit_card, debit_card, account_money, ticket, bank_transfer). */
+		/** c_FormaPago por pasarela de Shopify (shopify_payments, paypal, manual…) o tipo de pago de Mercado Libre y Mercado Pago (credit_card, debit_card, account_money, ticket, bank_transfer), o de Conekta y Openpay (credit_card, debit_card, cash, spei). */
 		payment_forms?: Record<string, string>;
 		/** Mercado Libre: timbrar en cuanto se paga si el comprador dejó sus datos fiscales completos. Por omisión true. */
 		auto_invoice?: boolean;
-		/** WooCommerce y Tiendanube: mandar al comprador el enlace para facturar (WooCommerce, como nota al cliente del pedido; Tiendanube, por correo). Por omisión true. */
+		/** WooCommerce, Tiendanube, Mercado Pago, Conekta y Openpay: mandar al comprador el enlace para facturar (WooCommerce, como nota al cliente del pedido; los demás, por correo, cuando la plataforma da su correo). Por omisión true. */
 		notify_buyer?: boolean;
 	};
 }
@@ -9863,11 +9869,11 @@ export interface UpdateStoreConnectionParams {
 		folio_prefix?: string;
 		/** c_FormaPago cuando la forma de pago del pedido no está en payment_forms. Por omisión 04 (Shopify) o 31 (Mercado Libre). */
 		payment_form?: string;
-		/** c_FormaPago por pasarela de Shopify (shopify_payments, paypal, manual…) o tipo de pago de Mercado Libre (credit_card, debit_card, account_money, ticket, bank_transfer). */
+		/** c_FormaPago por pasarela de Shopify (shopify_payments, paypal, manual…) o tipo de pago de Mercado Libre y Mercado Pago (credit_card, debit_card, account_money, ticket, bank_transfer), o de Conekta y Openpay (credit_card, debit_card, cash, spei). */
 		payment_forms?: Record<string, string>;
 		/** Mercado Libre: timbrar en cuanto se paga si el comprador dejó sus datos fiscales completos. Por omisión true. */
 		auto_invoice?: boolean;
-		/** WooCommerce y Tiendanube: mandar al comprador el enlace para facturar (WooCommerce, como nota al cliente del pedido; Tiendanube, por correo). Por omisión true. */
+		/** WooCommerce, Tiendanube, Mercado Pago, Conekta y Openpay: mandar al comprador el enlace para facturar (WooCommerce, como nota al cliente del pedido; los demás, por correo, cuando la plataforma da su correo). Por omisión true. */
 		notify_buyer?: boolean;
 	};
 }
