@@ -199,7 +199,7 @@ export interface Balance {
 	object: "balance";
 	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
 	livemode: boolean;
-	/** Timbres disponibles en total. */
+	/** Timbres de sus paquetes, en total: un solo saldo para la API y la app, comprados en Desarrolladores o en Plan y pagos. */
 	available: number;
 	/** true si la cuenta timbra sin usar timbres. */
 	unlimited: boolean;
@@ -214,7 +214,7 @@ export interface Balance {
 		/** Como máximo tantas compras al mes. */
 		max_per_month: number;
 	} | null;
-	/** Los RFC de la empresa (type own) timbran primero con los timbres del mes de su plan y después con `available`. true si, al acabarse `available`, la API sigue timbrando esos RFC con los paquetes de la app de la empresa; los emisores conectados no (Desarrolladores › Timbres y pagos › Si se acaban, usar los timbres de la empresa). false: responde 402 insufficient_balance. */
+	/** Siempre true: los RFC de la empresa (type own) timbran primero con los timbres del mes de su plan y después con `available`, los paquetes de su único saldo (comprados en Desarrolladores o en Plan y pagos). Los emisores conectados usan solo `available`. Se conserva por compatibilidad. */
 	use_plan_timbres: boolean;
 	/** Los timbres del mes del plan de su empresa, que los RFC de la empresa (type own) usan antes que `available`; no se suman a `available`. null si la empresa no tiene un plan de paga con timbres al mes (Gratis o una prueba sin pagar) o en modo de prueba. */
 	plan_timbres: {
@@ -3630,6 +3630,15 @@ export interface Ticket {
 		unit_key: string;
 		/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
 		iva: string | null;
+		/** Sus impuestos locales (los de su producto o los que mandó), incluidos en su total. */
+		local_taxes: {
+			/** true si es una retención local; false si es un traslado. */
+			retention: boolean;
+			/** Nombre del impuesto local (ImpLocTrasladado o ImpLocRetenido), como ISH. */
+			name: string;
+			/** Tasa en por ciento (TasadeTraslado o TasadeRetencion). */
+			rate: number;
+		}[];
 		/** Cantidad (Cantidad). Por omisión 1. */
 		quantity: number;
 		/** Total en la moneda del comprobante (Total). */
@@ -9594,6 +9603,15 @@ export interface CreateTicketParams {
 	unit_key?: string;
 	/** Tasa de IVA incluida en el total. Por omisión 0.16. */
 	iva?: "0" | "0.16" | "0.08" | "exento";
+	/** Impuestos locales incluidos en su total, como el ISH 3.5% de hospedaje, con `product_key` (un producto lleva los suyos). Cada uno se calcula sobre la base de este concepto y la factura los suma por nombre y tasa en el complemento de impuestos locales. */
+	local_taxes?: {
+		/** `false`: un traslado local que se suma (el ISH). `true`: una retención local que el cliente resta (el cedular); la factura global, a público en general, no la lleva. */
+		retention: boolean;
+		/** Su nombre en el CFDI (ImpLocTrasladado o ImpLocRetenido), como «ISH». */
+		name: string;
+		/** La tasa en porcentaje: 3.5 es 3.5%. */
+		rate: number;
+	}[];
 	/** Quién pagó, para reconocer la venta en Tickets. No es el receptor de la factura (eso lo escribe el comprador en el portal) y no se le manda nada. */
 	buyer?: {
 		/** Su nombre o el de su empresa, como lo conoce su sistema. */
@@ -9613,6 +9631,15 @@ export interface CreateTicketParams {
 		unit_key?: string;
 		/** Tasa de IVA incluida en su total. Por omisión 0.16. */
 		iva?: "0" | "0.16" | "0.08" | "exento";
+		/** Impuestos locales incluidos en su total, como el ISH 3.5% de hospedaje, con `product_key` (un producto lleva los suyos). Cada uno se calcula sobre la base de este concepto y la factura los suma por nombre y tasa en el complemento de impuestos locales. */
+		local_taxes?: {
+			/** `false`: un traslado local que se suma (el ISH). `true`: una retención local que el cliente resta (el cedular); la factura global, a público en general, no la lleva. */
+			retention: boolean;
+			/** Su nombre en el CFDI (ImpLocTrasladado o ImpLocRetenido), como «ISH». */
+			name: string;
+			/** La tasa en porcentaje: 3.5 es 3.5%. */
+			rate: number;
+		}[];
 		/** Unidades (noches, piezas). Por omisión 1. */
 		quantity?: number;
 		/** Lo que se cobró por este concepto, impuestos incluidos. */
