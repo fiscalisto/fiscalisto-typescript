@@ -4312,6 +4312,62 @@ export interface TrialBalance {
 	};
 }
 
+/** El auxiliar de cuentas (libro mayor) de un periodo de hasta 12 meses: cada cuenta con su saldo inicial, cada cargo y abono con su póliza y el saldo que deja, y su saldo final. */
+export interface GeneralLedger {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "general_ledger";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El primer mes (AAAA-MM). */
+	from_month: string;
+	/** El último mes (AAAA-MM). */
+	to_month: string;
+	/** Cada cuenta que se movió en el periodo (o la que pidió con account): sus saldos, sus sumas y sus movimientos. */
+	accounts: {
+		/** Qué tipo de objeto es («invoice», «customer»…). */
+		object: "ledger_account";
+		/** Número de empleado (NumEmpleado). */
+		number: string;
+		/** Nombre. */
+		name: string;
+		/** El código agrupador del SAT. */
+		grouping_code: string;
+		/** debit (deudora) o credit (acreedora). */
+		nature: "debit" | "credit";
+		/** El saldo al empezar el mes. */
+		opening_balance: number;
+		/** Los cargos del mes. */
+		debit: number;
+		/** Los abonos del mes. */
+		credit: number;
+		/** El saldo al terminar el mes. */
+		closing_balance: number;
+		/** Cada cargo y abono de la cuenta en el periodo, en el orden de sus pólizas, con el saldo que deja. */
+		movements: {
+			/** Fecha de emisión (Fecha), hora de la Ciudad de México. */
+			date: string;
+			/** La póliza (el mismo id de GET /v1/accounting/journal_entries). */
+			journal_entry: string;
+			/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
+			type: "invoice" | "payment_received" | "payment_made" | "payroll" | "employee_expenses" | "depreciation" | "manual" | "asset_disposal";
+			/** Descripción. */
+			description: string;
+			/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+			tax_id: string | null;
+			/** Folio fiscal que asigna el SAT (UUID del Timbre Fiscal Digital), en mayúsculas. */
+			uuid: string | null;
+			/** El cargo. */
+			debit: number;
+			/** El abono. */
+			credit: number;
+			/** El saldo de la cuenta después de este movimiento, en su naturaleza. */
+			balance: number;
+		}[];
+	}[];
+}
+
 /** El estado de resultados y el balance general de un mes, leídos de su balanza. */
 export interface FinancialStatements {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -10563,6 +10619,18 @@ export interface GetTrialBalanceParams {
 	issuer?: string;
 }
 
+/** Los parámetros de GET /v1/accounting/general_ledger. */
+export interface GetGeneralLedgerParams {
+	/** El primer mes (AAAA-MM). */
+	from_month: string;
+	/** El último mes (AAAA-MM), hasta 12 meses después; por omisión, from_month. */
+	to_month?: string;
+	/** Solo esta cuenta, por su número en el catálogo. */
+	account?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
 /** Los parámetros de GET /v1/accounting/financial_statements. */
 export interface GetFinancialStatementsParams {
 	/** El mes (AAAA-MM). */
@@ -15144,6 +15212,18 @@ export class AccountingResource {
 	 */
 	trialBalance(params: GetTrialBalanceParams, options?: RequestOptions): Promise<TrialBalance> {
 		return this.#client.request({ method: "GET", path: "/v1/accounting/trial_balance", query: params }, options);
+	}
+
+	/**
+	 * Ver el auxiliar de cuentas
+	 *
+	 * El libro mayor de un periodo de hasta 12 meses: el saldo inicial de cada cuenta, cada cargo y abono con su póliza (journal_entry, el mismo id de journal_entries), su CFDI y el saldo que deja, y el saldo final. Solo las cuentas que se movieron, o la que pida con account aunque no tenga movimientos. Una cuenta que no está en el catálogo contesta account_missing.
+	 *
+	 * GET /v1/accounting/general_ledger
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-general-ledger
+	 */
+	generalLedger(params: GetGeneralLedgerParams, options?: RequestOptions): Promise<GeneralLedger> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/general_ledger", query: params }, options);
 	}
 
 	/**
