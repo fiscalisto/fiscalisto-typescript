@@ -2498,9 +2498,13 @@ export interface SatDeclaration {
 		/** El total a pagar del acuse; si no hay acuse, la suma de las obligaciones cuando todas se conocen. */
 		total_to_pay: number | null;
 	};
+	/** read: ya se leyó su PDF (sections, summary, receipt y los *_due vienen de él; una cifra en null es que la declaración no la trae). pending: está listada pero su PDF aún no se descarga, así que sus cifras vienen vacías o en null; se descarga sola, sin otro timbre, para figures_expected_at. unavailable: el SAT no ha dado el PDF (files_error dice por qué); se vuelve a pedir en la siguiente lectura. */
+	figures_status: "read" | "pending" | "unavailable";
+	/** Cuándo deberían estar sus cifras, si no están (la lectura en segundo plano que termina una consulta cortada por tiempo). null cuando ya están o cuando no hay una lectura programada: entonces llegan con el siguiente POST /v1/sat_declarations/refresh. */
+	figures_expected_at: string | null;
 	/** Su pago en el banco, de «Declaraciones pagadas» del SAT (solo las mensuales; null en las demás). status: paid (el SAT tiene el pago), unpaid (tiene algo a pagar y el SAT no lo tenía pagado en checked_at), overdue (igual, con la línea de captura vencida), nothing_to_pay o unchecked (aún no se revisa). paid_on, amount_paid y bank del pago más reciente, y cada pago en payments con su banco, día, línea de captura, medio (channel), importe, número de operación del banco y llave de pago. */
 	payment: {
-		/** paid, unpaid (algo a pagar que el SAT no tenía pagado), overdue (igual, línea de captura vencida), nothing_to_pay o unchecked. */
+		/** paid, unpaid (algo a pagar que el SAT no tenía pagado), overdue (igual, línea de captura vencida), nothing_to_pay o unchecked (aún no se sabe: sus cifras no se han leído, ver figures_status, o su pago no se ha buscado; checked_at viene en null). */
 		status: "paid" | "unpaid" | "overdue" | "nothing_to_pay" | "unchecked";
 		/** El día del pago más reciente (AAAA-MM-DD). */
 		paid_on: string | null;
@@ -2563,6 +2567,8 @@ export interface SatDeclarationsRefresh {
 	downloaded: number;
 	/** Cuántas declaraciones quedan con archivos por bajar. */
 	pending: number;
+	/** Con status processing: cuándo deberían estar los archivos y las cifras que faltan (pending), que se descargan solos sin otro timbre. Mientras, GET /v1/sat_declarations ya las lista, con figures_status pending. null con status completed. */
+	completes_at: string | null;
 	/** Si una parte del SAT falló (por ejemplo, la anual), lo que dijo; lo demás sí se trajo. null si todo salió. */
 	warning: string | null;
 	/** Cuándo se consultó. */
