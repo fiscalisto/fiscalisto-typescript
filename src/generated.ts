@@ -3745,6 +3745,20 @@ export interface PortalStyle {
 	}>;
 }
 
+/** Los conceptos de la factura que se hace el comprador en el portal. */
+export interface InvoiceConcepts {
+	/** itemized: un concepto por renglón del ticket; single: uno solo (más uno por cada otro juego de impuestos, como una noche con ISH). */
+	mode: "itemized" | "single";
+	/** Si el comprador puede elegir en el portal entre desglosados y un solo concepto. */
+	customer_choice: boolean;
+	/** La descripción del concepto único, como «Consumo». */
+	description: string;
+	/** La ClaveProdServ del concepto único, o null para la del renglón más grande. */
+	product_key: string | null;
+	/** Su ClaveUnidad, o null para la del renglón más grande. */
+	unit_key: string | null;
+}
+
 /** El portal de autofactura de un emisor y sus reglas. */
 export interface SelfInvoicing {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -3779,6 +3793,8 @@ export interface SelfInvoicing {
 	portal_radius: number | null;
 	/** Cómo se ve el portal además de su tema, color y esquinas: acomodo, encabezado, colores, letra, textos, formas de dar los datos, botón para volver y CSS. */
 	portal_style: PortalStyle;
+	/** Desglosados o en un solo concepto, y si el comprador puede elegir (Autofactura › Conceptos de la factura). */
+	invoice_concepts: InvoiceConcepts;
 	/** Cuando se factura una persona moral que retiene (1.25% de ISR en RESICO, o lo del producto). keep_total: la base crece y la factura suma lo que se pagó. subtract: la base es la del ticket y el total es lo pagado menos la retención. */
 	retention_mode: "keep_total" | "subtract";
 	/** La serie de las facturas que se emiten desde el portal y desde un ticket, como AF, o null para la serie de facturas del emisor. La factura global no la usa. */
@@ -9969,6 +9985,19 @@ export interface UpdateSelfInvoicingParams {
 	retention_mode?: "keep_total" | "subtract";
 	/** La serie de las facturas que los compradores se hacen en el portal (y las que se emiten desde un ticket), como `AF`: hasta 25 caracteres, sin `|`. `null` o una vacía usa la serie de facturas del emisor. La factura global sigue con la serie de siempre. */
 	invoice_series?: string | null;
+	/** Los conceptos de la factura que se hace el comprador (Autofactura › Conceptos de la factura): desglosados o en uno solo, y si el comprador puede elegir. Mande solo lo que cambia; `null` regresa a desglosados sin elección. */
+	invoice_concepts?: {
+		/** `itemized` (por omisión): un concepto por renglón del ticket (Hospedaje, Restaurante, Bar…). `single`: uno solo, con `description`; los renglones con otros impuestos (una noche con ISH, IVA 0 %, retenciones) van en su propio concepto, porque un concepto lleva un solo juego de impuestos. El total y los impuestos no cambian. */
+		mode?: "itemized" | "single";
+		/** `true`: el comprador elige en el portal entre desglosados y un solo concepto (empieza en `mode`), también en el portal dentro de su sitio. */
+		customer_choice?: boolean;
+		/** La descripción del concepto único, como «Consumo» (por omisión) o «Servicios de hospedaje y alimentos». */
+		description?: string;
+		/** Su ClaveProdServ. `null` (por omisión): la del renglón más grande del ticket. */
+		product_key?: string | null;
+		/** Su ClaveUnidad, con `product_key`, como `E48`. `null`: la del renglón más grande. */
+		unit_key?: string | null;
+	} | null;
 	/** Los conceptos de la factura global: `ticket` (por omisión), uno «Venta» por ticket con su folio como `NoIdentificacion`; `summary`, solo el monto total del periodo, uno por combinación de impuestos con `NoIdentificacion` «Resumen» (regla 2.7.1.21 de la RMF 2026). `summary` es solo para un emisor persona física en RESICO (626); otro contesta `invalid_request`. */
 	global_concepts?: "ticket" | "summary";
 }
