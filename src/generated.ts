@@ -609,6 +609,8 @@ export interface Invoice {
 	payment_method: string | null;
 	/** Condiciones de pago (CondicionesDePago), hasta 1,000 caracteres sin «|»: «Crédito a 30 días», «50 % anticipo». Van en el XML y en el PDF; solo en ingresos y egresos. No cambian cuándo vence (due_date usa los días de crédito del cliente). */
 	payment_terms: string | null;
+	/** Nota para el cliente: sale en el PDF, no en el XML. Se cambia después de timbrar con POST /v1/invoices/{id} (el XML no cambia; el siguiente PDF ya la lleva). */
+	notes: string | null;
 	/** Moneda, clave ISO 4217 de c_Moneda (MXN, USD, EUR…). Por omisión MXN. */
 	currency: string;
 	/** Tipo de cambio a pesos (TipoCambio). Obligatorio si la moneda no es MXN; use el del DOF del día anterior. */
@@ -3713,6 +3715,8 @@ export interface PortalStyle {
 		recall: boolean;
 		/** Facturar a clientes en el extranjero. */
 		abroad: boolean;
+		/** «No tengo RFC»: a nombre de la persona, con XAXX010101000. */
+		norfc: boolean;
 	};
 	/** Si no se factura sin correo. */
 	email_required: boolean;
@@ -3738,6 +3742,8 @@ export interface PortalStyle {
 		/** El texto de los botones, o null. */
 		button_text: string | null;
 	};
+	/** Cómo llama el portal a lo que se factura («reservacion» en un hotel). */
+	noun: "ticket" | "nota" | "cuenta" | "compra" | "pedido" | "orden" | "reservacion" | "estancia" | "boleto";
 	/** Los textos propios por llave (step_ticket, submit, success_title, concepts_title…), cada uno con es y en. Uno que falta lleva el de Fiscalisto. */
 	texts: Record<string, {
 		es?: string;
@@ -3818,6 +3824,8 @@ export interface SelfInvoicing {
 	retention_mode: "keep_total" | "subtract";
 	/** La serie de las facturas que se emiten desde el portal y desde un ticket, como AF, o null para la serie de facturas del emisor. La factura global no la usa. */
 	invoice_series: string | null;
+	/** true: el portal le pide al comprador una nota para el PDF de su factura (hasta 500 caracteres). Solo sale en el PDF, nunca en el XML. */
+	customer_notes: boolean;
 	/** ticket: la factura global lleva un concepto «Venta» por ticket, con su folio. summary: solo el monto total del periodo, uno por combinación de impuestos (NoIdentificacion «Resumen»), para una persona física en RESICO (regla 2.7.1.21 de la RMF 2026). */
 	global_concepts: "ticket" | "summary";
 }
@@ -7425,6 +7433,8 @@ export interface GetInvoiceParams {
 export interface UpdateInvoiceParams {
 	/** Su centro de costo (ccn_…), o null para quitárselo. Solo facturas, notas de crédito y recibos de nómina timbrados. */
 	cost_center?: string | null;
+	/** Nota para el cliente en el PDF (hasta 1,000 caracteres), o null para quitarla. No va en el XML: la factura timbrada no cambia y el siguiente PDF (GET /v1/invoices/{id}/pdf, el correo) ya la lleva. Cada cambio queda en el historial de la factura en Fiscalisto. */
+	notes?: string | null;
 }
 
 /** Los parámetros de GET /v1/invoices/{id}/pdf. */
@@ -9899,6 +9909,8 @@ export interface UpdateSelfInvoicingParams {
 		borders?: "none" | "subtle" | "strong";
 		/** La sombra: `none`, `soft` (por omisión) o `strong`. */
 		shadow?: "none" | "soft" | "strong";
+		/** Cómo llama el portal a lo que se factura, en todos sus textos: `ticket` (por omisión), `nota`, `cuenta`, `compra`, `pedido`, `orden`, `reservacion`, `estancia` o `boleto`. Un hotel usa `reservacion`: «Esta reservación ya se facturó». */
+		noun?: "ticket" | "nota" | "cuenta" | "compra" | "pedido" | "orden" | "reservacion" | "estancia" | "boleto";
 		/** Los textos, cada uno con `es` y `en`, combinados por llave con lo guardado. El título, el mensaje y dónde viene el código en español son `portal_title`, `portal_message` y `code_hint`; aquí van en inglés. */
 		texts?: {
 			/** El título (en español es `portal_title`); `null` vuelve al de Fiscalisto. */
@@ -10001,7 +10013,7 @@ export interface UpdateSelfInvoicingParams {
 				en?: string;
 			} | null;
 		};
-		/** Las formas de dar sus datos además de escribirlos. Todas `true` por omisión. */
+		/** Las formas de dar sus datos además de escribirlos. Todas `true` por omisión menos `norfc`. */
 		ways?: {
 			/** Ofrecer subir la constancia (PDF). */
 			constancia?: boolean;
@@ -10011,8 +10023,10 @@ export interface UpdateSelfInvoicingParams {
 			cif?: boolean;
 			/** Ofrecer «Ya le hemos facturado antes» (RFC y correo). */
 			recall?: boolean;
-			/** Ofrecer facturar a clientes en el extranjero. */
+			/** Ofrecer facturar a clientes en el extranjero (el tax ID es opcional). */
 			abroad?: boolean;
+			/** Ofrecer «No tengo RFC»: facturar a nombre de la persona con XAXX010101000, régimen 616, uso S01 y el CP del emisor. `false` por omisión. */
+			norfc?: boolean;
 		};
 		/** `true`: no se factura sin correo. Por omisión `false`. */
 		email_required?: boolean;
@@ -10032,6 +10046,8 @@ export interface UpdateSelfInvoicingParams {
 	retention_mode?: "keep_total" | "subtract";
 	/** La serie de las facturas que los compradores se hacen en el portal (y las que se emiten desde un ticket), como `AF`: hasta 25 caracteres, sin `|`. `null` o una vacía usa la serie de facturas del emisor. La factura global sigue con la serie de siempre. */
 	invoice_series?: string | null;
+	/** `true`: el portal le pide al comprador una nota para el PDF de su factura (hasta 500 caracteres; Autofactura › Nota del cliente). Solo sale en el PDF, nunca en el XML. Por omisión `false`. */
+	customer_notes?: boolean;
 	/** Los conceptos de la factura que se hace el comprador (Autofactura › Conceptos de la factura): desglosados o en uno solo, y si el comprador puede elegir. Mande solo lo que cambia; `null` regresa a desglosados sin elección. */
 	invoice_concepts?: {
 		/** `itemized` (por omisión): un concepto por renglón del ticket (Hospedaje, Restaurante, Bar…). `single`: uno solo, con `description`. `grouped`: los conceptos de `groups`. Un concepto lleva un solo juego de impuestos, así que los renglones con otros (una noche con ISH, IVA 0 %, retenciones) van aparte. El total y los impuestos no cambian. */
@@ -11647,7 +11663,7 @@ export class InvoicesResource {
 	/**
 	 * Actualizar una factura
 	 *
-	 * Lo que se puede cambiar de una factura timbrada sin tocar el CFDI: su centro de costo (cost_center, o null para quitárselo). Los complementos de pago y los traslados no llevan.
+	 * Lo que se puede cambiar de una factura timbrada sin tocar el CFDI: su centro de costo (cost_center, o null para quitárselo; los complementos de pago y los traslados no llevan) y la nota para el cliente del PDF (notes, o null para quitarla; el XML no cambia y el siguiente PDF y correo ya la llevan).
 	 *
 	 * POST /v1/invoices/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/facturas/update-invoice
