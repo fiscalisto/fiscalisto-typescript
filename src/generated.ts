@@ -4388,6 +4388,68 @@ export interface FxRevaluation {
 	manual_entry: string | null;
 }
 
+/** La determinación de impuestos de un mes en la contabilidad: el IVA cobrado y pagado del mes (de sus pólizas) que pasa a IVA por pagar o a favor, el pago provisional de ISR sugerido y la póliza que los registra, si ya se registró. */
+export interface TaxDetermination {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "tax_determination";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** El último día del mes: la fecha de la póliza. */
+	date: string;
+	/** El IVA trasladado cobrado en el mes, según sus pólizas. */
+	vat_collected: number;
+	/** El IVA acreditable pagado en el mes, según sus pólizas. */
+	vat_creditable: number;
+	/** El IVA que le retuvieron sus clientes en el mes. */
+	vat_withheld_by_customers: number;
+	/** vat_collected − vat_creditable − vat_withheld_by_customers: positivo, IVA por pagar; negativo, IVA a favor. */
+	vat: number;
+	/** El pago provisional de ISR que calcula Impuestos con su configuración, o null si no está configurado. */
+	suggested_isr: number | null;
+	/** La póliza de determinación (mje_…) si ya se registró, o null. Es una póliza a mano de tipo adjustment. */
+	manual_entry: string | null;
+}
+
+/** El costo de ventas de un mes en la contabilidad (sistema de inventarios periódico): las compras del mes, el inventario en libros y al cierre, y la póliza que lleva la diferencia a Costo de ventas, si ya se registró. */
+export interface CostOfSales {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "cost_of_sales";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** El último día del mes: la fecha de la póliza. */
+	date: string;
+	/** Las compras del mes por cuenta (código agrupador 502: cargos menos abonos), sin la póliza del mes. */
+	purchases: {
+		/** La cuenta: su número y nombre en el catálogo. */
+		account: string;
+		/** Importe. */
+		amount: number;
+	}[];
+	/** Las devoluciones y descuentos sobre compras del mes por cuenta (503: abonos menos cargos). */
+	purchase_returns: {
+		/** La cuenta: su número y nombre en el catálogo. */
+		account: string;
+		/** Importe. */
+		amount: number;
+	}[];
+	/** purchases − purchase_returns. */
+	net_purchases: number;
+	/** El saldo de las cuentas de inventario (115) al cierre del mes en sus libros, sin la póliza del mes. */
+	book_inventory: number;
+	/** Lo que valen sus existencias al cierre del mes según Inventario (con su método de valuación), o null si no lleva existencias en Fiscalisto: entonces use su conteo físico. */
+	suggested_ending_inventory: number | null;
+	/** La póliza de costo de ventas (mje_…) si ya se registró, o null. Es una póliza a mano de tipo adjustment. */
+	manual_entry: string | null;
+}
+
 /** Las pólizas que entraron de otro sistema (CONTPAQi, COI, una hoja de cálculo) en una importación. */
 export interface ManualEntryImport {
 	/** La importación (mji_…), para deshacerla; null si todas las pólizas ya estaban. */
@@ -11132,6 +11194,44 @@ export interface DeleteFxRevaluationParams {
 	issuer?: string;
 }
 
+/** Los parámetros de GET /v1/accounting/cost_of_sales/{month}. */
+export interface GetCostOfSalesParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface CreateCostOfSalesParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** Lo que vale el inventario al cierre del mes en pesos (0 si no hay). Por lo general, suggested_ending_inventory o el de su conteo físico. */
+	ending_inventory: number;
+}
+
+/** Los parámetros de DELETE /v1/accounting/cost_of_sales/{month}. */
+export interface DeleteCostOfSalesParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+/** Los parámetros de GET /v1/accounting/tax_determinations/{month}. */
+export interface GetTaxDeterminationParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface CreateTaxDeterminationParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** El pago provisional de ISR del mes en pesos (0 si no hay). Por lo general, suggested_isr. */
+	isr: number;
+}
+
+/** Los parámetros de DELETE /v1/accounting/tax_determinations/{month}. */
+export interface DeleteTaxDeterminationParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
 /** Los parámetros de GET /v1/accounting/bank_movements. */
 export interface ListBankMovementsParams {
 	/** El mes (AAAA-MM). Por omisión, el actual. */
@@ -16019,6 +16119,94 @@ export class FxRevaluationsResource {
 	}
 }
 
+/** Contabilidad: fiscalisto.costOfSales. */
+export class CostOfSalesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ver el costo de ventas de un mes
+	 *
+	 * Las compras netas del mes según sus pólizas, el inventario en libros, lo que vale el inventario según Inventario y la póliza de costo de ventas, si ya se registró. Como Cierre del mes › Inventario y costo de ventas en la app.
+	 *
+	 * GET /v1/accounting/cost_of_sales/{month}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-cost-of-sales
+	 */
+	get(month: string, params?: GetCostOfSalesParams, options?: RequestOptions): Promise<CostOfSales> {
+		return this.#client.request({ method: "GET", path: `/v1/accounting/cost_of_sales/${encodeURIComponent(month)}`, query: params }, options);
+	}
+
+	/**
+	 * Registrar el costo de ventas de un mes
+	 *
+	 * Registra (o reemplaza) la póliza del último día del mes en el sistema de inventarios periódico: Inventario queda en ending_inventory, las compras (502) y sus devoluciones (503) se cancelan y la diferencia va a Costo de ventas (501.01): inventario inicial + compras netas − inventario final, el costo de lo vendido que se deduce (LISR arts. 25-II y 39). Sin compras ni cambio de inventario contesta parameter_invalid en month; en un mes cerrado, period_closed.
+	 *
+	 * POST /v1/accounting/cost_of_sales/{month}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/create-cost-of-sales
+	 */
+	create(month: string, params: CreateCostOfSalesParams, options?: RequestOptions): Promise<CostOfSales> {
+		return this.#client.request({ method: "POST", path: `/v1/accounting/cost_of_sales/${encodeURIComponent(month)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Quitar el costo de ventas de un mes
+	 *
+	 * Quita la póliza de costo de ventas del mes. En un mes cerrado contesta period_closed.
+	 *
+	 * DELETE /v1/accounting/cost_of_sales/{month}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/delete-cost-of-sales
+	 */
+	delete(month: string, params?: DeleteCostOfSalesParams, options?: RequestOptions): Promise<CostOfSales> {
+		return this.#client.request({ method: "DELETE", path: `/v1/accounting/cost_of_sales/${encodeURIComponent(month)}`, query: params }, options);
+	}
+}
+
+/** Contabilidad: fiscalisto.taxDeterminations. */
+export class TaxDeterminationsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ver la determinación de impuestos de un mes
+	 *
+	 * El IVA cobrado y pagado del mes según sus pólizas (y el que le retuvieron sus clientes), el IVA por pagar o a favor que resulta, el pago provisional de ISR que sugiere Impuestos y la póliza de determinación, si ya se registró. Como Cierre del mes › Impuestos del mes en la app.
+	 *
+	 * GET /v1/accounting/tax_determinations/{month}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-tax-determination
+	 */
+	get(month: string, params?: GetTaxDeterminationParams, options?: RequestOptions): Promise<TaxDetermination> {
+		return this.#client.request({ method: "GET", path: `/v1/accounting/tax_determinations/${encodeURIComponent(month)}`, query: params }, options);
+	}
+
+	/**
+	 * Registrar la determinación de impuestos de un mes
+	 *
+	 * Registra (o reemplaza) la póliza del último día del mes: IVA trasladado cobrado contra IVA acreditable pagado y el IVA retenido por clientes, la diferencia a IVA por pagar o IVA a favor, e isr a Pagos provisionales de ISR contra ISR por pagar. Al pagarlos, registre el retiro del banco contra esas cuentas (POST /v1/accounting/bank_movements/{id}/post). Sin IVA ni ISR contesta parameter_invalid en month; en un mes cerrado, period_closed.
+	 *
+	 * POST /v1/accounting/tax_determinations/{month}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/create-tax-determination
+	 */
+	create(month: string, params: CreateTaxDeterminationParams, options?: RequestOptions): Promise<TaxDetermination> {
+		return this.#client.request({ method: "POST", path: `/v1/accounting/tax_determinations/${encodeURIComponent(month)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Quitar la determinación de impuestos de un mes
+	 *
+	 * Quita la póliza de determinación del mes. En un mes cerrado contesta period_closed.
+	 *
+	 * DELETE /v1/accounting/tax_determinations/{month}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/delete-tax-determination
+	 */
+	delete(month: string, params?: DeleteTaxDeterminationParams, options?: RequestOptions): Promise<TaxDetermination> {
+		return this.#client.request({ method: "DELETE", path: `/v1/accounting/tax_determinations/${encodeURIComponent(month)}`, query: params }, options);
+	}
+}
+
 /** Contabilidad: fiscalisto.bankMovements. */
 export class BankMovementsResource {
 	readonly #client: Client;
@@ -16792,6 +16980,8 @@ export class FiscalistoApi extends Core {
 	readonly fixedAssets = new FixedAssetsResource(this);
 	readonly closedPeriod = new ClosedPeriodResource(this);
 	readonly fxRevaluations = new FxRevaluationsResource(this);
+	readonly costOfSales = new CostOfSalesResource(this);
+	readonly taxDeterminations = new TaxDeterminationsResource(this);
 	readonly bankMovements = new BankMovementsResource(this);
 	readonly storeConnections = new StoreConnectionsResource(this);
 	readonly recurringInvoices = new RecurringInvoicesResource(this);
