@@ -4306,6 +4306,20 @@ export interface AccountingBankMovement {
 	suggested_account: string | null;
 }
 
+/** Hasta qué mes está cerrada la contabilidad del emisor: lo capturado (pólizas a mano y de banco, bajas de activos, saldos iniciales) con fecha en un mes cerrado no se registra, corrige ni borra. */
+export interface ClosedPeriod {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "closed_period";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El último mes cerrado (AAAA-MM), con todos los anteriores; null si ninguno está cerrado. */
+	closed_through: string | null;
+	/** Cuándo se cerró, o null. */
+	closed_at: string | null;
+}
+
 /** La balanza de comprobación de un mes. */
 export interface TrialBalance {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -10837,6 +10851,19 @@ export interface DisposeFixedAssetParams {
 	note?: string | null;
 }
 
+/** Los parámetros de GET /v1/accounting/closed_period. */
+export interface GetClosedPeriodParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface SetClosedPeriodParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** El último mes cerrado (AAAA-MM); los anteriores quedan cerrados también. null reabre todos. */
+	closed_through: string | null;
+}
+
 /** Los parámetros de GET /v1/accounting/bank_movements. */
 export interface ListBankMovementsParams {
 	/** El mes (AAAA-MM). Por omisión, el actual. */
@@ -15560,6 +15587,38 @@ export class FixedAssetsResource {
 	}
 }
 
+/** Contabilidad: fiscalisto.closedPeriod. */
+export class ClosedPeriodResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ver hasta qué mes está cerrada la contabilidad
+	 *
+	 * El último mes cerrado del emisor (closed_through), como Cierre del mes › Cerrar la contabilidad en la app.
+	 *
+	 * GET /v1/accounting/closed_period
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-closed-period
+	 */
+	get(params?: GetClosedPeriodParams, options?: RequestOptions): Promise<ClosedPeriod> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/closed_period", query: params }, options);
+	}
+
+	/**
+	 * Cerrar o reabrir meses de la contabilidad
+	 *
+	 * Cierra la contabilidad hasta closed_through (y los meses anteriores), o la reabre con un mes anterior o null. En un mes cerrado, crear, corregir o borrar una póliza a mano, registrar o quitar la póliza de un movimiento de banco y dar de baja un activo contestan period_closed. Las facturas siguen llegando del SAT.
+	 *
+	 * POST /v1/accounting/closed_period
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/set-closed-period
+	 */
+	set(params: SetClosedPeriodParams, options?: RequestOptions): Promise<ClosedPeriod> {
+		return this.#client.request({ method: "POST", path: "/v1/accounting/closed_period", body: params, idempotent: true }, options);
+	}
+}
+
 /** Contabilidad: fiscalisto.bankMovements. */
 export class BankMovementsResource {
 	readonly #client: Client;
@@ -16329,6 +16388,7 @@ export class FiscalistoApi extends Core {
 	readonly accounting = new AccountingResource(this);
 	readonly manualEntries = new ManualEntriesResource(this);
 	readonly fixedAssets = new FixedAssetsResource(this);
+	readonly closedPeriod = new ClosedPeriodResource(this);
 	readonly bankMovements = new BankMovementsResource(this);
 	readonly storeConnections = new StoreConnectionsResource(this);
 	readonly recurringInvoices = new RecurringInvoicesResource(this);
