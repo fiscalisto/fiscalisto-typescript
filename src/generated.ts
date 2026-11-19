@@ -4214,6 +4214,8 @@ export interface ManualJournalEntry {
 	reverse_next_month: boolean;
 	/** El día de su reversión, o null si no se revierte. */
 	reverses_on: string | null;
+	/** El último mes (AAAA-MM) en que se repite cada mes, o null si es de una sola fecha. */
+	repeat_until: string | null;
 	/** El UUID del CFDI con el que se relaciona, o null. */
 	uuid: string | null;
 	/** El RFC de la otra parte de ese CFDI, o null. */
@@ -8855,6 +8857,28 @@ export interface CreatePayrollReceiptParams {
 	absences?: number;
 	/** Días de incapacidad que expidió el IMSS en el periodo, de 0 a 31: no se pagan (salen de days) y no causan cuotas obreras del IMSS (LSS art. 31 fr. IV). */
 	disability_days?: number;
+	/** Incidencias del periodo, como en Nómina › Emitir recibos: horas extra, domingos trabajados, vacaciones y premios. Fiscalisto calcula sus importes, su parte exenta y el ISR con el sueldo. */
+	incidents?: {
+		/** Horas extra dobles (pagadas al doble), horas completas: hasta 9 por semana en 2026 y 2027, 10 en 2028, 11 en 2029 y 12 desde 2030 (LFT arts. 66 y transitorio cuarto del decreto DOF 01-05-2026). Exentas la mitad, hasta 5 UMA por semana; todas si gana el salario mínimo (LISR art. 93 fr. I). */
+		double_hours?: number;
+		/** Horas extra triples, las que pasan de las dobles de la semana (LFT art. 68). Gravadas. */
+		triple_hours?: number;
+		/** Días en que se trabajaron las horas extra (nodo HorasExtra); uno por cada 3 horas si no lo manda. */
+		overtime_days?: number;
+		/** Domingos trabajados: prima dominical del 25% del salario diario por cada uno (LFT art. 71), exenta hasta 1 UMA por domingo. */
+		sundays?: number;
+		/** Días de vacaciones que disfrutó en el periodo (se pagan como sueldo dentro de days): su prima vacacional con el porcentaje del empleado, exenta hasta 15 UMA en el año. */
+		vacation_days?: number;
+		/** Premios y bonos del periodo, gravados. */
+		bonuses?: {
+			/** 010 premio de puntualidad, 049 premio de asistencia, 038 otro bono (c_TipoPercepcion). */
+			type: "010" | "049" | "038";
+			/** Importe. */
+			amount: number;
+			/** Concepto del pago (ConceptoPago), c_TipoContribuyenteSujetoRetencion. */
+			concept?: string;
+		}[];
+	};
 	/** El recibo vigente (inv_… o UUID) que este corrige, calculado por Fiscalisto para el mismo empleado: el nuevo se calcula con los datos del empleado como están ahora, va relacionado con 04 y el anterior se cancela con motivo 01. Para un recibo que calculó su sistema use POST /v1/payroll_receipts/external con replaces. */
 	replaces?: string;
 	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
@@ -8883,6 +8907,28 @@ export interface PreviewPayrollReceiptParams {
 	absences?: number;
 	/** Días de incapacidad que expidió el IMSS en el periodo, de 0 a 31: no se pagan (salen de days) y no causan cuotas obreras del IMSS (LSS art. 31 fr. IV). */
 	disability_days?: number;
+	/** Incidencias del periodo, como en Nómina › Emitir recibos: horas extra, domingos trabajados, vacaciones y premios. Fiscalisto calcula sus importes, su parte exenta y el ISR con el sueldo. */
+	incidents?: {
+		/** Horas extra dobles (pagadas al doble), horas completas: hasta 9 por semana en 2026 y 2027, 10 en 2028, 11 en 2029 y 12 desde 2030 (LFT arts. 66 y transitorio cuarto del decreto DOF 01-05-2026). Exentas la mitad, hasta 5 UMA por semana; todas si gana el salario mínimo (LISR art. 93 fr. I). */
+		double_hours?: number;
+		/** Horas extra triples, las que pasan de las dobles de la semana (LFT art. 68). Gravadas. */
+		triple_hours?: number;
+		/** Días en que se trabajaron las horas extra (nodo HorasExtra); uno por cada 3 horas si no lo manda. */
+		overtime_days?: number;
+		/** Domingos trabajados: prima dominical del 25% del salario diario por cada uno (LFT art. 71), exenta hasta 1 UMA por domingo. */
+		sundays?: number;
+		/** Días de vacaciones que disfrutó en el periodo (se pagan como sueldo dentro de days): su prima vacacional con el porcentaje del empleado, exenta hasta 15 UMA en el año. */
+		vacation_days?: number;
+		/** Premios y bonos del periodo, gravados. */
+		bonuses?: {
+			/** 010 premio de puntualidad, 049 premio de asistencia, 038 otro bono (c_TipoPercepcion). */
+			type: "010" | "049" | "038";
+			/** Importe. */
+			amount: number;
+			/** Concepto del pago (ConceptoPago), c_TipoContribuyenteSujetoRetencion. */
+			concept?: string;
+		}[];
+	};
 	/** El recibo vigente (inv_… o UUID) que este corrige, calculado por Fiscalisto para el mismo empleado: el nuevo se calcula con los datos del empleado como están ahora, va relacionado con 04 y el anterior se cancela con motivo 01. Para un recibo que calculó su sistema use POST /v1/payroll_receipts/external con replaces. */
 	replaces?: string;
 	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
@@ -10870,6 +10916,8 @@ export interface CreateManualEntryParams {
 	uuid?: string | null;
 	/** Con uuid: el RFC de la otra parte de ese CFDI. */
 	uuid_tax_id?: string | null;
+	/** Una póliza recurrente: se repite cada mes, el mismo día (el último si la fecha es el último del mes), hasta este mes (AAAA-MM), hasta 60 meses. null: solo en su fecha. */
+	repeat_until?: string | null;
 	/** Sus cargos y abonos: cada renglón uno u otro; los cargos suman lo mismo que los abonos. */
 	lines: {
 		/** El número de la cuenta en su catálogo (GET /v1/accounting/accounts), por ejemplo 205-06. */
@@ -10910,6 +10958,8 @@ export interface UpdateManualEntryParams {
 	uuid?: string | null;
 	/** Con uuid: el RFC de la otra parte de ese CFDI. */
 	uuid_tax_id?: string | null;
+	/** Una póliza recurrente: se repite cada mes, el mismo día (el último si la fecha es el último del mes), hasta este mes (AAAA-MM), hasta 60 meses. null: solo en su fecha. */
+	repeat_until?: string | null;
 	/** Sus cargos y abonos: cada renglón uno u otro; los cargos suman lo mismo que los abonos. */
 	lines: {
 		/** El número de la cuenta en su catálogo (GET /v1/accounting/accounts), por ejemplo 205-06. */
@@ -13290,7 +13340,7 @@ export class PayrollReceiptsResource {
 	/**
 	 * Timbrar un recibo de nómina
 	 *
-	 * Nómina ordinaria (Nómina 1.2): Fiscalisto calcula sueldo, ISR con subsidio al empleo e IMSS del empleado y el periodo, como la app, y nada más: el aguinaldo, la PTU y los finiquitos los calcula POST /v1/payroll_receipts/extraordinary; bonos, horas extra, Infonavit o préstamos los calcula su sistema y se timbran con POST /v1/payroll_receipts/external (pedirlos aquí contesta payroll_calculation_unsupported). Revise antes el recibo con POST /v1/payroll_receipts/preview y mande su confirmation_token: así solo se timbra el recibo que revisó (si cambió, 409 payroll_calculation_changed). Queda como factura tipo N (GET /v1/invoices/{id}). El emisor necesita employer_registration.
+	 * Nómina ordinaria (Nómina 1.2): Fiscalisto calcula sueldo, ISR con subsidio al empleo e IMSS del empleado y el periodo, con sus incidencias (incidents: horas extra, domingos, vacaciones y premios), como la app: el aguinaldo, la PTU y los finiquitos los calcula POST /v1/payroll_receipts/extraordinary; comisiones, Infonavit o préstamos los calcula su sistema y se timbran con POST /v1/payroll_receipts/external (pedirlos aquí contesta payroll_calculation_unsupported). Revise antes el recibo con POST /v1/payroll_receipts/preview y mande su confirmation_token: así solo se timbra el recibo que revisó (si cambió, 409 payroll_calculation_changed). Queda como factura tipo N (GET /v1/invoices/{id}). El emisor necesita employer_registration.
 	 *
 	 * POST /v1/payroll_receipts
 	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-payroll-receipt
@@ -13302,7 +13352,7 @@ export class PayrollReceiptsResource {
 	/**
 	 * Calcular un recibo sin timbrar
 	 *
-	 * El recibo como se timbraría (percepciones, ISR con el subsidio para el empleo, cuotas IMSS y el neto), sin timbrar ni usar timbres, con el confirmation_token que lo timbra tal cual y los avisos de lo que no incluye (un finiquito, valores del año que aún no se cargan).
+	 * El recibo como se timbraría (percepciones con sus incidencias, ISR con el subsidio para el empleo, cuotas IMSS y el neto), sin timbrar ni usar timbres, con el confirmation_token que lo timbra tal cual y los avisos de lo que no incluye (un finiquito, valores del año que aún no se cargan).
 	 *
 	 * POST /v1/payroll_receipts/preview
 	 * @see https://fiscalisto.com/docs/api/referencia/nomina/preview-payroll-receipt
