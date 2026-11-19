@@ -3738,7 +3738,7 @@ export interface PortalStyle {
 		/** El texto de los botones, o null. */
 		button_text: string | null;
 	};
-	/** Los textos propios por llave (step_ticket, submit, success_title…), cada uno con es y en. Uno que falta lleva el de Fiscalisto. */
+	/** Los textos propios por llave (step_ticket, submit, success_title, concepts_title…), cada uno con es y en. Uno que falta lleva el de Fiscalisto. */
 	texts: Record<string, {
 		es?: string;
 		en?: string;
@@ -3747,16 +3747,35 @@ export interface PortalStyle {
 
 /** Los conceptos de la factura que se hace el comprador en el portal. */
 export interface InvoiceConcepts {
-	/** itemized: un concepto por renglón del ticket; single: uno solo (más uno por cada otro juego de impuestos, como una noche con ISH). */
-	mode: "itemized" | "single";
-	/** Si el comprador puede elegir en el portal entre desglosados y un solo concepto. */
+	/** itemized: un concepto por renglón del ticket; single: uno solo; grouped: uno por cada grupo de groups. Lo que lleva otro juego de impuestos (como una noche con ISH) va siempre en su propio concepto. */
+	mode: "itemized" | "single" | "grouped";
+	/** Si el comprador puede elegir en el portal entre las opciones de customer_options. */
 	customer_choice: boolean;
+	/** Las opciones que ve el comprador cuando puede elegir (incluye siempre mode, que llega elegida). */
+	customer_options: ("itemized" | "single" | "grouped")[];
 	/** La descripción del concepto único, como «Consumo». */
 	description: string;
 	/** La ClaveProdServ del concepto único, o null para la del renglón más grande. */
 	product_key: string | null;
 	/** Su ClaveUnidad, o null para la del renglón más grande. */
 	unit_key: string | null;
+	/** Los grupos de «Por categoría», en orden: cada renglón va en el primero que lo tome. */
+	groups: {
+		/** El nombre del concepto, como «Alimentos y bebidas». */
+		name: string;
+		/** Su ClaveProdServ, o null para la del renglón más grande del grupo. */
+		product_key: string | null;
+		/** Su ClaveUnidad, o null para la del renglón más grande. */
+		unit_key: string | null;
+		/** Las claves del SAT que toma, completas o su inicio (de 2 a 8 dígitos, como 9010). */
+		sat_keys: string[];
+		/** Las categorías de producto que toma, por su ruta («Hotel › Habitaciones»); una categoría toma también las de adentro. */
+		categories: string[];
+	}[];
+	/** Lo que ningún grupo toma: itemized, desglosado; group, en un concepto más llamado ungrouped_name. */
+	ungrouped: "itemized" | "group";
+	/** El nombre del concepto para lo que ningún grupo toma. */
+	ungrouped_name: string;
 }
 
 /** El portal de autofactura de un emisor y sus reglas. */
@@ -3793,7 +3812,7 @@ export interface SelfInvoicing {
 	portal_radius: number | null;
 	/** Cómo se ve el portal además de su tema, color y esquinas: acomodo, encabezado, colores, letra, textos, formas de dar los datos, botón para volver y CSS. */
 	portal_style: PortalStyle;
-	/** Desglosados o en un solo concepto, y si el comprador puede elegir (Autofactura › Conceptos de la factura). */
+	/** Desglosados, en un solo concepto o por los grupos de la empresa, y qué puede elegir el comprador (Autofactura › Conceptos de la factura). */
 	invoice_concepts: InvoiceConcepts;
 	/** Cuando se factura una persona moral que retiene (1.25% de ISR en RESICO, o lo del producto). keep_total: la base crece y la factura suma lo que se pagó. subtract: la base es la del ticket y el total es lo pagado menos la retención. */
 	retention_mode: "keep_total" | "subtract";
@@ -9953,6 +9972,34 @@ export interface UpdateSelfInvoicingParams {
 				/** El mensaje al terminar en inglés. */
 				en?: string;
 			} | null;
+			/** El título de la elección de conceptos («Conceptos en su factura»; ver `invoice_concepts`); `null` vuelve al de Fiscalisto. */
+			concepts_title?: {
+				/** El título de la elección de conceptos («Conceptos en su factura»; ver `invoice_concepts`) en español. */
+				es?: string;
+				/** El título de la elección de conceptos («Conceptos en su factura»; ver `invoice_concepts`) en inglés. */
+				en?: string;
+			} | null;
+			/** La opción de conceptos desglosados («Desglosados»); `null` vuelve al de Fiscalisto. */
+			concepts_itemized?: {
+				/** La opción de conceptos desglosados («Desglosados») en español. */
+				es?: string;
+				/** La opción de conceptos desglosados («Desglosados») en inglés. */
+				en?: string;
+			} | null;
+			/** La opción de un solo concepto («Un solo concepto»); `null` vuelve al de Fiscalisto. */
+			concepts_single?: {
+				/** La opción de un solo concepto («Un solo concepto») en español. */
+				es?: string;
+				/** La opción de un solo concepto («Un solo concepto») en inglés. */
+				en?: string;
+			} | null;
+			/** La opción de conceptos por categoría («Por categoría»); `null` vuelve al de Fiscalisto. */
+			concepts_grouped?: {
+				/** La opción de conceptos por categoría («Por categoría») en español. */
+				es?: string;
+				/** La opción de conceptos por categoría («Por categoría») en inglés. */
+				en?: string;
+			} | null;
 		};
 		/** Las formas de dar sus datos además de escribirlos. Todas `true` por omisión. */
 		ways?: {
@@ -9987,16 +10034,35 @@ export interface UpdateSelfInvoicingParams {
 	invoice_series?: string | null;
 	/** Los conceptos de la factura que se hace el comprador (Autofactura › Conceptos de la factura): desglosados o en uno solo, y si el comprador puede elegir. Mande solo lo que cambia; `null` regresa a desglosados sin elección. */
 	invoice_concepts?: {
-		/** `itemized` (por omisión): un concepto por renglón del ticket (Hospedaje, Restaurante, Bar…). `single`: uno solo, con `description`; los renglones con otros impuestos (una noche con ISH, IVA 0 %, retenciones) van en su propio concepto, porque un concepto lleva un solo juego de impuestos. El total y los impuestos no cambian. */
-		mode?: "itemized" | "single";
-		/** `true`: el comprador elige en el portal entre desglosados y un solo concepto (empieza en `mode`), también en el portal dentro de su sitio. */
+		/** `itemized` (por omisión): un concepto por renglón del ticket (Hospedaje, Restaurante, Bar…). `single`: uno solo, con `description`. `grouped`: los conceptos de `groups`. Un concepto lleva un solo juego de impuestos, así que los renglones con otros (una noche con ISH, IVA 0 %, retenciones) van aparte. El total y los impuestos no cambian. */
+		mode?: "itemized" | "single" | "grouped";
+		/** `true`: el comprador elige en el portal (también dentro de su sitio) entre `customer_options`, empezando en `mode`. */
 		customer_choice?: boolean;
+		/** Entre qué puede elegir el comprador, por omisión `itemized` y `single`. `mode` va siempre; `grouped` necesita `groups`. */
+		customer_options?: ("itemized" | "single" | "grouped")[];
 		/** La descripción del concepto único, como «Consumo» (por omisión) o «Servicios de hospedaje y alimentos». */
 		description?: string;
-		/** Su ClaveProdServ. `null` (por omisión): la del renglón más grande del ticket. */
+		/** La ClaveProdServ del concepto único. `null` (por omisión): la del renglón más grande del ticket. */
 		product_key?: string | null;
 		/** Su ClaveUnidad, con `product_key`, como `E48`. `null`: la del renglón más grande. */
 		unit_key?: string | null;
+		/** Los conceptos de `grouped`, hasta 12: cada renglón va al primero que lo toma, por su clave del SAT (`sat_keys`) o la categoría de su producto (`categories`). Reemplaza la lista guardada. */
+		groups?: {
+			/** La descripción del concepto, como «Alimentos y bebidas». */
+			name: string;
+			/** Su ClaveProdServ. `null` (por omisión): la de su renglón más grande. */
+			product_key?: string | null;
+			/** Su ClaveUnidad, con `product_key`, como `E48`. */
+			unit_key?: string | null;
+			/** Los renglones cuya clave del SAT empieza así: `9010` toma 90101501 (restaurante) y 90101503 (bar); `90111800`, solo hospedaje. */
+			sat_keys?: string[];
+			/** Los renglones de los productos de estas categorías y sus subcategorías, por su ruta como la da `category` del producto («Alimentos › Bebidas»). */
+			categories?: string[];
+		}[];
+		/** Con `grouped`, los renglones que ningún grupo toma: `itemized` (por omisión) como vienen, o `group` en un concepto más llamado `ungrouped_name`. */
+		ungrouped?: "itemized" | "group";
+		/** El nombre de ese concepto, por omisión «Otros». */
+		ungrouped_name?: string;
 	} | null;
 	/** Los conceptos de la factura global: `ticket` (por omisión), uno «Venta» por ticket con su folio como `NoIdentificacion`; `summary`, solo el monto total del periodo, uno por combinación de impuestos con `NoIdentificacion` «Resumen» (regla 2.7.1.21 de la RMF 2026). `summary` es solo para un emisor persona física en RESICO (626); otro contesta `invalid_request`. */
 	global_concepts?: "ticket" | "summary";
