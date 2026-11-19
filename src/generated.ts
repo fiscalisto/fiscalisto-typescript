@@ -4210,7 +4210,7 @@ export interface ManualJournalEntry {
 	kind: "adjustment" | "accrual" | "reclassification" | "other";
 	/** El tipo de póliza: journal (diario), income (ingresos) o expense (egresos). */
 	journal_type: "journal" | "income" | "expense";
-	/** true: una provisión que se revierte sola el día 1 del mes siguiente. */
+	/** true: una provisión o un ajuste de cierre (como la revaluación cambiaria) que se revierte solo el día 1 del mes siguiente. */
 	reverse_next_month: boolean;
 	/** El día de su reversión, o null si no se revierte. */
 	reverses_on: string | null;
@@ -4336,6 +4336,56 @@ export interface ClosedPeriod {
 	closed_through: string | null;
 	/** Cuándo se cerró, o null. */
 	closed_at: string | null;
+}
+
+/** La revaluación cambiaria de un mes (NIF B-15): las facturas PPD en otra moneda que seguían pendientes al cierre, lo que se debe por moneda con el tipo de cambio de cierre que sugerimos (el FIX del DOF) y la póliza de ajuste que registra la diferencia, si ya se registró. */
+export interface FxRevaluation {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "fx_revaluation";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** El último día del mes: la fecha de la póliza. Su reversión es del día 1 del mes siguiente. */
+	date: string;
+	/** Cada moneda con saldos pendientes: receivable (lo que le deben sus clientes, en esa moneda), payable (lo que usted debe a sus proveedores), closing_rate (el FIX publicado en el DOF el día hábil siguiente al cierre, o null si no se pudo leer) y closing_rate_date (el día de esa publicación). */
+	currencies: {
+		/** Moneda, clave ISO 4217 de c_Moneda (MXN, USD, EUR…). Por omisión MXN. */
+		currency: string;
+		/** Lo que le deben sus clientes al cierre, en esa moneda. */
+		receivable: number;
+		/** Lo que usted debe a sus proveedores al cierre, en esa moneda. */
+		payable: number;
+		/** El tipo de cambio de cierre que sugerimos (pesos por unidad): el FIX publicado en el DOF el día hábil siguiente al cierre, o null si no se pudo leer. */
+		closing_rate: number | null;
+		/** El día en que se publicó ese FIX, o null. */
+		closing_rate_date: string | null;
+	}[];
+	/** Las facturas PPD en otra moneda aún pendientes al cierre: direction issued (de un cliente) o received (de un proveedor), balance (lo que faltaba pagar, en su moneda) y booked_rate (su TipoCambio, al que se registró). */
+	documents: {
+		/** Folio fiscal que asigna el SAT (UUID del Timbre Fiscal Digital), en mayúsculas. */
+		uuid: string;
+		/** EntradaSalidaMerc: Entrada o Salida. */
+		direction: "issued" | "received";
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string;
+		/** Nombre. */
+		name: string;
+		/** Su serie y folio, o null si no tiene. */
+		series_folio: string | null;
+		/** Fecha de emisión (Fecha), hora de la Ciudad de México. */
+		date: string;
+		/** Moneda de la factura pagada (MonedaDR). */
+		currency: string;
+		/** Lo que faltaba pagar al cierre del mes, en su moneda. */
+		balance: number;
+		/** Su TipoCambio: los pesos por unidad a los que se registró. */
+		booked_rate: number;
+	}[];
+	/** La póliza de revaluación (mje_…) si ya se registró, o null. Es una póliza a mano de tipo adjustment con reverse_next_month. */
+	manual_entry: string | null;
 }
 
 /** Las pólizas que entraron de otro sistema (CONTPAQi, COI, una hoja de cálculo) en una importación. */
@@ -10910,7 +10960,7 @@ export interface CreateManualEntryParams {
 	kind?: "adjustment" | "accrual" | "reclassification" | "other";
 	/** El tipo de póliza: journal (diario), income (ingresos) o expense (egresos). */
 	journal_type?: "journal" | "income" | "expense";
-	/** Solo con kind accrual: la póliza se revierte sola el día 1 del mes siguiente (para cuando llegue la factura). */
+	/** Solo con kind accrual o adjustment: la póliza se revierte sola el día 1 del mes siguiente (una provisión, para cuando llegue la factura; un ajuste de cierre como la revaluación cambiaria). */
 	reverse_next_month?: boolean;
 	/** El UUID del CFDI con el que se relaciona, si hay uno. */
 	uuid?: string | null;
@@ -10952,7 +11002,7 @@ export interface UpdateManualEntryParams {
 	kind?: "adjustment" | "accrual" | "reclassification" | "other";
 	/** El tipo de póliza: journal (diario), income (ingresos) o expense (egresos). */
 	journal_type?: "journal" | "income" | "expense";
-	/** Solo con kind accrual: la póliza se revierte sola el día 1 del mes siguiente (para cuando llegue la factura). */
+	/** Solo con kind accrual o adjustment: la póliza se revierte sola el día 1 del mes siguiente (una provisión, para cuando llegue la factura; un ajuste de cierre como la revaluación cambiaria). */
 	reverse_next_month?: boolean;
 	/** El UUID del CFDI con el que se relaciona, si hay uno. */
 	uuid?: string | null;
@@ -11061,6 +11111,25 @@ export interface SetClosedPeriodParams {
 	issuer?: string;
 	/** El último mes cerrado (AAAA-MM); los anteriores quedan cerrados también. null reabre todos. */
 	closed_through: string | null;
+}
+
+/** Los parámetros de GET /v1/accounting/fx_revaluations/{month}. */
+export interface GetFxRevaluationParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface CreateFxRevaluationParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** El tipo de cambio de cierre (pesos por unidad) de cada moneda que aparece en currencies, por ejemplo {"USD": 18.2915}. Por lo general, el FIX que trae closing_rate. */
+	rates: Record<string, number>;
+}
+
+/** Los parámetros de DELETE /v1/accounting/fx_revaluations/{month}. */
+export interface DeleteFxRevaluationParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
 }
 
 /** Los parámetros de GET /v1/accounting/bank_movements. */
@@ -15906,6 +15975,50 @@ export class ClosedPeriodResource {
 	}
 }
 
+/** Contabilidad: fiscalisto.fxRevaluations. */
+export class FxRevaluationsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ver la revaluación cambiaria de un mes
+	 *
+	 * Las facturas PPD en otra moneda que seguían pendientes al cierre del mes, lo pendiente por moneda con el tipo de cambio de cierre que sugerimos (el FIX del DOF) y la póliza de revaluación, si ya se registró. Como Cierre del mes › Revaluación cambiaria en la app.
+	 *
+	 * GET /v1/accounting/fx_revaluations/{month}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-fx-revaluation
+	 */
+	get(month: string, params?: GetFxRevaluationParams, options?: RequestOptions): Promise<FxRevaluation> {
+		return this.#client.request({ method: "GET", path: `/v1/accounting/fx_revaluations/${encodeURIComponent(month)}`, query: params }, options);
+	}
+
+	/**
+	 * Registrar la revaluación cambiaria de un mes
+	 *
+	 * Registra (o reemplaza) la póliza de ajuste del último día del mes que lleva lo pendiente en otra moneda al tipo de cambio de cierre (rates): Clientes contra Utilidad o Pérdida cambiaria, y Proveedores contra Pérdida o Utilidad cambiaria. Se revierte sola el día 1 del mes siguiente, para que cada pago siga calculando su diferencia cambiaria desde el tipo de cambio de la factura. Sin facturas pendientes, o sin diferencia a esos tipos de cambio, contesta parameter_invalid en month; en un mes cerrado, period_closed.
+	 *
+	 * POST /v1/accounting/fx_revaluations/{month}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/create-fx-revaluation
+	 */
+	create(month: string, params: CreateFxRevaluationParams, options?: RequestOptions): Promise<FxRevaluation> {
+		return this.#client.request({ method: "POST", path: `/v1/accounting/fx_revaluations/${encodeURIComponent(month)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Quitar la revaluación cambiaria de un mes
+	 *
+	 * Quita la póliza de revaluación del mes y su reversión. En un mes cerrado contesta period_closed.
+	 *
+	 * DELETE /v1/accounting/fx_revaluations/{month}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/delete-fx-revaluation
+	 */
+	delete(month: string, params?: DeleteFxRevaluationParams, options?: RequestOptions): Promise<FxRevaluation> {
+		return this.#client.request({ method: "DELETE", path: `/v1/accounting/fx_revaluations/${encodeURIComponent(month)}`, query: params }, options);
+	}
+}
+
 /** Contabilidad: fiscalisto.bankMovements. */
 export class BankMovementsResource {
 	readonly #client: Client;
@@ -16678,6 +16791,7 @@ export class FiscalistoApi extends Core {
 	readonly openingBalances = new OpeningBalancesResource(this);
 	readonly fixedAssets = new FixedAssetsResource(this);
 	readonly closedPeriod = new ClosedPeriodResource(this);
+	readonly fxRevaluations = new FxRevaluationsResource(this);
 	readonly bankMovements = new BankMovementsResource(this);
 	readonly storeConnections = new StoreConnectionsResource(this);
 	readonly recurringInvoices = new RecurringInvoicesResource(this);
