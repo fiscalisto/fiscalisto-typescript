@@ -5761,6 +5761,8 @@ export interface IssuerOnboardingLink {
 	return_url: string | null;
 	/** La página también guarda la e.firma (cifrada) para las consultas al SAT del emisor. */
 	keep_efirma: boolean;
+	/** La página pide solo la e.firma, sin el CSD (para consultar el SAT). */
+	efirma_only: boolean;
 	/** Cuándo deja de servir la liga. Pida otra cuando quiera. */
 	expires_at: string | null;
 	/** Cuándo se creó. */
@@ -7849,6 +7851,8 @@ export interface CreateIssuerOnboardingLinkParams {
 	expires_in_hours?: number;
 	/** true para que la página también guarde (cifrada) la e.firma de su cliente, con su autorización, y pueda pedir al SAT sus facturas (POST /v1/sat_downloads), sus declaraciones (/v1/sat_declarations), su opinión de cumplimiento, constancia y buzón tributario. Sin esto la e.firma solo firma el contrato con el PAC y no se guarda. */
 	keep_efirma?: boolean;
+	/** true para pedir solo la e.firma, sin el CSD: para consultar el SAT por su cliente sin timbrar por él. Implica keep_efirma. El emisor sigue sin poder timbrar hasta que suba su CSD. */
+	efirma_only?: boolean;
 }
 
 /** Los parámetros de GET /v1/invoices. */
@@ -12198,7 +12202,7 @@ export class IssuersResource {
 	/**
 	 * Crear una liga de alta
 	 *
-	 * Una página en fiscalisto.com donde el dueño del emisor sube su CSD y firma el contrato con el PAC con su e.firma, sin que esos archivos ni sus contraseñas pasen por su plataforma. Con keep_efirma: true la página también le pide autorización para guardar su e.firma cifrada, para consultar el SAT (descargas, declaraciones, opinión, constancia y buzón). Mande a su cliente a url; al terminar vuelve a return_url y llega issuer.ready. Cada liga sirve para un emisor, hasta que vence.
+	 * Una página en fiscalisto.com donde el dueño del emisor sube su CSD y firma el contrato con el PAC con su e.firma, sin que esos archivos ni sus contraseñas pasen por su plataforma. Con keep_efirma: true la página también le pide autorización para guardar su e.firma cifrada, para consultar el SAT (descargas, declaraciones, opinión, constancia y buzón); con efirma_only: true pide solo la e.firma, sin el CSD. Mande a su cliente a url; al terminar vuelve a return_url y llega issuer.ready. Cada liga sirve para un emisor, hasta que vence.
 	 *
 	 * POST /v1/issuers/{id}/onboarding_links
 	 * @see https://fiscalisto.com/docs/api/referencia/emisores/create-issuer-onboarding-link
