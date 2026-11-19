@@ -4270,6 +4270,42 @@ export interface FixedAsset {
 	} | null;
 }
 
+/** Un movimiento de banco que ninguna factura explica (un retiro, o un depósito clasificado como préstamo, traspaso o devolución) y su póliza de ingresos o egresos contra Bancos, cuando ya se registró. */
+export interface AccountingBankMovement {
+	/** btx_… para un depósito (el mismo de la conciliación) o bwd_… para un retiro. */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "accounting_bank_movement";
+	/** El emisor. */
+	issuer: string;
+	/** deposit (depósito) o withdrawal (retiro). */
+	direction: "deposit" | "withdrawal";
+	/** El día del movimiento (AAAA-MM-DD), que es el de su póliza. */
+	date: string;
+	/** El texto del banco, como vino en el estado de cuenta. */
+	description: string;
+	/** La referencia o clave de rastreo, si la trae. */
+	reference: string | null;
+	/** El importe, en positivo. */
+	amount: number;
+	/** El banco del estado de cuenta. */
+	bank: string;
+	/** Los últimos 4 dígitos de la cuenta, si se sabe. */
+	bank_account: string | null;
+	/** Un depósito: lo que dijo la conciliación (loan, transfer o refund). null en un retiro. */
+	classification: "loan" | "transfer" | "refund" | null;
+	/** pending (por registrar), posted (con póliza), paid_invoices (pagó facturas que ya están en la contabilidad) o ignored (no se registra). */
+	status: "pending" | "posted" | "paid_invoices" | "ignored";
+	/** Su póliza (mje_…), que se ve y se corrige como cualquier póliza capturada, o null. */
+	manual_entry: string | null;
+	/** El número de la cuenta que va contra Bancos en su póliza, o null. */
+	account: string | null;
+	/** La cuenta que sugiere un movimiento anterior con el mismo texto registrado con remember, o null. */
+	suggested_account: string | null;
+}
+
 /** La balanza de comprobación de un mes. */
 export interface TrialBalance {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -6541,6 +6577,17 @@ export interface FixedAssetList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: FixedAsset[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface AccountingBankMovementList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: AccountingBankMovement[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -10784,6 +10831,28 @@ export interface DisposeFixedAssetParams {
 	reason?: "sale" | "write_off";
 	/** Una nota. */
 	note?: string | null;
+}
+
+/** Los parámetros de GET /v1/accounting/bank_movements. */
+export interface ListBankMovementsParams {
+	/** El mes (AAAA-MM). Por omisión, el actual. */
+	month?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface PostBankMovementParams {
+	/** El número de la cuenta del catálogo que va contra Bancos (GET /v1/accounting/accounts). */
+	account: string;
+	/** El concepto de la póliza. Sin él, el texto del banco. */
+	description?: string;
+	/** Sugerir esta cuenta para los movimientos con el mismo texto del banco (suggested_account). */
+	remember?: boolean;
+}
+
+export interface MarkBankMovementParams {
+	/** paid_invoices: pagó facturas que ya están en la contabilidad; ignored: no se registra; pending: vuelve a por registrar. Solo retiros. */
+	status: "pending" | "paid_invoices" | "ignored";
 }
 
 /** Los parámetros de GET /v1/accounting/electronic_accounting. */
@@ -15487,6 +15556,62 @@ export class FixedAssetsResource {
 	}
 }
 
+/** Contabilidad: fiscalisto.bankMovements. */
+export class BankMovementsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar los movimientos de banco sin factura
+	 *
+	 * Los movimientos de banco de un mes que ninguna factura explica: los retiros de los estados de cuenta importados en la conciliación (comisiones, impuestos, pagos de préstamos, traspasos) y los depósitos que ahí se clasificaron como préstamo, traspaso o devolución. Cada uno con su póliza, si ya se registró, y la cuenta sugerida. Lo que pagó o cobró una factura ya está en la contabilidad por su CFDI.
+	 *
+	 * GET /v1/accounting/bank_movements
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/list-bank-movements
+	 */
+	list(params?: ListBankMovementsParams, options?: RequestOptions): Promise<AccountingBankMovementList> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/bank_movements", query: params }, options);
+	}
+
+	/**
+	 * Registrar un movimiento de banco
+	 *
+	 * Le hace su póliza con fecha del movimiento: de ingresos (Bancos contra account) a un depósito, de egresos (account contra Bancos) a un retiro. Entra a la balanza, el auxiliar y la contabilidad electrónica como cualquier póliza capturada (manual_entry). Uno ya registrado contesta bank_movement_posted; un depósito sin clasificar o un retiro marcado, bank_movement_not_bookable.
+	 *
+	 * POST /v1/accounting/bank_movements/{id}/post
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/post-bank-movement
+	 */
+	post(id: string, params: PostBankMovementParams, options?: RequestOptions): Promise<AccountingBankMovement> {
+		return this.#client.request({ method: "POST", path: `/v1/accounting/bank_movements/${encodeURIComponent(id)}/post`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Quitar la póliza de un movimiento de banco
+	 *
+	 * Su póliza sale de la contabilidad y el movimiento vuelve a pending. Sin póliza contesta bank_movement_not_posted.
+	 *
+	 * DELETE /v1/accounting/bank_movements/{id}/post
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/unpost-bank-movement
+	 */
+	unpost(id: string, options?: RequestOptions): Promise<AccountingBankMovement> {
+		return this.#client.request({ method: "DELETE", path: `/v1/accounting/bank_movements/${encodeURIComponent(id)}/post` }, options);
+	}
+
+	/**
+	 * Marcar un retiro
+	 *
+	 * paid_invoices: pagó facturas que ya están en la contabilidad por su CFDI; ignored: no se registra; pending: vuelve a por registrar. Solo retiros sin póliza.
+	 *
+	 * POST /v1/accounting/bank_movements/{id}/mark
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/mark-bank-movement
+	 */
+	mark(id: string, params: MarkBankMovementParams, options?: RequestOptions): Promise<AccountingBankMovement> {
+		return this.#client.request({ method: "POST", path: `/v1/accounting/bank_movements/${encodeURIComponent(id)}/mark`, body: params, idempotent: true }, options);
+	}
+}
+
 /** Tiendas en línea: fiscalisto.storeConnections. */
 export class StoreConnectionsResource {
 	readonly #client: Client;
@@ -16200,6 +16325,7 @@ export class FiscalistoApi extends Core {
 	readonly accounting = new AccountingResource(this);
 	readonly manualEntries = new ManualEntriesResource(this);
 	readonly fixedAssets = new FixedAssetsResource(this);
+	readonly bankMovements = new BankMovementsResource(this);
 	readonly storeConnections = new StoreConnectionsResource(this);
 	readonly recurringInvoices = new RecurringInvoicesResource(this);
 	readonly quotes = new QuotesResource(this);
