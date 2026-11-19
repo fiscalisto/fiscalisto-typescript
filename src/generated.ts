@@ -3910,8 +3910,10 @@ export interface JournalEntry {
 	object: "journal_entry";
 	/** El emisor. */
 	issuer: string;
-	/** De qué es: invoice (un CFDI de ingreso o egreso), payment_received o payment_made (un pago de un complemento), payroll (un recibo de nómina), employee_expenses (un anticipo, reembolso, devolución o comprobación de viáticos, contra 107.01 «Funcionarios y empleados») o depreciation (la depreciación del mes de los activos fijos). */
-	type: "invoice" | "payment_received" | "payment_made" | "payroll" | "employee_expenses" | "depreciation";
+	/** De qué es: invoice (un CFDI de ingreso o egreso), payment_received o payment_made (un pago de un complemento), payroll (un recibo de nómina), employee_expenses (un anticipo, reembolso, devolución o comprobación de viáticos, contra 107.01 «Funcionarios y empleados»), depreciation (la depreciación del mes de los activos fijos), manual (una póliza capturada a mano, o la reversión de una provisión) o asset_disposal (la venta o baja de un activo fijo). */
+	type: "invoice" | "payment_received" | "payment_made" | "payroll" | "employee_expenses" | "depreciation" | "manual" | "asset_disposal";
+	/** Con type manual: la póliza capturada (mje_…), también en su reversión; null en las demás. */
+	manual_entry: string | null;
 	/** La fecha del CFDI o del pago; en la depreciación, el último día del mes. */
 	date: string;
 	/** El documento, su folio y la contraparte. */
@@ -3955,6 +3957,100 @@ export interface LedgerAccount {
 	grouping_code: string;
 	/** debit (deudora) o credit (acreedora). */
 	nature: "debit" | "credit";
+}
+
+/** Una póliza capturada a mano (ajuste, provisión, reclasificación): entra a las pólizas, la balanza, los estados financieros y la contabilidad electrónica de su mes. */
+export interface ManualJournalEntry {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "manual_journal_entry";
+	/** El emisor. */
+	issuer: string;
+	/** La fecha de la póliza. */
+	date: string;
+	/** Su concepto. */
+	description: string;
+	/** adjustment (ajuste), accrual (provisión), reclassification (reclasificación) u other. */
+	kind: "adjustment" | "accrual" | "reclassification" | "other";
+	/** El tipo de póliza: journal (diario), income (ingresos) o expense (egresos). */
+	journal_type: "journal" | "income" | "expense";
+	/** true: una provisión que se revierte sola el día 1 del mes siguiente. */
+	reverse_next_month: boolean;
+	/** El día de su reversión, o null si no se revierte. */
+	reverses_on: string | null;
+	/** El UUID del CFDI con el que se relaciona, o null. */
+	uuid: string | null;
+	/** El RFC de la otra parte de ese CFDI, o null. */
+	uuid_tax_id: string | null;
+	/** La suma de sus cargos (igual a la de sus abonos). */
+	total: number;
+	/** Sus renglones: la cuenta y su cargo (debit) o abono (credit). */
+	lines: {
+		/** El número de cuenta. */
+		account: string;
+		/** El nombre de la cuenta. */
+		account_name: string;
+		/** Su código agrupador del SAT. */
+		grouping_code: string;
+		/** El cargo, en pesos. */
+		debit: number;
+		/** El abono, en pesos. */
+		credit: number;
+	}[];
+	/** Cuándo se capturó. */
+	created_at: string | null;
+	/** Cuándo cambió por última vez. */
+	updated_at: string | null;
+}
+
+/** Un activo fijo del emisor en su contabilidad al cierre de un mes: su monto original, su depreciación en línea recta (tasas del artículo 34 de la LISR) y su valor en libros. */
+export interface FixedAsset {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "fixed_asset";
+	/** El emisor. */
+	issuer: string;
+	/** Qué es: lo capturado, o el emisor del CFDI. */
+	description: string;
+	/** cfdi (llegó con una factura recibida de uso I01 a I08) o manual (capturado sin factura). */
+	source: "cfdi" | "manual";
+	/** Su tipo por uso CFDI (I01 a I08), que da su tasa. */
+	cfdi_use: string;
+	/** El nombre de su tipo, por ejemplo «Equipo de cómputo». */
+	class: string;
+	/** El UUID de su CFDI, o null si se capturó. */
+	uuid: string | null;
+	/** Desde cuándo se usa: se deprecia desde el mes siguiente. */
+	in_use_since: string;
+	/** Su monto original sin IVA. */
+	cost: number;
+	/** Su tasa anual de depreciación (0.3 es 30%). */
+	annual_rate: number;
+	/** Lo que se deprecia cada mes mientras dura. */
+	monthly_depreciation: number;
+	/** El mes (AAAA-MM) a cuyo cierre van las cifras. */
+	month: string;
+	/** Lo que se depreció en ese mes. */
+	month_depreciation: number;
+	/** Lo depreciado hasta el cierre de ese mes. */
+	accumulated_depreciation: number;
+	/** Su valor en libros: el monto original menos lo depreciado; 0 después de su baja. */
+	book_value: number;
+	/** Su venta o baja (date, reason sale o write_off, note), o null si sigue en uso. */
+	disposal: {
+		/** El día de la venta o la baja. */
+		date: string;
+		/** sale (venta) o write_off (robo, pérdida, desecho). */
+		reason: "sale" | "write_off";
+		/** La nota que se dejó, o null. */
+		note: string | null;
+	} | null;
 }
 
 /** La balanza de comprobación de un mes. */
@@ -6137,6 +6233,28 @@ export interface LedgerAccountList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: LedgerAccount[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface ManualJournalEntryList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: ManualJournalEntry[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface FixedAssetList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: FixedAsset[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -10142,6 +10260,117 @@ export interface GetCrossCheckCfdiParams {
 export interface ListLedgerAccountsParams {
 	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
 	issuer?: string;
+}
+
+export interface CreateLedgerAccountParams {
+	/** Su número en el catálogo, por ejemplo 210-01-01. No se repite. */
+	number: string;
+	/** Su nombre. */
+	name: string;
+	/** Una subcuenta del código agrupador del SAT (Anexo 24), por ejemplo 210.01. */
+	grouping_code: string;
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+}
+
+export interface CreateManualEntryParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** La fecha de la póliza (AAAA-MM-DD). */
+	date: string;
+	/** Su concepto. */
+	description: string;
+	/** adjustment (ajuste), accrual (provisión), reclassification (reclasificación) u other. */
+	kind?: "adjustment" | "accrual" | "reclassification" | "other";
+	/** El tipo de póliza: journal (diario), income (ingresos) o expense (egresos). */
+	journal_type?: "journal" | "income" | "expense";
+	/** Solo con kind accrual: la póliza se revierte sola el día 1 del mes siguiente (para cuando llegue la factura). */
+	reverse_next_month?: boolean;
+	/** El UUID del CFDI con el que se relaciona, si hay uno. */
+	uuid?: string | null;
+	/** Con uuid: el RFC de la otra parte de ese CFDI. */
+	uuid_tax_id?: string | null;
+	/** Sus cargos y abonos: cada renglón uno u otro; los cargos suman lo mismo que los abonos. */
+	lines: {
+		/** El número de la cuenta en su catálogo (GET /v1/accounting/accounts), por ejemplo 205-06. */
+		account: string;
+		/** El cargo. */
+		debit?: number;
+		/** El abono. */
+		credit?: number;
+	}[];
+}
+
+/** Los parámetros de GET /v1/accounting/manual_entries. */
+export interface ListManualEntriesParams {
+	/** Cuántas por página, de 1 a 1,000. Por omisión 100. */
+	limit?: number;
+	/** La última (mje_…) de la página anterior. */
+	starting_after?: string;
+	/** Desde este día (AAAA-MM-DD). */
+	from?: string;
+	/** Hasta este día (AAAA-MM-DD). */
+	to?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface UpdateManualEntryParams {
+	/** La fecha de la póliza (AAAA-MM-DD). */
+	date: string;
+	/** Su concepto. */
+	description: string;
+	/** adjustment (ajuste), accrual (provisión), reclassification (reclasificación) u other. */
+	kind?: "adjustment" | "accrual" | "reclassification" | "other";
+	/** El tipo de póliza: journal (diario), income (ingresos) o expense (egresos). */
+	journal_type?: "journal" | "income" | "expense";
+	/** Solo con kind accrual: la póliza se revierte sola el día 1 del mes siguiente (para cuando llegue la factura). */
+	reverse_next_month?: boolean;
+	/** El UUID del CFDI con el que se relaciona, si hay uno. */
+	uuid?: string | null;
+	/** Con uuid: el RFC de la otra parte de ese CFDI. */
+	uuid_tax_id?: string | null;
+	/** Sus cargos y abonos: cada renglón uno u otro; los cargos suman lo mismo que los abonos. */
+	lines: {
+		/** El número de la cuenta en su catálogo (GET /v1/accounting/accounts), por ejemplo 205-06. */
+		account: string;
+		/** El cargo. */
+		debit?: number;
+		/** El abono. */
+		credit?: number;
+	}[];
+}
+
+/** Los parámetros de GET /v1/accounting/fixed_assets. */
+export interface ListFixedAssetsParams {
+	/** El mes (AAAA-MM) a cuyo cierre van las cifras. Por omisión, el actual. */
+	month?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface CreateFixedAssetParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** Qué es. */
+	description: string;
+	/** El tipo de activo por su uso CFDI: I01 construcciones, I02 mobiliario, I03 transporte, I04 cómputo, I05 dados y troqueles, I06 telefonía, I07 satelital, I08 otra maquinaria. Da su tasa de depreciación. */
+	cfdi_use: "I01" | "I02" | "I03" | "I04" | "I05" | "I06" | "I07" | "I08";
+	/** El monto original sin IVA. */
+	cost: number;
+	/** La fecha de compra. */
+	acquired_on: string;
+	/** Desde cuándo se usa (se deprecia desde el mes siguiente); por omisión, la de compra. */
+	in_use_since?: string | null;
+}
+
+export interface DisposeFixedAssetParams {
+	/** El día de la venta o la baja. */
+	date: string;
+	/** sale (venta) o write_off (robo, pérdida, desecho). */
+	reason?: "sale" | "write_off";
+	/** Una nota. */
+	note?: string | null;
 }
 
 /** Los parámetros de GET /v1/accounting/electronic_accounting. */
@@ -14451,7 +14680,7 @@ export class AccountingResource {
 	/**
 	 * Listar las pólizas de un mes
 	 *
-	 * Las pólizas de diario del mes, con sus cuentas y código agrupador del SAT: una por cada CFDI de ingreso o egreso vigente, emitido o recibido (los recibidos con la categoría de su gasto); una por cada pago de un complemento; una por cada recibo de nómina, y una con la depreciación de los activos fijos. Un PUE se registra cobrado o pagado según su forma de pago. En pesos; un CFDI en otra moneda sin tipo de cambio no se registra. No incluye movimientos de banco sin CFDI ni provisiones.
+	 * Las pólizas de diario del mes, con sus cuentas y código agrupador del SAT: una por cada CFDI de ingreso o egreso vigente, emitido o recibido (los recibidos con la categoría de su gasto); una por cada pago de un complemento; una por cada recibo de nómina; una con la depreciación de los activos fijos; una por cada venta o baja de un activo, y las capturadas a mano (POST /v1/accounting/manual_entries) con las reversiones de sus provisiones. Un PUE se registra cobrado o pagado según su forma de pago. En pesos; un CFDI en otra moneda sin tipo de cambio no se registra. No incluye movimientos de banco sin CFDI.
 	 *
 	 * GET /v1/accounting/journal_entries
 	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/list-journal-entries
@@ -14533,6 +14762,18 @@ export class AccountingResource {
 	}
 
 	/**
+	 * Agregar una cuenta al catálogo
+	 *
+	 * Una cuenta propia del emisor, para sus pólizas a mano: su número (que no se repite), su nombre y una subcuenta del código agrupador del SAT. Entra al catálogo de la contabilidad electrónica.
+	 *
+	 * POST /v1/accounting/accounts
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/create-ledger-account
+	 */
+	createAccount(params: CreateLedgerAccountParams, options?: RequestOptions): Promise<LedgerAccount> {
+		return this.#client.request({ method: "POST", path: "/v1/accounting/accounts", body: params, idempotent: true }, options);
+	}
+
+	/**
 	 * Descargar la contabilidad electrónica
 	 *
 	 * El ZIP del mes para el Buzón Tributario: el catálogo (CT) y la balanza (BN, o BC si es complementaria), cada uno en su ZIP con el nombre que espera el SAT, en el formato 1.3 del Anexo 24. Con journal_request, también las pólizas (PL), que se entregan cuando el SAT las pide. Con month AAAA-13, la balanza de comprobación ajustada al cierre del ejercicio (regla 2.8.1.6 RMF): solo la balanza, con los saldos finales de diciembre como saldos iniciales y, con closing_entry, la póliza de cierre.
@@ -14566,6 +14807,154 @@ export class AccountingResource {
 	 */
 	diotFile(params: GetDiotFileParams, options?: RequestOptions): Promise<string> {
 		return this.#client.request({ method: "GET", path: "/v1/accounting/diot/file", query: params, as: "text" }, options);
+	}
+}
+
+/** Contabilidad: fiscalisto.manualEntries. */
+export class ManualEntriesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Capturar una póliza
+	 *
+	 * Una póliza a mano: un ajuste, una provisión (reverse_next_month la revierte el día 1 del mes siguiente), una reclasificación. Cada renglón lleva una cuenta del catálogo por su número y un cargo o un abono; si no cuadran contesta entry_unbalanced, y una cuenta que no existe, account_missing. Entra a journal_entries, trial_balance, financial_statements y electronic_accounting de su mes. No puede ser antes de los saldos iniciales.
+	 *
+	 * POST /v1/accounting/manual_entries
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/create-manual-entry
+	 */
+	create(params: CreateManualEntryParams, options?: RequestOptions): Promise<ManualJournalEntry> {
+		return this.#client.request({ method: "POST", path: "/v1/accounting/manual_entries", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar las pólizas capturadas
+	 *
+	 * Las pólizas capturadas a mano del emisor, las más recientes primero.
+	 *
+	 * GET /v1/accounting/manual_entries
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/list-manual-entries
+	 */
+	list(params?: ListManualEntriesParams, options?: RequestOptions): List<ManualJournalEntry> {
+		return this.#client.list({ path: "/v1/accounting/manual_entries", query: params }, options);
+	}
+
+	/**
+	 * Ver una póliza capturada
+	 *
+	 * Una póliza capturada a mano.
+	 *
+	 * GET /v1/accounting/manual_entries/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-manual-entry
+	 */
+	get(id: string, options?: RequestOptions): Promise<ManualJournalEntry> {
+		return this.#client.request({ method: "GET", path: `/v1/accounting/manual_entries/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Corregir una póliza capturada
+	 *
+	 * La reemplaza con lo que manda, con las mismas reglas que al capturarla.
+	 *
+	 * POST /v1/accounting/manual_entries/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/update-manual-entry
+	 */
+	update(id: string, params: UpdateManualEntryParams, options?: RequestOptions): Promise<ManualJournalEntry> {
+		return this.#client.request({ method: "POST", path: `/v1/accounting/manual_entries/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Borrar una póliza capturada
+	 *
+	 * Sale de la contabilidad con su reversión, si tenía.
+	 *
+	 * DELETE /v1/accounting/manual_entries/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/delete-manual-entry
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/accounting/manual_entries/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Contabilidad: fiscalisto.fixedAssets. */
+export class FixedAssetsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar los activos fijos
+	 *
+	 * Los activos fijos del emisor al cierre de un mes: los que llegaron con una factura recibida de uso I01 a I08 (fxc_…) y los capturados sin ella (fxa_…), con su depreciación mensual y acumulada y su valor en libros.
+	 *
+	 * GET /v1/accounting/fixed_assets
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/list-fixed-assets
+	 */
+	list(params?: ListFixedAssetsParams, options?: RequestOptions): Promise<FixedAssetList> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/fixed_assets", query: params }, options);
+	}
+
+	/**
+	 * Agregar un activo fijo sin factura
+	 *
+	 * Uno que compró antes de usar Fiscalisto o cuya factura no está aquí. Se deprecia cada mes desde el siguiente a in_use_since, en la contabilidad y en el cálculo del ISR. Su costo no entra solo a los libros: va en los saldos iniciales o en una póliza (POST /v1/accounting/manual_entries).
+	 *
+	 * POST /v1/accounting/fixed_assets
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/create-fixed-asset
+	 */
+	create(params: CreateFixedAssetParams, options?: RequestOptions): Promise<FixedAsset> {
+		return this.#client.request({ method: "POST", path: "/v1/accounting/fixed_assets", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Ver un activo fijo
+	 *
+	 * Un activo fijo, con sus cifras al cierre del mes actual.
+	 *
+	 * GET /v1/accounting/fixed_assets/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-fixed-asset
+	 */
+	get(id: string, options?: RequestOptions): Promise<FixedAsset> {
+		return this.#client.request({ method: "GET", path: `/v1/accounting/fixed_assets/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Borrar un activo fijo capturado
+	 *
+	 * Solo uno capturado sin factura (fxa_…); uno con CFDI contesta asset_from_cfdi: véndalo o dele de baja.
+	 *
+	 * DELETE /v1/accounting/fixed_assets/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/delete-fixed-asset
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/accounting/fixed_assets/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Vender o dar de baja un activo fijo
+	 *
+	 * Deja de depreciarse el mes de date, y ese día una póliza (asset_disposal) cancela el activo y su depreciación acumulada; su valor en libros va a pérdida en venta o baja (703). El ingreso de una venta entra con la factura que emita. Uno ya dado de baja contesta asset_already_disposed.
+	 *
+	 * POST /v1/accounting/fixed_assets/{id}/dispose
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/dispose-fixed-asset
+	 */
+	dispose(id: string, params: DisposeFixedAssetParams, options?: RequestOptions): Promise<FixedAsset> {
+		return this.#client.request({ method: "POST", path: `/v1/accounting/fixed_assets/${encodeURIComponent(id)}/dispose`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Deshacer la baja de un activo fijo
+	 *
+	 * El activo vuelve a depreciarse como si nunca se hubiera dado de baja.
+	 *
+	 * DELETE /v1/accounting/fixed_assets/{id}/disposal
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/undispose-fixed-asset
+	 */
+	undispose(id: string, options?: RequestOptions): Promise<FixedAsset> {
+		return this.#client.request({ method: "DELETE", path: `/v1/accounting/fixed_assets/${encodeURIComponent(id)}/disposal` }, options);
 	}
 }
 
@@ -15279,6 +15668,8 @@ export class FiscalistoApi extends Core {
 	readonly satDeclarations = new SatDeclarationsResource(this);
 	readonly tickets = new TicketsResource(this);
 	readonly accounting = new AccountingResource(this);
+	readonly manualEntries = new ManualEntriesResource(this);
+	readonly fixedAssets = new FixedAssetsResource(this);
 	readonly storeConnections = new StoreConnectionsResource(this);
 	readonly recurringInvoices = new RecurringInvoicesResource(this);
 	readonly quotes = new QuotesResource(this);
