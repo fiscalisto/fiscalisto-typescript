@@ -2551,32 +2551,6 @@ export interface SatDeclaration {
 	updated_at: string | null;
 }
 
-/** Lo que trajo una consulta de las declaraciones del emisor en el SAT. */
-export interface SatDeclarationsRefresh {
-	/** Qué tipo de objeto es («invoice», «customer»…). */
-	object: "sat_declarations_refresh";
-	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
-	livemode: boolean;
-	/** El emisor consultado. */
-	issuer: string;
-	/** completed (ya bajó todo) o processing (queda algo por bajar: sigue solo en la siguiente hora, sin otro timbre). */
-	status: "completed" | "processing";
-	/** Cuántas declaraciones listó el SAT en los años consultados. */
-	found: number;
-	/** Cuántos archivos bajó en esta consulta. */
-	downloaded: number;
-	/** Cuántas declaraciones quedan con archivos por bajar. */
-	pending: number;
-	/** Con status processing: cuándo deberían estar los archivos y las cifras que faltan (pending), que se descargan solos sin otro timbre. Mientras, GET /v1/sat_declarations ya las lista, con figures_status pending. null con status completed. */
-	completes_at: string | null;
-	/** Si una parte del SAT falló (por ejemplo, la anual), lo que dijo; lo demás sí se trajo. null si todo salió. */
-	warning: string | null;
-	/** Cuándo se consultó. */
-	refreshed_at: string;
-	/** Desde cuándo se puede volver a consultar este emisor (10 minutos después). */
-	next_refresh_at: string;
-}
-
 /** El ejercicio del emisor mes por mes: qué obligaciones presentó, cuáles parecen faltar y cuáles aún no vencen. */
 export interface SatDeclarationCalendar {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -3434,22 +3408,50 @@ export interface SatMailboxMessage {
 	created_at: string | null;
 }
 
-/** Una consulta al SAT de un documento del emisor: si ya terminó y dónde leerlo. */
+/** Una consulta al SAT de las declaraciones o de un documento del emisor (opinión de cumplimiento, constancia o buzón): se contesta al aceptarla (status processing) y termina sola; sat_refresh.completed o sat_refresh.failed dicen cómo. */
 export interface SatRefresh {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "sat_refresh";
+	/** El id de la consulta (srf_…): GET /v1/sat_refreshes/{id} dice cómo va. */
+	id: string;
 	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
 	livemode: boolean;
 	/** El emisor. */
 	issuer: string;
-	/** Qué se consultó. */
-	document: "compliance_opinion" | "tax_status_certificate" | "sat_mailbox";
-	/** completed (ya está en url) o processing (el SAT tarda; llega a url en unos minutos). */
-	status: "completed" | "processing";
+	/** Qué se consultó: declarations, compliance_opinion, tax_status_certificate o sat_mailbox. */
+	document: "declarations" | "compliance_opinion" | "tax_status_certificate" | "sat_mailbox";
+	/** processing (el SAT se está consultando), completed (lo que trajo está en url) o failed (el SAT no contestó: motivo en error, el timbre regresó). */
+	status: "processing" | "completed" | "failed";
+	/** Lo que trajo, con status completed: en declarations cuántas listó y bajó; en los demás, dónde leer el documento. null mientras sigue o si falló. */
+	result: {
+		/** Cuántas declaraciones listó el SAT en los años consultados. */
+		found: number;
+		/** Cuántos archivos bajó. */
+		downloaded: number;
+		/** Cuántas declaraciones quedan con archivos por bajar: siguen solas en la siguiente hora, sin otro timbre. */
+		pending: number;
+		/** Si una parte del SAT falló (por ejemplo, la anual), lo que dijo; lo demás sí se trajo. */
+		warning: string | null;
+		/** Con pending: cuándo deberían estar los archivos y las cifras que faltan. Mientras, GET /v1/sat_declarations ya las lista, con figures_status pending. */
+		completes_at: string | null;
+	} | {
+		/** Dónde leer el documento. */
+		url: string;
+	} | null;
+	/** Con status failed: lo que dijo el SAT. null en los demás. */
+	error: string | null;
+	/** true cuando se usó su timbre (el SAT contestó). En pruebas siempre false: no se usan timbres. */
+	charged: boolean;
+	/** true mientras sigue: su timbre está apartado (GET /v1/balance ya no lo cuenta) y regresa si el SAT no contesta. */
+	timbre_held: boolean;
 	/** Cuándo se pidió. */
-	refreshed_at: string | null;
-	/** Desde cuándo se puede pedir otra vez. */
-	next_refresh_at: string | null;
+	created_at: string;
+	/** Cuándo terminó (completed o failed). null mientras sigue. */
+	completed_at: string | null;
+	/** Cuándo se pidió (igual que created_at). */
+	refreshed_at: string;
+	/** Desde cuándo se puede pedir otra vez para el mismo emisor (10 minutos después). */
+	next_refresh_at: string;
 	/** Dónde leer lo que trajo. */
 	url: string;
 }
@@ -5967,7 +5969,7 @@ export interface CfdiVerification {
 }
 
 /** Lo que puede pasar: el tipo de cada evento. */
-export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready";
+export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready";
 
 /** Algo que pasó en su cuenta: el objeto completo como quedó. Se manda a sus webhooks firmado (Standard Webhooks). */
 export interface EventBase<T extends EventType = EventType, O = unknown> {
@@ -5975,7 +5977,7 @@ export interface EventBase<T extends EventType = EventType, O = unknown> {
 	id: string;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "event";
-	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, invoice.cancellation_failed, invoice.paid, invoice.partially_paid, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, payroll_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, sat_declaration.created, sat_declaration.updated, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, quote.withdrawn, sales_order.confirmed, sales_order.customer_confirmed, sales_order.delivered, sales_order.paid, sales_order.canceled, supplier_invoice.received, supplier_invoice.approved, supplier_invoice.rejected, supplier_invoice.scheduled, supplier_invoice.paid, portal_supplier.approved, issuer.ready, balance.low, usage.high o test_clock.ready. */
+	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, invoice.cancellation_failed, invoice.paid, invoice.partially_paid, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, payroll_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, sat_declaration.created, sat_declaration.updated, sat_refresh.completed, sat_refresh.failed, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, quote.withdrawn, sales_order.confirmed, sales_order.customer_confirmed, sales_order.delivered, sales_order.paid, sales_order.canceled, supplier_invoice.received, supplier_invoice.approved, supplier_invoice.rejected, supplier_invoice.scheduled, supplier_invoice.paid, portal_supplier.approved, issuer.ready, balance.low, usage.high o test_clock.ready. */
 	type: T;
 	/** Versión de la API con que se armó el objeto. */
 	api_version: string;
@@ -6009,6 +6011,8 @@ export type Event =
 	| EventBase<"sat_download.failed", SatDownload>
 	| EventBase<"sat_declaration.created", SatDeclaration>
 	| EventBase<"sat_declaration.updated", SatDeclaration>
+	| EventBase<"sat_refresh.completed", SatRefresh>
+	| EventBase<"sat_refresh.failed", SatRefresh>
 	| EventBase<"ticket.invoiced", Ticket>
 	| EventBase<"ticket.included_in_global", Ticket>
 	| EventBase<"recurring_invoice.failed", RecurringInvoice>
@@ -6533,6 +6537,17 @@ export interface SupplierInvoiceList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: SupplierInvoice[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface SatRefreshList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: SatRefresh[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -10326,6 +10341,18 @@ export interface RefreshSatDeclarationsParams {
 	issuer?: string;
 }
 
+/** Los parámetros de GET /v1/sat_refreshes. */
+export interface ListSatRefreshesParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** Solo las de un emisor (iss_…). */
+	issuer?: string;
+	/** Solo las de un documento. */
+	document?: "declarations" | "compliance_opinion" | "tax_status_certificate" | "sat_mailbox";
+}
+
 /** Los parámetros de GET /v1/sat_declarations. */
 export interface ListSatDeclarationsParams {
 	/** Cuántos por página, de 1 a 100. Por omisión 10. */
@@ -11865,7 +11892,7 @@ export interface RollWebhookSecretParams {
 
 export interface TestWebhookEndpointParams {
 	/** El evento a mandar. Por omisión invoice.stamped. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready";
 }
 
 /** Los parámetros de GET /v1/webhook_endpoints/{id}/deliveries. */
@@ -11885,7 +11912,7 @@ export interface ListEventsParams {
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
 	/** Solo de este tipo (invoice.stamped), o todos los de un recurso con un comodín (invoice.*). */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready" | "invoice.*" | "invoice_batch.*" | "payroll_batch.*" | "recurring_invoice.*" | "quote.*" | "sales_order.*" | "supplier_invoice.*" | "portal_supplier.*" | "ticket.*" | "retention.*" | "customer_data_request.*" | "sat_download.*" | "sat_declaration.*" | "issuer.*" | "balance.*" | "usage.*" | "test_clock.*";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready" | "invoice.*" | "invoice_batch.*" | "payroll_batch.*" | "recurring_invoice.*" | "quote.*" | "sales_order.*" | "supplier_invoice.*" | "portal_supplier.*" | "ticket.*" | "retention.*" | "customer_data_request.*" | "sat_download.*" | "sat_declaration.*" | "sat_refresh.*" | "issuer.*" | "balance.*" | "usage.*" | "test_clock.*";
 	/** Solo los de este objeto (inv_…, ret_…, bat_…). */
 	object?: string;
 	/** false: los que algún webhook no recibió (su último intento falló). true: los que recibieron todos los webhooks a los que se mandaron. */
@@ -12259,7 +12286,7 @@ export class IssuersResource {
 	/**
 	 * Pedir la opinión de cumplimiento al SAT
 	 *
-	 * La pide al SAT ahora con la e.firma guardada del emisor (POST /v1/issuers/{id}/efirma con keep_for_downloads: true). 1 timbre en producción, una vez cada 10 minutos; regresa si el SAT no contesta. Si el SAT tarda, contesta status processing y el resultado llega a GET /v1/issuers/{id}/compliance_opinion. En pruebas da una positiva de ejemplo.
+	 * La pide al SAT con la e.firma guardada del emisor (POST /v1/issuers/{id}/efirma con keep_for_downloads: true); llega a GET /v1/issuers/{id}/compliance_opinion. 1 timbre en producción, una vez cada 10 minutos. Contesta 202 en cuanto la acepta (status processing) y consulta al SAT en segundo plano: sat_refresh.completed o sat_refresh.failed dicen cómo terminó, y GET /v1/sat_refreshes/{id} también. Su timbre se aparta al aceptarla (sin timbres contesta 402 de inmediato), se usa cuando el SAT contesta y regresa si no contesta. En pruebas da una positiva de ejemplo al instante (la consulta ya viene completed y también llega sat_refresh.completed).
 	 *
 	 * POST /v1/issuers/{id}/compliance_opinion/refresh
 	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/refresh-compliance-opinion
@@ -12295,7 +12322,7 @@ export class IssuersResource {
 	/**
 	 * Generar la constancia de situación fiscal en el SAT
 	 *
-	 * Genera una constancia nueva con la e.firma guardada del emisor. 1 timbre en producción, una vez cada 10 minutos; regresa si el SAT no contesta. En pruebas hace una con los datos del emisor.
+	 * Genera una constancia nueva con la e.firma guardada del emisor; llega a GET /v1/issuers/{id}/tax_status_certificate. 1 timbre en producción, una vez cada 10 minutos. Contesta 202 en cuanto la acepta (status processing) y consulta al SAT en segundo plano: sat_refresh.completed o sat_refresh.failed dicen cómo terminó, y GET /v1/sat_refreshes/{id} también. Su timbre se aparta al aceptarla (sin timbres contesta 402 de inmediato), se usa cuando el SAT contesta y regresa si no contesta. En pruebas hace una con los datos del emisor al instante.
 	 *
 	 * POST /v1/issuers/{id}/tax_status_certificate/refresh
 	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/refresh-tax-status-certificate
@@ -12319,7 +12346,7 @@ export class IssuersResource {
 	/**
 	 * Revisar el buzón tributario en el SAT
 	 *
-	 * Lee los avisos del buzón tributario del emisor ahora, con su e.firma guardada; nunca abre notificaciones (abrirlas firma el acuse y corren los plazos). 1 timbre en producción, una vez cada 10 minutos. En pruebas deja dos avisos de ejemplo.
+	 * Lee los avisos del buzón tributario del emisor con su e.firma guardada; nunca abre notificaciones (abrirlas firma el acuse y corren los plazos). Llegan a GET /v1/sat_mailbox_messages. 1 timbre en producción, una vez cada 10 minutos. Contesta 202 en cuanto la acepta (status processing) y consulta al SAT en segundo plano: sat_refresh.completed o sat_refresh.failed dicen cómo terminó, y GET /v1/sat_refreshes/{id} también. Su timbre se aparta al aceptarla (sin timbres contesta 402 de inmediato), se usa cuando el SAT contesta y regresa si no contesta. En pruebas deja dos avisos de ejemplo al instante.
 	 *
 	 * POST /v1/issuers/{id}/sat_mailbox/refresh
 	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/refresh-sat-mailbox
@@ -15131,12 +15158,12 @@ export class SatDeclarationsResource {
 	/**
 	 * Consultar las declaraciones de un emisor en el SAT
 	 *
-	 * Entra al SAT con la e.firma guardada del emisor y trae las declaraciones que presentó: provisionales o definitivas (desde 2022), la anual de persona moral (desde 2019) y las del servicio anterior Declaraciones y pagos, con su PDF, su acuse y sus cifras. La primera consulta trae todos los años que el SAT conserva; las siguientes, este año y el anterior. Solo consulta: nunca presenta ni firma nada. En producción usa 1 timbre por consulta (regresa si el SAT no contesta) y se puede hacer una vez cada 10 minutos por emisor. Contesta en menos de un minuto; si queda algo por bajar (status processing), sigue solo en la siguiente hora sin otro timbre. En pruebas no se le pregunta al SAT: trae declaraciones de ejemplo al instante.
+	 * Entra al SAT con la e.firma guardada del emisor y trae las declaraciones que presentó: provisionales o definitivas (desde 2022), la anual de persona moral (desde 2019) y las del servicio anterior Declaraciones y pagos, con su PDF, su acuse y sus cifras. La primera consulta trae todos los años que el SAT conserva; las siguientes, este año y el anterior. Solo consulta: nunca presenta ni firma nada. En producción usa 1 timbre por consulta y se puede hacer una vez cada 10 minutos por emisor. Contesta 202 en cuanto la acepta (status processing) y consulta al SAT en segundo plano: sat_refresh.completed o sat_refresh.failed dicen cómo terminó, y GET /v1/sat_refreshes/{id} también. Su timbre se aparta al aceptarla (sin timbres contesta 402 de inmediato), se usa cuando el SAT contesta y regresa si no contesta. Si al terminar queda algo por bajar (result.pending), sigue solo en la siguiente hora sin otro timbre. En pruebas no se le pregunta al SAT: trae declaraciones de ejemplo al instante (la consulta ya viene completed y también llega sat_refresh.completed).
 	 *
 	 * POST /v1/sat_declarations/refresh
 	 * @see https://fiscalisto.com/docs/api/referencia/declaraciones-del-sat/refresh-sat-declarations
 	 */
-	refresh(params?: RefreshSatDeclarationsParams, options?: RequestOptions): Promise<SatDeclarationsRefresh> {
+	refresh(params?: RefreshSatDeclarationsParams, options?: RequestOptions): Promise<SatRefresh> {
 		return this.#client.request({ method: "POST", path: "/v1/sat_declarations/refresh", body: params, idempotent: true }, options);
 	}
 
@@ -15234,6 +15261,38 @@ export class SatDeclarationsResource {
 	 */
 	financialStatements(id: string, options?: RequestOptions): Promise<string> {
 		return this.#client.request({ method: "GET", path: `/v1/sat_declarations/${encodeURIComponent(id)}/financial_statements`, as: "text" }, options);
+	}
+}
+
+/** Declaraciones del SAT: fiscalisto.satRefreshes. */
+export class SatRefreshesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar consultas al SAT
+	 *
+	 * Las consultas al SAT que pidió (declaraciones, opinión de cumplimiento, constancia y buzón), de la más reciente a la más antigua, con cómo van. No usa timbres.
+	 *
+	 * GET /v1/sat_refreshes
+	 * @see https://fiscalisto.com/docs/api/referencia/declaraciones-del-sat/list-sat-refreshes
+	 */
+	list(params?: ListSatRefreshesParams, options?: RequestOptions): List<SatRefresh> {
+		return this.#client.list({ path: "/v1/sat_refreshes", query: params }, options);
+	}
+
+	/**
+	 * Ver una consulta al SAT
+	 *
+	 * Cómo va una consulta al SAT (srf_…): processing mientras se consulta, completed con lo que trajo en result o failed con el motivo en error (su timbre regresó). No usa timbres.
+	 *
+	 * GET /v1/sat_refreshes/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/declaraciones-del-sat/get-sat-refresh
+	 */
+	get(id: string, options?: RequestOptions): Promise<SatRefresh> {
+		return this.#client.request({ method: "GET", path: `/v1/sat_refreshes/${encodeURIComponent(id)}` }, options);
 	}
 }
 
@@ -16390,6 +16449,7 @@ export class FiscalistoApi extends Core {
 	readonly portalSuppliers = new PortalSuppliersResource(this);
 	readonly supplierInvoices = new SupplierInvoicesResource(this);
 	readonly satDeclarations = new SatDeclarationsResource(this);
+	readonly satRefreshes = new SatRefreshesResource(this);
 	readonly tickets = new TicketsResource(this);
 	readonly accounting = new AccountingResource(this);
 	readonly manualEntries = new ManualEntriesResource(this);
