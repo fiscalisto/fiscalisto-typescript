@@ -1284,6 +1284,159 @@ export interface PayrollReceiptPreview {
 	};
 }
 
+/** Un aguinaldo, PTU o finiquito como se timbraría (nómina extraordinaria): lo que paga, su parte exenta, el ISR y el neto. */
+export interface ExtraordinaryPayrollReceiptPreview {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "payroll_receipt_preview";
+	/** Lo calculó Fiscalisto, como nómina extraordinaria. */
+	calculation: "extraordinary";
+	/** Mándelo en POST /v1/payroll_receipts/extraordinary para timbrar exactamente este recibo: si al timbrar se calcula otro, contesta 409 payroll_calculation_changed sin timbrar. */
+	confirmation_token: string;
+	/** El empleado (emp_…). */
+	employee: string;
+	/** Qué paga: aguinaldo, ptu o finiquito. */
+	kind: "aguinaldo" | "ptu" | "finiquito";
+	/** El periodo (FechaInicialPago, FechaFinalPago) de un recibo extraordinario es un solo día: payment_date (aguinaldo, PTU) o el último día trabajado (finiquito); payment_date es FechaPago. */
+	period: {
+		/** Primer día del periodo (FechaInicialPago), AAAA-MM-DD. */
+		start: string;
+		/** Último día del periodo (FechaFinalPago), AAAA-MM-DD. */
+		end: string;
+		/** Fecha de pago (FechaPago), AAAA-MM-DD. Por omisión el último día del periodo. */
+		payment_date: string;
+	};
+	/** Salario base de cotización (SalarioBaseCotApor). */
+	contribution_base_salary: number;
+	/** Lo que paga, como lo muestra la app. */
+	lines: {
+		/** Concepto del pago (ConceptoPago), c_TipoContribuyenteSujetoRetencion. */
+		concept: string;
+		/** Cómo se calculó (días, años, salario). */
+		detail: string;
+		/** Importe. */
+		gross: number;
+		/** De él, la parte exenta del ISR. */
+		exempt: number;
+	}[];
+	/** Percepciones (Percepcion): sueldo y demás, gravado y exento. */
+	perceptions: {
+		/** Tipo de percepción (TipoPercepcion), c_TipoPercepcion: 001 sueldos… */
+		type: string;
+		/** Clave del patrón (Clave). */
+		key: string;
+		/** Concepto (Concepto). */
+		concept: string;
+		/** Importe gravado (ImporteGravado). */
+		taxed: number;
+		/** Importe exento (ImporteExento). */
+		exempt: number;
+		/** Horas extra (HorasExtra), con la percepción 019. */
+		overtime?: {
+			/** Días con horas extra (Dias). */
+			days: number;
+			/** c_TipoHoras: 01 dobles, 02 triples, 03 simples. */
+			hours_type: string;
+			/** Horas extra (HorasExtra). */
+			hours: number;
+			/** Importe pagado (ImportePagado). */
+			amount_paid: number;
+		}[];
+		/** Acciones o títulos (AccionesOTitulos), con la percepción 045. */
+		stock_options?: {
+			/** Valor de mercado (ValorMercado). */
+			market_value: number;
+			/** Precio al otorgarse (PrecioAlOtorgarse). */
+			grant_price: number;
+		};
+	}[];
+	/** Deducciones (Deduccion): ISR, cuotas IMSS y demás. */
+	deductions: {
+		/** Tipo de deducción (TipoDeduccion), c_TipoDeduccion: 001 IMSS, 002 ISR… */
+		type: string;
+		/** Clave del patrón (Clave). */
+		key: string;
+		/** Concepto (Concepto). */
+		concept: string;
+		/** Importe (Importe). */
+		amount: number;
+	}[];
+	/** Otros pagos (OtroPago): subsidio para el empleo. */
+	other_payments: {
+		/** Tipo de otro pago (TipoOtroPago), c_TipoOtroPago: 002 subsidio para el empleo. */
+		type: string;
+		/** Clave del patrón (Clave). */
+		key: string;
+		/** Concepto (Concepto). */
+		concept: string;
+		/** Importe pagado (Importe). */
+		amount: number;
+		/** Subsidio causado (SubsidioCausado). */
+		subsidy_caused?: number;
+		/** Del subsidio causado, el ISR que evitó (no va en el XML). */
+		subsidy_applied?: number;
+		/** Compensación del saldo a favor (CompensacionSaldosAFavor), con el 004. */
+		balance_compensation?: {
+			/** Saldo a favor (SaldoAFavor). */
+			balance: number;
+			/** Año del saldo a favor (Año). */
+			year: number;
+			/** Remanente del saldo a favor (RemanenteSalFav). */
+			remaining: number;
+		};
+	}[];
+	/** SeparacionIndemnizacion: solo en una liquidación (indemnización y prima de antigüedad). */
+	separation: {
+		/** Total pagado (TotalPagado). */
+		total_paid: number;
+		/** Años de servicio (NumAñosServicio). */
+		years_of_service: number;
+		/** Último sueldo mensual ordinario (UltimoSueldoMensOrd). */
+		last_monthly_salary: number;
+		/** Ingreso acumulable (IngresoAcumulable). */
+		accumulable_income: number;
+		/** Ingreso no acumulable (IngresoNoAcumulable). */
+		non_accumulable_income: number;
+	} | null;
+	/** El cálculo del ISR del periodo: base, tarifa, subsidio y resultado. */
+	isr: {
+		/** ISR retenido. */
+		amount: number;
+		/** aguinaldo y ptu: ISR con la parte gravada sumada al sueldo del mes. */
+		art96?: number;
+		/** aguinaldo y ptu: ISR con el procedimiento del art. 174 del Reglamento. */
+		art174?: number;
+		/** aguinaldo y ptu: el cálculo que se aplicó. */
+		method?: "art96" | "art174";
+	};
+	/** Totales: percepciones, deducciones, otros pagos y el neto a pagar. */
+	totals: {
+		/** Total de sueldos, salarios y asimilados (TotalSueldos). */
+		salaries: number;
+		/** Total gravado (TotalGravado). */
+		taxed: number;
+		/** Total exento (TotalExento). */
+		exempt: number;
+		/** Total de separación e indemnización (TotalSeparacionIndemnizacion). */
+		separation: number;
+		/** Total de jubilación, pensión o retiro (TotalJubilacionPensionRetiro). */
+		retirement: number;
+		/** Total de percepciones (TotalPercepciones). */
+		perceptions: number;
+		/** Otras deducciones (TotalOtrasDeducciones). */
+		other_deductions: number;
+		/** Impuestos retenidos (TotalImpuestosRetenidos). */
+		taxes_withheld: number;
+		/** Total de deducciones (TotalDeducciones). */
+		deductions: number;
+		/** Total de otros pagos (TotalOtrosPagos). */
+		other_payments: number;
+		/** Subtotal del comprobante: percepciones más otros pagos. */
+		subtotal: number;
+		/** Neto a pagar al empleado. */
+		net: number;
+	};
+}
+
 /** Un recibo calculado por su sistema, revisado y sin timbrar: lo que se timbraría, tal cual. */
 export interface ExternalPayrollReceiptPreview {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -3062,8 +3215,8 @@ export interface StockMovement {
 	product: string;
 	/** El almacén (whs_…). */
 	warehouse: string;
-	/** sale (una factura), purchase (una compra), customer_return, supplier_return, adjustment, count (conteo físico), transfer_out, transfer_in, initial, cost (un ajuste de costo) o reversal (deshace otro, como una factura cancelada). */
-	type: "sale" | "purchase" | "customer_return" | "supplier_return" | "adjustment" | "count" | "transfer_out" | "transfer_in" | "initial" | "cost" | "reversal";
+	/** sale (una factura), purchase (una compra), customer_return, supplier_return, adjustment, count (conteo físico), transfer_out, transfer_in, production_consumption (un componente que salió a producción), production_output (lo producido), initial, cost (un ajuste de costo) o reversal (deshace otro, como una factura cancelada). */
+	type: "sale" | "purchase" | "customer_return" | "supplier_return" | "adjustment" | "count" | "transfer_out" | "transfer_in" | "production_consumption" | "production_output" | "initial" | "cost" | "reversal";
 	/** Cuánto entró (positivo) o salió (negativo). */
 	quantity: number;
 	/** El costo por unidad con que entró o salió, en pesos sin IVA. */
@@ -3072,9 +3225,9 @@ export interface StockMovement {
 	value: number;
 	/** El lote o número de serie, o null. */
 	lot: string | null;
-	/** Lo que lo causó: type invoice (id es el UUID del CFDI), adjustment (adj_…), receipt, transfer, count o ticket. */
+	/** Lo que lo causó: type invoice (id es el UUID del CFDI), adjustment (adj_…), production (mfo_…), receipt, transfer, count o ticket. */
 	source: {
-		/** Qué lo movió: invoice (una factura; id es su UUID), adjustment (un ajuste, adj_…), count (un conteo) u otro origen. */
+		/** Qué lo movió: invoice (una factura; id es su UUID), adjustment (un ajuste, adj_…), production (una orden de producción, mfo_…), count (un conteo) u otro origen. */
 		type: string;
 		/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
 		id: string;
@@ -3122,6 +3275,70 @@ export interface StockAdjustment {
 	}[];
 	/** Cuándo se hizo. */
 	created_at: string | null;
+}
+
+/** Una orden de producción: los componentes de la receta salen de un almacén y lo producido entra a otro a su costo real. */
+export interface ProductionOrder {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "production_order";
+	/** El emisor. */
+	issuer: string;
+	/** Su folio, como OP-12. */
+	number: string;
+	/** draft (borrador, nada se ha movido), in_process (los componentes ya salieron), completed (lo producido ya entró) o cancelled (todo regresó). */
+	status: "draft" | "in_process" | "completed" | "cancelled";
+	/** Lo que se produce (prd_…). */
+	product: string;
+	/** Cuántas unidades se planearon. */
+	quantity: number;
+	/** Cuántas salieron de verdad, o null si no ha terminado. */
+	quantity_made: number | null;
+	/** El almacén de donde salen los componentes (whs_…). */
+	warehouse: string;
+	/** El almacén al que entra lo producido (whs_…). */
+	destination_warehouse: string;
+	/** El lote de lo producido, o null. */
+	lot: string | null;
+	/** Para cuándo (AAAA-MM-DD), o null. */
+	due_date: string | null;
+	/** Su nota, o null. */
+	note: string | null;
+	/** Lo que lleva, de la receta para quantity con su merma: quantity lo planeado, quantity_used lo que salió y value lo que costó (pesos sin IVA). tracks_stock false es un servicio: solo suma su costo. */
+	components: {
+		/** Un producto de su catálogo (prd_…): toma su clave, unidad, precio e impuestos. */
+		product: string;
+		/** Cantidad (Cantidad). Por omisión 1. */
+		quantity: number;
+		/** Lo que de verdad salió de ese componente, o null antes de iniciar la orden. */
+		quantity_used: number | null;
+		/** true si lleva existencias; false es un servicio, que solo suma su costo. */
+		tracks_stock: boolean;
+		/** Valor de la mercancía (ValorMercancia); obligatorio en transporte aéreo. */
+		value: number | null;
+	}[];
+	/** Mano de obra, gas, empaque…: se suman al costo de lo producido. */
+	other_costs: {
+		/** Descripción. */
+		description: string;
+		/** Importe. */
+		amount: number;
+	}[];
+	/** Lo que costaron los componentes que salieron, o null antes de iniciar. */
+	materials_cost: number | null;
+	/** (materials_cost + other_costs) ÷ quantity_made: el costo con que entró cada unidad, o null si no ha terminado. */
+	unit_cost: number | null;
+	/** Cuándo se hizo. */
+	created_at: string | null;
+	/** Cuándo salieron los componentes, o null. */
+	started_at: string | null;
+	/** Cuándo entró lo producido, o null. */
+	completed_at: string | null;
+	/** Cuándo se canceló, o null. */
+	cancelled_at: string | null;
 }
 
 /** La opinión de cumplimiento de obligaciones fiscales (32-D) más reciente del emisor, como la dio el SAT. */
@@ -6063,6 +6280,17 @@ export interface StockAdjustmentList {
 	url: string;
 }
 
+export interface ProductionOrderList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: ProductionOrder[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
 export interface SatCatalogEntryList {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "list";
@@ -8464,6 +8692,62 @@ export interface PreviewPayrollReceiptParams {
 	metadata?: Record<string, string>;
 }
 
+export interface CreateExtraordinaryPayrollReceiptParams {
+	/** El empleado (emp_…). */
+	employee: string;
+	/** aguinaldo (sus días al año, al menos 15, en proporción a los trabajados), ptu (la parte que le toca de las utilidades) o finiquito (al último día trabajado, end_date del empleado: aguinaldo, vacaciones y prima vacacional proporcionales y, con exit_reason dismissal, la indemnización y la prima de antigüedad). */
+	kind: "aguinaldo" | "ptu" | "finiquito";
+	/** FechaPago del recibo. */
+	payment_date: string;
+	/** aguinaldo: el año que paga (por omisión, el de payment_date). ptu: el año de la utilidad (por omisión, el anterior a payment_date). */
+	year?: number;
+	/** aguinaldo: los días trabajados en el año, si no son todos los que estuvo contratado (faltas o incapacidades que no cuentan). */
+	days_worked?: number;
+	/** ptu: lo que le toca a este empleado (la mitad de la PTU por días trabajados y la mitad por salario, con el tope de tres meses de salario). Fiscalisto calcula su parte exenta (15 UMA) y su ISR. */
+	ptu_amount?: number;
+	/** aguinaldo y ptu: cómo retener el ISR de la parte gravada. lower (por omisión) el que retenga menos; art96 sumada al sueldo del mes; art174 el procedimiento opcional del Reglamento de la LISR. */
+	isr_method?: "lower" | "art96" | "art174";
+	/** finiquito: resignation (renuncia o común acuerdo, por omisión) o dismissal (despido sin causa: suma 3 meses de salario integrado y la prima de antigüedad). */
+	exit_reason?: "resignation" | "dismissal";
+	/** finiquito con dismissal: incluye 20 días por año de servicio (LFT art. 50), cuando el patrón no lo reinstala. */
+	twenty_days_per_year?: boolean;
+	/** finiquito: los días de vacaciones del año de servicio en curso que ya tomó. */
+	vacation_days_taken?: number;
+	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
+	send_email?: boolean;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
+	/** El confirmation_token de POST /v1/payroll_receipts/extraordinary/preview: timbra solo si el recibo calculado ahora es el que revisó (si no, 409 payroll_calculation_changed). */
+	confirmation_token?: string;
+}
+
+export interface PreviewExtraordinaryPayrollReceiptParams {
+	/** El empleado (emp_…). */
+	employee: string;
+	/** aguinaldo (sus días al año, al menos 15, en proporción a los trabajados), ptu (la parte que le toca de las utilidades) o finiquito (al último día trabajado, end_date del empleado: aguinaldo, vacaciones y prima vacacional proporcionales y, con exit_reason dismissal, la indemnización y la prima de antigüedad). */
+	kind: "aguinaldo" | "ptu" | "finiquito";
+	/** FechaPago del recibo. */
+	payment_date: string;
+	/** aguinaldo: el año que paga (por omisión, el de payment_date). ptu: el año de la utilidad (por omisión, el anterior a payment_date). */
+	year?: number;
+	/** aguinaldo: los días trabajados en el año, si no son todos los que estuvo contratado (faltas o incapacidades que no cuentan). */
+	days_worked?: number;
+	/** ptu: lo que le toca a este empleado (la mitad de la PTU por días trabajados y la mitad por salario, con el tope de tres meses de salario). Fiscalisto calcula su parte exenta (15 UMA) y su ISR. */
+	ptu_amount?: number;
+	/** aguinaldo y ptu: cómo retener el ISR de la parte gravada. lower (por omisión) el que retenga menos; art96 sumada al sueldo del mes; art174 el procedimiento opcional del Reglamento de la LISR. */
+	isr_method?: "lower" | "art96" | "art174";
+	/** finiquito: resignation (renuncia o común acuerdo, por omisión) o dismissal (despido sin causa: suma 3 meses de salario integrado y la prima de antigüedad). */
+	exit_reason?: "resignation" | "dismissal";
+	/** finiquito con dismissal: incluye 20 días por año de servicio (LFT art. 50), cuando el patrón no lo reinstala. */
+	twenty_days_per_year?: boolean;
+	/** finiquito: los días de vacaciones del año de servicio en curso que ya tomó. */
+	vacation_days_taken?: number;
+	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
+	send_email?: boolean;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
+}
+
 export interface CreatePayrollBatchParams {
 	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
 	issuer?: string;
@@ -9532,7 +9816,7 @@ export interface ListStockMovementsParams {
 	/** Solo los de este almacén (whs_…). */
 	warehouse?: string;
 	/** Solo los de este tipo. */
-	type?: "sale" | "purchase" | "customer_return" | "supplier_return" | "adjustment" | "count" | "transfer_out" | "transfer_in" | "initial" | "cost" | "reversal";
+	type?: "sale" | "purchase" | "customer_return" | "supplier_return" | "adjustment" | "count" | "transfer_out" | "transfer_in" | "production_consumption" | "production_output" | "initial" | "cost" | "reversal";
 	/** Desde este día (AAAA-MM-DD) u hora (AAAA-MM-DDTHH:MM:SS) de la Ciudad de México. */
 	date_gte?: string;
 	/** Hasta este día (completo) u hora de la Ciudad de México. */
@@ -9575,6 +9859,63 @@ export interface ListStockAdjustmentsParams {
 	warehouse?: string;
 	/** applied, pending, rejected o reversed. */
 	status?: "applied" | "pending" | "rejected" | "reversed";
+}
+
+export interface CreateProductionOrderParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** Lo que va a producir (prd_…): un producto con receta (su hoja de costo en Compras › Costos y márgenes). */
+	product: string;
+	/** Cuántas unidades, en la unidad del producto. */
+	quantity: number;
+	/** El almacén de donde salen los componentes (whs_…). Por omisión, el de la Matriz. */
+	warehouse?: string;
+	/** El almacén al que entra lo producido (whs_…). Por omisión, warehouse. */
+	destination_warehouse?: string;
+	/** Para cuándo (AAAA-MM-DD). */
+	due_date?: string | null;
+	/** Una nota. */
+	note?: string | null;
+}
+
+/** Los parámetros de GET /v1/production_orders. */
+export interface ListProductionOrdersParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Solo las de este producto (prd_…). */
+	product?: string;
+	/** draft, in_process, completed o cancelled. */
+	status?: "draft" | "in_process" | "completed" | "cancelled";
+}
+
+export interface StartProductionOrderParams {
+	/** Lo que de verdad se usó de algún componente; los que no mande salen como dice la orden. */
+	components?: {
+		/** El componente (prd_…) de la orden. */
+		product: string;
+		/** Lo que de verdad se usó, en la unidad del componente. */
+		quantity_used: number;
+	}[];
+}
+
+export interface CompleteProductionOrderParams {
+	/** Cuántas unidades salieron. Por omisión, quantity. */
+	quantity_made?: number;
+	/** El lote de lo producido, si el producto lleva lotes. Por omisión, OP-<folio>. */
+	lot?: string;
+	/** La caducidad de ese lote (AAAA-MM-DD). */
+	expires_on?: string;
+	/** Los otros costos como de verdad fueron; por omisión, los de la receta. */
+	other_costs?: {
+		/** Qué fue: gas, mano de obra… */
+		description: string;
+		/** Cuánto, en pesos sin IVA. */
+		amount: number;
+	}[];
 }
 
 /** Los parámetros de GET /v1/sat_catalogs/{name}. */
@@ -12628,7 +12969,7 @@ export class PayrollReceiptsResource {
 	/**
 	 * Timbrar un recibo de nómina
 	 *
-	 * Nómina ordinaria (Nómina 1.2): Fiscalisto calcula sueldo, ISR con subsidio al empleo e IMSS del empleado y el periodo, como la app, y nada más: aguinaldo, PTU, finiquitos, bonos, horas extra, Infonavit o préstamos los calcula su sistema y se timbran con POST /v1/payroll_receipts/external (pedirlos aquí contesta payroll_calculation_unsupported). Revise antes el recibo con POST /v1/payroll_receipts/preview y mande su confirmation_token: así solo se timbra el recibo que revisó (si cambió, 409 payroll_calculation_changed). Queda como factura tipo N (GET /v1/invoices/{id}). El emisor necesita employer_registration.
+	 * Nómina ordinaria (Nómina 1.2): Fiscalisto calcula sueldo, ISR con subsidio al empleo e IMSS del empleado y el periodo, como la app, y nada más: el aguinaldo, la PTU y los finiquitos los calcula POST /v1/payroll_receipts/extraordinary; bonos, horas extra, Infonavit o préstamos los calcula su sistema y se timbran con POST /v1/payroll_receipts/external (pedirlos aquí contesta payroll_calculation_unsupported). Revise antes el recibo con POST /v1/payroll_receipts/preview y mande su confirmation_token: así solo se timbra el recibo que revisó (si cambió, 409 payroll_calculation_changed). Queda como factura tipo N (GET /v1/invoices/{id}). El emisor necesita employer_registration.
 	 *
 	 * POST /v1/payroll_receipts
 	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-payroll-receipt
@@ -12647,6 +12988,30 @@ export class PayrollReceiptsResource {
 	 */
 	preview(params: PreviewPayrollReceiptParams, options?: RequestOptions): Promise<PayrollReceiptPreview> {
 		return this.#client.request({ method: "POST", path: "/v1/payroll_receipts/preview", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Timbrar un aguinaldo, PTU o finiquito
+	 *
+	 * Nómina extraordinaria (TipoNomina E) que calcula Fiscalisto, como la app en Nómina › Aguinaldo, PTU y finiquitos: el aguinaldo (los días al año del empleado, al menos 15, en proporción a los trabajados, 30 UMA exentas), la PTU (la parte que le toca, 15 UMA exentas) o el finiquito al último día trabajado (end_date): aguinaldo, vacaciones y prima vacacional proporcionales, menos lo que ya se le pagó en el año, y con exit_reason dismissal la indemnización de 3 meses, opcionalmente 20 días por año, y la prima de antigüedad (90 UMA exentas por año de servicio). El ISR de un aguinaldo o PTU, con el cálculo que retenga menos (art. 96 LISR o 174 del Reglamento) salvo que pida uno. Uno por empleado, tipo y año (el finiquito, por fecha de baja): pedirlo otra vez devuelve el mismo; cancelado, se emite de nuevo. Revíselo antes con POST /v1/payroll_receipts/extraordinary/preview y mande su confirmation_token. Queda como factura tipo N.
+	 *
+	 * POST /v1/payroll_receipts/extraordinary
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-extraordinary-payroll-receipt
+	 */
+	createExtraordinary(params: CreateExtraordinaryPayrollReceiptParams, options?: RequestOptions): Promise<Invoice> {
+		return this.#client.request({ method: "POST", path: "/v1/payroll_receipts/extraordinary", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Calcular un aguinaldo, PTU o finiquito sin timbrar
+	 *
+	 * El recibo extraordinario como se timbraría (lo que paga, su parte exenta, el ISR con los dos cálculos y el neto), sin timbrar ni usar timbres, con el confirmation_token que lo timbra tal cual.
+	 *
+	 * POST /v1/payroll_receipts/extraordinary/preview
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/preview-extraordinary-payroll-receipt
+	 */
+	previewExtraordinary(params: PreviewExtraordinaryPayrollReceiptParams, options?: RequestOptions): Promise<ExtraordinaryPayrollReceiptPreview> {
+		return this.#client.request({ method: "POST", path: "/v1/payroll_receipts/extraordinary/preview", body: params, idempotent: true }, options);
 	}
 
 	/**
@@ -13923,6 +14288,86 @@ export class StockAdjustmentsResource {
 	 */
 	get(id: string, options?: RequestOptions): Promise<StockAdjustment> {
 		return this.#client.request({ method: "GET", path: `/v1/stock_adjustments/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Inventario: fiscalisto.productionOrders. */
+export class ProductionOrdersResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Crear una orden de producción
+	 *
+	 * Una orden en borrador (status draft) para producir quantity de un producto con receta: sus components salen de la receta (la hoja de costo de Compras › Costos y márgenes) con su merma y rendimiento, y sus other_costs se escalan a la cantidad. Nada se mueve hasta iniciarla. Enciende Producción en el inventario si estaba apagada. Un producto sin receta: 400 inventory_refused.
+	 *
+	 * POST /v1/production_orders
+	 * @see https://fiscalisto.com/docs/api/referencia/inventario/create-production-order
+	 */
+	create(params: CreateProductionOrderParams, options?: RequestOptions): Promise<ProductionOrder> {
+		return this.#client.request({ method: "POST", path: "/v1/production_orders", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar órdenes de producción
+	 *
+	 * Las órdenes del emisor, las más recientes primero.
+	 *
+	 * GET /v1/production_orders
+	 * @see https://fiscalisto.com/docs/api/referencia/inventario/list-production-orders
+	 */
+	list(params?: ListProductionOrdersParams, options?: RequestOptions): List<ProductionOrder> {
+		return this.#client.list({ path: "/v1/production_orders", query: params }, options);
+	}
+
+	/**
+	 * Ver una orden de producción
+	 *
+	 * Una orden con sus componentes, sus otros costos y, al terminar, su costo por unidad.
+	 *
+	 * GET /v1/production_orders/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/inventario/get-production-order
+	 */
+	get(id: string, options?: RequestOptions): Promise<ProductionOrder> {
+		return this.#client.request({ method: "GET", path: `/v1/production_orders/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Iniciar una orden de producción
+	 *
+	 * Los componentes salen del almacén (status in_process), cada lote el que caduca primero, al costo del emisor (promedio o PEPS). Mande components para lo que de verdad se usó de alguno. Con existencias negativas en «No permitir», uno que no alcanza: 400 inventory_refused.
+	 *
+	 * POST /v1/production_orders/{id}/start
+	 * @see https://fiscalisto.com/docs/api/referencia/inventario/start-production-order
+	 */
+	start(id: string, params?: StartProductionOrderParams, options?: RequestOptions): Promise<ProductionOrder> {
+		return this.#client.request({ method: "POST", path: `/v1/production_orders/${encodeURIComponent(id)}/start`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Terminar una orden de producción
+	 *
+	 * Lo producido entra al almacén destino a su costo real: (materials_cost + other_costs) ÷ quantity_made (status completed). Una en borrador se inicia antes con lo planeado.
+	 *
+	 * POST /v1/production_orders/{id}/complete
+	 * @see https://fiscalisto.com/docs/api/referencia/inventario/complete-production-order
+	 */
+	complete(id: string, params?: CompleteProductionOrderParams, options?: RequestOptions): Promise<ProductionOrder> {
+		return this.#client.request({ method: "POST", path: `/v1/production_orders/${encodeURIComponent(id)}/complete`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Cancelar una orden de producción
+	 *
+	 * Los componentes regresan a su almacén y lo producido sale (status cancelled). Una ya cancelada: 400 inventory_refused.
+	 *
+	 * POST /v1/production_orders/{id}/cancel
+	 * @see https://fiscalisto.com/docs/api/referencia/inventario/cancel-production-order
+	 */
+	cancel(id: string, options?: RequestOptions): Promise<ProductionOrder> {
+		return this.#client.request({ method: "POST", path: `/v1/production_orders/${encodeURIComponent(id)}/cancel`, idempotent: true }, options);
 	}
 }
 
@@ -15652,6 +16097,7 @@ export class FiscalistoApi extends Core {
 	readonly warehouses = new WarehousesResource(this);
 	readonly stockMovements = new StockMovementsResource(this);
 	readonly stockAdjustments = new StockAdjustmentsResource(this);
+	readonly productionOrders = new ProductionOrdersResource(this);
 	readonly satCatalogs = new SatCatalogsResource(this);
 	readonly satLists = new SatListsResource(this);
 	readonly cfdiVerifications = new CfdiVerificationsResource(this);
