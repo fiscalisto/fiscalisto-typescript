@@ -4328,6 +4328,51 @@ export interface ClosedPeriod {
 	closed_at: string | null;
 }
 
+/** Las pólizas que entraron de otro sistema (CONTPAQi, COI, una hoja de cálculo) en una importación. */
+export interface ManualEntryImport {
+	/** La importación (mji_…), para deshacerla; null si todas las pólizas ya estaban. */
+	id: string | null;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "manual_entry_import";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** Cuántas pólizas entraron. */
+	imported: number;
+	/** Cuántas se saltaron porque ya estaban importadas. */
+	duplicates: number;
+	/** La fecha de la primera póliza del archivo. */
+	from: string;
+	/** La fecha de la última. */
+	to: string;
+	/** Las pólizas que entraron (mje_…). */
+	manual_entries: string[];
+}
+
+/** Los saldos iniciales del emisor: con qué saldo empieza cada cuenta el día en que empiezan sus libros. */
+export interface OpeningBalances {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "opening_balances";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El día en que empiezan sus libros, o null si no tiene saldos iniciales. */
+	date: string | null;
+	/** El saldo de cada cuenta: deudor (debit) o acreedor (credit). */
+	lines: {
+		/** El número de cuenta. */
+		account: string;
+		/** El nombre de la cuenta. */
+		account_name: string;
+		/** El cargo, en pesos. */
+		debit: number;
+		/** El abono, en pesos. */
+		credit: number;
+	}[];
+}
+
 /** La balanza de comprobación de un mes. */
 export interface TrialBalance {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -10852,6 +10897,53 @@ export interface UpdateManualEntryParams {
 	}[];
 }
 
+export interface ImportManualEntriesParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** Las pólizas, hasta 3,000. */
+	entries: {
+		/** La fecha de la póliza (AAAA-MM-DD). */
+		date: string;
+		/** El tipo de póliza: journal (diario), income (ingresos) o expense (egresos). */
+		journal_type?: "journal" | "income" | "expense";
+		/** Su número en el otro sistema (por ejemplo Dr 15). Con la fecha, el tipo y el total, reconoce una póliza ya importada y la salta. */
+		number?: string | null;
+		/** Su concepto. */
+		description: string;
+		/** Sus cargos y abonos: cada renglón uno u otro; los cargos suman lo mismo que los abonos. */
+		lines: {
+			/** El número de la cuenta en su catálogo (GET /v1/accounting/accounts), por ejemplo 205-06. */
+			account: string;
+			/** El cargo. */
+			debit?: number;
+			/** El abono. */
+			credit?: number;
+		}[];
+	}[];
+}
+
+/** Los parámetros de GET /v1/accounting/opening_balances. */
+export interface GetOpeningBalancesParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface SetOpeningBalancesParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** Cuándo empiezan sus libros (el día 1 de un mes): lo anterior no se cuenta. */
+	date: string;
+	/** El saldo de cada cuenta, deudor o acreedor; las dos columnas suman lo mismo. Sin renglones, borra los saldos iniciales. */
+	lines: {
+		/** El número de la cuenta en su catálogo (GET /v1/accounting/accounts), por ejemplo 205-06. */
+		account: string;
+		/** Su saldo deudor. */
+		debit?: number;
+		/** Su saldo acreedor. */
+		credit?: number;
+	}[];
+}
+
 /** Los parámetros de GET /v1/accounting/fixed_assets. */
 export interface ListFixedAssetsParams {
 	/** El mes (AAAA-MM) a cuyo cierre van las cifras. Por omisión, el actual. */
@@ -15570,6 +15662,62 @@ export class ManualEntriesResource {
 	delete(id: string, options?: RequestOptions): Promise<Deleted> {
 		return this.#client.request({ method: "DELETE", path: `/v1/accounting/manual_entries/${encodeURIComponent(id)}` }, options);
 	}
+
+	/**
+	 * Importar pólizas de otro sistema
+	 *
+	 * Hasta 3,000 pólizas de una vez (las de CONTPAQi, COI o una hoja de cálculo), todas o ninguna: cada una con las reglas de POST /v1/accounting/manual_entries, y el error dice cuál (param entries[i].…). Entran como kind other. Una con el mismo number, fecha, tipo y total que una ya importada se salta (duplicates). DELETE /v1/accounting/manual_entry_imports/{id} quita las de una importación.
+	 *
+	 * POST /v1/accounting/manual_entry_imports
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/import-manual-entries
+	 */
+	importEntries(params: ImportManualEntriesParams, options?: RequestOptions): Promise<ManualEntryImport> {
+		return this.#client.request({ method: "POST", path: "/v1/accounting/manual_entry_imports", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Deshacer una importación de pólizas
+	 *
+	 * Borra todas las pólizas que trajo esa importación (mji_…). No se puede si alguna es de un mes cerrado (period_closed).
+	 *
+	 * DELETE /v1/accounting/manual_entry_imports/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/undo-manual-entries-import
+	 */
+	undoImport(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/accounting/manual_entry_imports/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Contabilidad: fiscalisto.openingBalances. */
+export class OpeningBalancesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ver los saldos iniciales
+	 *
+	 * Los saldos de cada cuenta con los que empiezan los libros del emisor (date), como Estados financieros › Saldos iniciales en la app. Sin saldos iniciales, date es null.
+	 *
+	 * GET /v1/accounting/opening_balances
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-opening-balances
+	 */
+	get(params?: GetOpeningBalancesParams, options?: RequestOptions): Promise<OpeningBalances> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/opening_balances", query: params }, options);
+	}
+
+	/**
+	 * Guardar los saldos iniciales
+	 *
+	 * Reemplaza los saldos iniciales: el día 1 del mes en que empiezan sus libros y el saldo deudor o acreedor de cada cuenta (por su número); las dos columnas suman lo mismo o contesta entry_unbalanced. Son los saldos finales de la balanza de su sistema anterior. Sin renglones, los borra. Nada antes de esa fecha cuenta.
+	 *
+	 * POST /v1/accounting/opening_balances
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/set-opening-balances
+	 */
+	set(params: SetOpeningBalancesParams, options?: RequestOptions): Promise<OpeningBalances> {
+		return this.#client.request({ method: "POST", path: "/v1/accounting/opening_balances", body: params, idempotent: true }, options);
+	}
 }
 
 /** Contabilidad: fiscalisto.fixedAssets. */
@@ -16453,6 +16601,7 @@ export class FiscalistoApi extends Core {
 	readonly tickets = new TicketsResource(this);
 	readonly accounting = new AccountingResource(this);
 	readonly manualEntries = new ManualEntriesResource(this);
+	readonly openingBalances = new OpeningBalancesResource(this);
 	readonly fixedAssets = new FixedAssetsResource(this);
 	readonly closedPeriod = new ClosedPeriodResource(this);
 	readonly bankMovements = new BankMovementsResource(this);
