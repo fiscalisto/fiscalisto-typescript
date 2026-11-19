@@ -2850,6 +2850,14 @@ export interface CustomerGroup {
 	min_order: number | null;
 	/** true si sus clientes pueden hacer pedidos desde su Portal del cliente. */
 	portal_ordering: boolean;
+	/** Hasta cuándo sus clientes cambian o cancelan desde su portal un pedido que mandaron ahí: none, until_confirmed (hasta que usted lo confirme) o until_delivered (hasta que se entregue o facture algo). */
+	portal_changes: "none" | "until_confirmed" | "until_delivered";
+	/** Días de la semana en que les entrega (0 domingo a 6 sábado), o null si cualquier día. El Portal del cliente solo ofrece esos días. */
+	delivery_days: number[] | null;
+	/** Hora de corte (0 a 23, Ciudad de México): un pedido del portal después de ella cuenta desde el día siguiente; null sin hora de corte. */
+	cutoff_hour: number | null;
+	/** Días para preparar un pedido antes de poder entregarlo. */
+	prep_days: number;
 	/** Cuántos clientes hay en el grupo. */
 	customers: number;
 	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
@@ -9339,6 +9347,14 @@ export interface CreateCustomerGroupParams {
 	min_order?: number | null;
 	/** Sus clientes pueden hacer pedidos desde su Portal del cliente (true por omisión). */
 	portal_ordering?: boolean;
+	/** Hasta cuándo sus clientes cambian o cancelan desde su portal un pedido que mandaron ahí: none, until_confirmed (hasta que usted lo confirme; por omisión) o until_delivered (hasta que se entregue o facture algo). */
+	portal_changes?: "none" | "until_confirmed" | "until_delivered";
+	/** Días de la semana en que les entrega (0 domingo a 6 sábado); null: cualquier día. El portal solo ofrece esos días. */
+	delivery_days?: number[] | null;
+	/** Hora de corte (0 a 23, Ciudad de México): un pedido del portal después de ella cuenta desde el día siguiente; null: sin hora de corte. */
+	cutoff_hour?: number | null;
+	/** Días para preparar un pedido antes de poder entregarlo (0 por omisión). */
+	prep_days?: number;
 }
 
 /** Los parámetros de GET /v1/customer_groups. */
@@ -9366,6 +9382,14 @@ export interface UpdateCustomerGroupParams {
 	min_order?: number | null;
 	/** Sus clientes pueden hacer pedidos desde su Portal del cliente (true por omisión). */
 	portal_ordering?: boolean;
+	/** Hasta cuándo sus clientes cambian o cancelan desde su portal un pedido que mandaron ahí: none, until_confirmed (hasta que usted lo confirme; por omisión) o until_delivered (hasta que se entregue o facture algo). */
+	portal_changes?: "none" | "until_confirmed" | "until_delivered";
+	/** Días de la semana en que les entrega (0 domingo a 6 sábado); null: cualquier día. El portal solo ofrece esos días. */
+	delivery_days?: number[] | null;
+	/** Hora de corte (0 a 23, Ciudad de México): un pedido del portal después de ella cuenta desde el día siguiente; null: sin hora de corte. */
+	cutoff_hour?: number | null;
+	/** Días para preparar un pedido antes de poder entregarlo (0 por omisión). */
+	prep_days?: number;
 }
 
 export interface QuotePricesParams {
