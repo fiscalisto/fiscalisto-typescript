@@ -89,6 +89,10 @@ export interface AttendanceReport {
 	overtime_approval: boolean;
 	/** Cómo llegan las horas extra a la nómina: approval (necesitan autorización), all (cuentan todas) o none (no hay horas extra: quedan en el registro y nunca cuentan). */
 	overtime_policy: "approval" | "all" | "none";
+	/** La jornada ordinaria de la semana al último día del periodo: la de la ley (48 en 2026, 46 en 2027, 44 en 2028, 42 en 2029 y 40 desde 2030; LFT art. 59 y transitorio segundo del decreto DOF 01-05-2026) o la de la empresa si es menor. Lo trabajado de más en la semana son horas extra. */
+	ordinary_week_hours: number;
+	/** La jornada semanal que fijó la empresa en Horario y reglas, o null si sigue la de la ley. */
+	weekly_hours: number | null;
 	/** Cada empleado del emisor en el periodo. */
 	employees: {
 		/** El empleado (emp_…). */
@@ -117,12 +121,14 @@ export interface AttendanceReport {
 		incomplete_days: number;
 		/** Marcas con una nota para revisar (flags). */
 		flagged_marks: number;
-		/** Horas extra que se pagan dobles (hasta 9 por semana en 2026, 12 desde 2027). */
+		/** Horas extra que se pagan dobles: hasta 9 por semana en 2026 y 2027, 10 en 2028, 11 en 2029 y 12 desde 2030 (LFT art. 66 y transitorio cuarto del decreto DOF 01-05-2026). */
 		overtime_double_minutes: number;
-		/** Horas extra que se pagan triples (las que pasan del límite de la semana). */
+		/** Horas extra que se pagan triples: las que pasan de las dobles de la semana, hasta 4 por semana (LFT art. 68). */
 		overtime_triple_minutes: number;
 		/** Todos los minutos de más en el registro, autorizados o no. */
 		overtime_minutes: number;
+		/** De las dobles y triples, los minutos de su horario que pasan de la jornada ordinaria de la semana (ordinary_week_hours, LFT art. 59): un horario de 48 horas en 2027 da 2 horas extra cada semana. */
+		week_excess_minutes: number;
 		/** Minutos de más que nadie autorizó: quedan en el registro y no cuentan para la nómina. */
 		unapproved_overtime_minutes: number;
 		/** Minutos de más que la empresa rechazó: quedan en el registro, no cuentan para la nómina y ya no están por autorizar. */
@@ -165,6 +171,8 @@ export interface AttendanceReport {
 			approved_overtime_minutes: number;
 			/** De esos, los que la empresa rechazó ese día: no cuentan para la nómina. */
 			rejected_overtime_minutes: number;
+			/** Minutos de su horario de ese día que pasan de la jornada ordinaria de la semana (ordinary_week_hours, LFT art. 59): son horas extra por ley aunque estén en su horario, y cuentan para la nómina. */
+			week_excess_minutes: number;
 			/** La nota del día que puso la empresa, o null. */
 			note: "vacaciones" | "incapacidad" | "permiso_con_goce" | "permiso_sin_goce" | "descanso" | "festivo" | "falta" | null;
 			/** El nombre del día festivo, o null. */
@@ -11710,6 +11718,12 @@ export interface GetEmployeeVacationCertificateParams {
 	as_of?: string;
 }
 
+/** Los parámetros de GET /v1/employees/{id}/pay_statement. */
+export interface GetEmployeePayStatementParams {
+	/** El año (AAAA), desde 2014. */
+	year: string;
+}
+
 export interface UpdateEmployeePortalParams {
 	/** enable: crea el enlace (o deja el que tiene); renew: uno nuevo (el anterior deja de funcionar y sus celulares se desligan); disable: lo apaga (lo firmado se queda). */
 	action: "enable" | "renew" | "disable";
@@ -14677,7 +14691,7 @@ export interface SaveAnnualReturnParams {
 			type: "dividend_paid" | "dividend_received" | "capital_contribution" | "capital_reduction";
 			/** Importe. */
 			amount: number;
-			/** Un dividendo o reembolso: de qué CUFIN sale primero (por omisión cufin, la de 2014 en adelante). */
+			/** Un dividendo o reembolso: de qué CUFIN sale primero (por omisión cufin, la de 2014 en adelante). Un dividend_received: a cuál se suma (cufin_2013 si viene de utilidades de quien paga generadas hasta 2013, regla 3.23.6 de la RMF). */
 			account?: "cufin" | "cufin_2013";
 			/** true si se paga a una persona física o a un residente en el extranjero: se le retiene el 10% (artículo 140). */
 			individual?: boolean;
@@ -17265,6 +17279,18 @@ export class EmployeesResource {
 	 */
 	vacationCertificate(id: string, params?: GetEmployeeVacationCertificateParams, options?: RequestOptions): Promise<Uint8Array> {
 		return this.#client.request({ method: "GET", path: `/v1/employees/${encodeURIComponent(id)}/vacations/certificate`, query: params, as: "bytes" }, options);
+	}
+
+	/**
+	 * Constancia de sueldos
+	 *
+	 * El PDF de lo que se le pagó al empleado en un año, de sus recibos de nómina vigentes por fecha de pago: cada percepción con su parte gravada y exenta, las deducciones (ISR retenido, IMSS y otras), los otros pagos con el subsidio para el empleo causado, y el neto. Resume sus CFDI de nómina, que son el comprobante de lo pagado y retenido (LISR art. 99 fr. III); no los sustituye. El empleado la baja también desde su portal.
+	 *
+	 * GET /v1/employees/{id}/pay_statement
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-employee-pay-statement
+	 */
+	payStatement(id: string, params: GetEmployeePayStatementParams, options?: RequestOptions): Promise<Uint8Array> {
+		return this.#client.request({ method: "GET", path: `/v1/employees/${encodeURIComponent(id)}/pay_statement`, query: params, as: "bytes" }, options);
 	}
 
 	/**
