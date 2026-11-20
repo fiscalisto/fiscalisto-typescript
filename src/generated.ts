@@ -2922,6 +2922,19 @@ export interface SatInvoice {
 	};
 	/** Su estado en el SAT cuando se revisó: active (vigente) o canceled. null si aún no se revisa. */
 	sat_status: "active" | "canceled" | null;
+	/** Solo recibidas, marcadas con mark_paid, en la app o por una regla: without_complement true en una PPD pagada sin complemento de pago (el SAT la sigue viendo sin pagar); false en una PUE, donde solo se anotó de dónde salió el dinero. */
+	paid_otherwise: {
+		/** true: una PPD pagada sin complemento, fuera de Por pagar. false: una PUE, ya pagada, con su origen del dinero. */
+		without_complement: boolean;
+		/** El día en que se pagó (AAAA-MM-DD), si se dijo. */
+		paid_on: string | null;
+		/** Con qué se pagó: clave c_FormaPago (01 efectivo, 03 transferencia…). */
+		payment_form: string | null;
+		/** De dónde salió el dinero: petty_cash (caja chica), reimbursement (una persona, que después se le reembolsó), bank u other. */
+		money_source: "petty_cash" | "reimbursement" | "bank" | "other" | null;
+		/** true cuando la marcó una regla de Ajustes › Pagos sin complemento. */
+		by_rule: boolean;
+	} | null;
 	/** Su centro de costo (ccn_…), o null. Póngalo o cámbielo con POST /v1/sat_invoices/{id}. */
 	cost_center: string | null;
 	/** La descarga (sdl_…) que la trajo, o null. */
@@ -12962,6 +12975,17 @@ export interface UpdateSatInvoiceParams {
 	cost_center?: string | null;
 }
 
+export interface MarkSatInvoicePaidParams {
+	/** El día en que se pagó (AAAA-MM-DD, no después de hoy). En una PPD, si no se indica, queda sin fecha; en una PUE, la fecha de la factura. */
+	paid_on?: string;
+	/** Solo PPD: con qué se pagó, clave c_FormaPago (01 efectivo, 02 cheque nominativo, 03 transferencia…). Una PUE ya dice la suya. */
+	payment_form?: "12" | "13" | "14" | "15" | "17" | "23" | "24" | "25" | "26" | "27" | "28" | "29" | "30" | "31" | "01" | "02" | "03" | "04" | "05" | "06" | "08";
+	/** De dónde salió el dinero: petty_cash (caja chica), reimbursement (lo pagó una persona y se le reembolsó), bank u other. Obligatorio en una PUE. */
+	money_source?: "petty_cash" | "reimbursement" | "bank" | "other";
+	/** Una nota, hasta 500 caracteres. */
+	note?: string;
+}
+
 /** Los parámetros de GET /v1/sat_retentions. */
 export interface ListSatRetentionsParams {
 	/** Cuántos por página, de 1 a 100. Por omisión 10. */
@@ -18669,6 +18693,30 @@ export class SatInvoicesResource {
 	 */
 	update(id: string, params?: UpdateSatInvoiceParams, options?: RequestOptions): Promise<SatInvoice> {
 		return this.#client.request({ method: "POST", path: `/v1/sat_invoices/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Marcar como pagada una factura recibida
+	 *
+	 * Una factura PPD recibida que la empresa pagó (en efectivo, de caja chica, con un reembolso…) y cuyo proveedor no emitió el complemento de pago: sale de Por pagar como pagada sin complemento, con cuándo, cómo y de dónde se pagó. El SAT la sigue viendo sin pagar: el IVA no se acredita ni el gasto se deduce hasta que llegue el complemento. En una PUE recibida, que ya está pagada, solo anota de dónde salió el dinero (money_source). Lo marcado se ve en paid_otherwise.
+	 *
+	 * POST /v1/sat_invoices/{id}/mark_paid
+	 * @see https://fiscalisto.com/docs/api/referencia/descargas-del-sat/mark-sat-invoice-paid
+	 */
+	markPaid(id: string, params?: MarkSatInvoicePaidParams, options?: RequestOptions): Promise<SatInvoice> {
+		return this.#client.request({ method: "POST", path: `/v1/sat_invoices/${encodeURIComponent(id)}/mark_paid`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Quitar la marca de pagada
+	 *
+	 * Deshace mark_paid (o lo que marcó una regla de Pagos sin complemento): una PPD vuelve a Por pagar y una PUE pierde su origen del dinero. Una regla ya no la vuelve a marcar.
+	 *
+	 * POST /v1/sat_invoices/{id}/mark_unpaid
+	 * @see https://fiscalisto.com/docs/api/referencia/descargas-del-sat/mark-sat-invoice-unpaid
+	 */
+	markUnpaid(id: string, options?: RequestOptions): Promise<SatInvoice> {
+		return this.#client.request({ method: "POST", path: `/v1/sat_invoices/${encodeURIComponent(id)}/mark_unpaid`, idempotent: true }, options);
 	}
 
 	/**
