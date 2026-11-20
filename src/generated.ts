@@ -1148,7 +1148,7 @@ export interface PayrollReceiptPreview {
 	confirmation_token: string;
 	/** Lo que el recibo no incluye o pronto no se podrá calcular; no impide timbrar. */
 	warnings: {
-		/** finiquito_not_included: el empleado se fue en el periodo y el recibo no trae su finiquito; absences_over_monthly_limit: con este recibo pasa de 7 faltas en el mes y las de más cotizan como días trabajados (para dejar de cotizar, presente su aviso de baja); payroll_rates_pending: aún no se cargan los valores (ISR, subsidio, salario mínimo, UMA) de una fecha próxima. */
+		/** finiquito_not_included: el empleado se fue en el periodo y el recibo no trae su finiquito; absences_over_monthly_limit: con este recibo pasa de 7 faltas en el mes y las de más cotizan como días trabajados (para dejar de cotizar, presente su aviso de baja); payroll_rates_pending: aún no se cargan los valores (ISR, subsidio, salario mínimo, UMA) de una fecha próxima; net_changed_vs_previous: el neto cambia 10% o más (y al menos $100) contra el recibo ordinario anterior del empleado; salary_changed_vs_previous: cambió su salario diario integrado desde ese recibo (presente la modificación al IMSS); low_net: las deducciones le dejan menos del 30% de sus percepciones. */
 		code: string;
 		/** Qué pasó y cómo corregirlo, para una persona. */
 		message: string;
@@ -2262,6 +2262,41 @@ export interface VacationRequest {
 	decision_note: string | null;
 	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
 	created_at: string;
+}
+
+/** Neto a bruto: el salario diario cuyo recibo ordinario de un periodo completo paga un neto, sin faltas, incidencias ni descuentos como Infonavit o préstamos. No guarda nada. */
+export interface NetToGross {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "net_to_gross";
+	/** El empleado (emp_…) cuyas prestaciones usó, o null. */
+	employee: string | null;
+	/** 02 semanal, 03 catorcenal, 04 quincenal o 05 mensual. */
+	periodicity: string;
+	/** El neto que pidió. */
+	net_requested: number;
+	/** El salario diario cuyo recibo paga al menos ese neto (redondeado al centavo hacia arriba). */
+	daily_salary: number;
+	/** Su salario diario integrado (SDI) con el factor de sus prestaciones. */
+	integrated_daily_salary: number;
+	/** El periodo con que se calculó (el actual de la periodicidad). */
+	period: {
+		/** Primer día del periodo (FechaInicialPago), AAAA-MM-DD. */
+		start: string;
+		/** Último día del periodo (FechaFinalPago), AAAA-MM-DD. */
+		end: string;
+	};
+	/** Los días pagados de un periodo completo. */
+	days: number;
+	/** Total de percepciones del recibo. */
+	perceptions: number;
+	/** Total de deducciones (ISR, IMSS, fondo de ahorro). */
+	deductions: number;
+	/** ISR retenido. */
+	taxes_withheld: number;
+	/** Otros pagos. */
+	other_payments: number;
+	/** El neto del recibo con ese salario. */
+	net: number;
 }
 
 /** Qué no grava el impuesto sobre nómina del emisor y sus opciones de tasa. */
@@ -10828,6 +10863,27 @@ export interface CreatePayrollReceiptParams {
 	confirmation_token?: string;
 }
 
+export interface NetToGrossParams {
+	/** El neto que quiere pagar por un periodo completo, en pesos. */
+	net: number;
+	/** Un empleado (emp_…): toma su periodicidad, zona y prestaciones (aguinaldo, prima vacacional, antigüedad, vales y fondo de ahorro), y su factor SDI ÷ salario si los tiene. */
+	employee?: string;
+	/** 02 semanal, 03 catorcenal, 04 quincenal o 05 mensual. Sin employee, obligatoria. */
+	periodicity?: "02" | "03" | "04" | "05";
+	/** En la zona libre de la frontera norte (su salario mínimo). */
+	border_zone?: boolean;
+	/** Fecha de ingreso: los días de vacaciones de su antigüedad. */
+	start_date?: string;
+	/** Días de aguinaldo al año (al menos 15). */
+	aguinaldo_days?: number;
+	/** Prima vacacional como fracción (al menos 0.25). */
+	vacation_premium?: number;
+	/** Vales de despensa al mes. */
+	pantry_vouchers?: number;
+	/** Fondo de ahorro como fracción del salario (hasta 0.13). */
+	savings_fund_rate?: number;
+}
+
 export interface PreviewPayrollReceiptParams {
 	/** El empleado (emp_…). */
 	employee: string;
@@ -16060,6 +16116,18 @@ export class PayrollReceiptsResource {
 	 */
 	create(params: CreatePayrollReceiptParams, options?: RequestOptions): Promise<Invoice> {
 		return this.#client.request({ method: "POST", path: "/v1/payroll_receipts", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Neto a bruto
+	 *
+	 * El salario diario y el SDI cuyo recibo ordinario de un periodo completo paga el neto que pide, con el ISR y el IMSS de hoy, como «Calcular desde el neto» en cada empleado de la app. Con employee toma su periodicidad y prestaciones; sin él, las que mande o las de la ley. Sin faltas, incidencias ni descuentos como Infonavit o préstamos. No guarda nada: para usarlo, actualice al empleado.
+	 *
+	 * POST /v1/payroll/net_to_gross
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/net-to-gross
+	 */
+	netToGross(params: NetToGrossParams, options?: RequestOptions): Promise<NetToGross> {
+		return this.#client.request({ method: "POST", path: "/v1/payroll/net_to_gross", body: params, idempotent: true }, options);
 	}
 
 	/**
