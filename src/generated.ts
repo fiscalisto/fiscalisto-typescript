@@ -2209,6 +2209,61 @@ export interface EmployeeVacations {
 	}[];
 }
 
+/** El portal del empleado: su enlace y los recibos que firmó de recibido. */
+export interface EmployeePortal {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "employee_portal";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El empleado (emp_…). */
+	employee: string;
+	/** Su enlace personal (sin cuenta) para ver, descargar y firmar de recibido sus recibos y pedir vacaciones; null si está apagado. */
+	url: string | null;
+	/** Cuándo se hizo el enlace. */
+	enabled_at: string | null;
+	/** Los celulares ligados: el primero que lo abre y los que lo abren en la hora siguiente, hasta 3. */
+	phones: number;
+	/** La última vez que lo abrió. */
+	last_seen_at: string | null;
+	/** Los recibos que firmó de recibido desde su enlace (con el día, su celular y su IP guardados), los más recientes primero. */
+	signed_receipts: {
+		/** El folio fiscal del recibo. */
+		uuid: string;
+		/** Cuándo lo firmó de recibido. */
+		signed_at: string;
+	}[];
+}
+
+/** Días de vacaciones que un empleado pidió desde su enlace. */
+export interface VacationRequest {
+	/** vrq_… */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "vacation_request";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El empleado (emp_…). */
+	employee: string;
+	/** El nombre del empleado. */
+	employee_name: string | null;
+	/** El primer día (AAAA-MM-DD). */
+	from: string;
+	/** El último día (AAAA-MM-DD). */
+	to: string;
+	/** Los días que descuenta de sus vacaciones: los laborables entre las fechas (sin domingos ni días de descanso obligatorio), o los que se aprobaron. */
+	days: number;
+	/** La nota del empleado. */
+	note: string | null;
+	/** pending, por revisar; approved, aprobada; rejected, rechazada; canceled, el empleado la retiró. */
+	status: "pending" | "approved" | "rejected" | "canceled";
+	/** Cuándo se aprobó o rechazó. */
+	decided_at: string | null;
+	/** La nota de quien la decidió: el empleado la ve. */
+	decision_note: string | null;
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string;
+}
+
 /** Qué no grava el impuesto sobre nómina del emisor y sus opciones de tasa. */
 export interface PayrollTaxSettings {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -5528,6 +5583,7 @@ export interface BooksLogEntry {
 		type: "user" | "api_key" | "assistant";
 		/** Nombre. */
 		name: string | null;
+		/** El nombre y el id de la llave de la API, o el del asistente («ChatGPT»); null para un usuario del panel. */
 		label: string | null;
 	};
 	/** Cómo estaba (con los nombres de campo en español de la bitácora); null cuando no existía. */
@@ -7921,6 +7977,17 @@ export interface EmployeeList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: Employee[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface VacationRequestList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: VacationRequest[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -10658,6 +10725,37 @@ export interface GetEmployeeVacationCertificateParams {
 	enjoy_to?: string;
 	/** El día de la constancia (AAAA-MM-DD); por omisión hoy. */
 	as_of?: string;
+}
+
+export interface UpdateEmployeePortalParams {
+	/** enable: crea el enlace (o deja el que tiene); renew: uno nuevo (el anterior deja de funcionar y sus celulares se desligan); disable: lo apaga (lo firmado se queda). */
+	action: "enable" | "renew" | "disable";
+	/** Con enable o renew, le manda el enlace al correo del empleado. Falla si el empleado no tiene correo. */
+	send_email?: boolean;
+}
+
+/** Los parámetros de GET /v1/vacation_requests. */
+export interface ListVacationRequestsParams {
+	/** Solo las de este empleado (emp_…). */
+	employee?: string;
+	/** pending, approved, rejected o canceled. */
+	status?: "pending" | "approved" | "rejected" | "canceled";
+	/** Cuántas, de 1 a 500. Por omisión 100. */
+	limit?: number;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface ApproveVacationRequestParams {
+	/** Los días que descuenta de sus vacaciones, si no son los que se calcularon (sin domingos ni festivos), por ejemplo sin los sábados de quien descansa. */
+	days?: number;
+	/** Una nota que el empleado ve en su enlace. */
+	note?: string;
+}
+
+export interface RejectVacationRequestParams {
+	/** Por qué no se aprueba: el empleado lo ve en su enlace. */
+	note: string;
 }
 
 export interface CreatePayrollReceiptParams {
@@ -15863,6 +15961,86 @@ export class EmployeesResource {
 	vacationCertificate(id: string, params?: GetEmployeeVacationCertificateParams, options?: RequestOptions): Promise<Uint8Array> {
 		return this.#client.request({ method: "GET", path: `/v1/employees/${encodeURIComponent(id)}/vacations/certificate`, query: params, as: "bytes" }, options);
 	}
+
+	/**
+	 * Portal del empleado
+	 *
+	 * El enlace personal del empleado (sin cuenta) para ver, descargar y firmar de recibido sus recibos de nómina, ver sus vacaciones y pedir días; los celulares ligados y los recibos que firmó.
+	 *
+	 * GET /v1/employees/{id}/portal
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-employee-portal
+	 */
+	portal(id: string, options?: RequestOptions): Promise<EmployeePortal> {
+		return this.#client.request({ method: "GET", path: `/v1/employees/${encodeURIComponent(id)}/portal` }, options);
+	}
+
+	/**
+	 * Activar, cambiar o apagar el portal
+	 *
+	 * enable crea el enlace (o deja el que tiene), renew hace uno nuevo (el anterior deja de funcionar y sus celulares se desligan) y disable lo apaga. Lo firmado se queda. Con send_email se lo manda a su correo.
+	 *
+	 * POST /v1/employees/{id}/portal
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-employee-portal
+	 */
+	updatePortal(id: string, params: UpdateEmployeePortalParams, options?: RequestOptions): Promise<EmployeePortal> {
+		return this.#client.request({ method: "POST", path: `/v1/employees/${encodeURIComponent(id)}/portal`, body: params, idempotent: true }, options);
+	}
+}
+
+/** Nómina: fiscalisto.vacationRequests. */
+export class VacationRequestsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar solicitudes de vacaciones
+	 *
+	 * Los días que los empleados pidieron desde su enlace, las más recientes primero.
+	 *
+	 * GET /v1/vacation_requests
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/list-vacation-requests
+	 */
+	list(params?: ListVacationRequestsParams, options?: RequestOptions): Promise<VacationRequestList> {
+		return this.#client.request({ method: "GET", path: "/v1/vacation_requests", query: params }, options);
+	}
+
+	/**
+	 * Ver una solicitud de vacaciones
+	 *
+	 * Una solicitud de vacaciones con su estado.
+	 *
+	 * GET /v1/vacation_requests/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-vacation-request
+	 */
+	get(id: string, options?: RequestOptions): Promise<VacationRequest> {
+		return this.#client.request({ method: "GET", path: `/v1/vacation_requests/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Aprobar una solicitud de vacaciones
+	 *
+	 * La aprueba con los días calculados o los que mande en days. Los días aprobados se sugieren en las Incidencias del recibo del periodo; no se agregan solos.
+	 *
+	 * POST /v1/vacation_requests/{id}/approve
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/approve-vacation-request
+	 */
+	approve(id: string, params?: ApproveVacationRequestParams, options?: RequestOptions): Promise<VacationRequest> {
+		return this.#client.request({ method: "POST", path: `/v1/vacation_requests/${encodeURIComponent(id)}/approve`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Rechazar una solicitud de vacaciones
+	 *
+	 * La rechaza; note (por qué) es obligatoria y el empleado la ve.
+	 *
+	 * POST /v1/vacation_requests/{id}/reject
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/reject-vacation-request
+	 */
+	reject(id: string, params: RejectVacationRequestParams, options?: RequestOptions): Promise<VacationRequest> {
+		return this.#client.request({ method: "POST", path: `/v1/vacation_requests/${encodeURIComponent(id)}/reject`, body: params, idempotent: true }, options);
+	}
 }
 
 /** Nómina: fiscalisto.payrollReceipts. */
@@ -20080,6 +20258,7 @@ export class FiscalistoApi extends Core {
 	readonly advances = new AdvancesResource(this);
 	readonly retentions = new RetentionsResource(this);
 	readonly employees = new EmployeesResource(this);
+	readonly vacationRequests = new VacationRequestsResource(this);
 	readonly payrollReceipts = new PayrollReceiptsResource(this);
 	readonly payrollBatches = new PayrollBatchesResource(this);
 	readonly payrollBankFiles = new PayrollBankFilesResource(this);
