@@ -2074,8 +2074,8 @@ export interface AnnualAdjustment {
 		tax_withheld: number;
 		/** tax_due menos tax_withheld: positivo a cargo, negativo a favor. */
 		balance: number;
-		/** Por qué no se le calcula (artículo 97): started, entró después del 1 de enero; left, salió antes del 1 de diciembre; income, ganó más de $400,000; files_own, presenta su declaración. */
-		excluded: "started" | "left" | "income" | "files_own" | null;
+		/** Por qué no se le calcula (artículo 97): started, entró después del 1 de enero; left, salió antes del 1 de diciembre; income, ganó más de $400,000; files_own, presenta su declaración; minimum, gana el salario mínimo y su saldo a cargo no se le descuenta (Constitución art. 123-A-VIII, LFT 97). */
+		excluded: "started" | "left" | "income" | "files_own" | "minimum" | null;
 		/** Si avisó por escrito que presentará su declaración anual. */
 		files_own_return: boolean;
 		/** Los meses sin recibo timbrado: falta alguno de otro sistema. */
@@ -3546,8 +3546,8 @@ export interface Rule {
 	actions: {
 		/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
 		type: "tag" | "cost_center" | "stage" | "close" | "notify";
-		/** tag: la etiqueta. */
-		tag?: number;
+		/** tag: la etiqueta (tag_…, GET /v1/tags). */
+		tag?: string;
 		/** tag: se quita si la orden deja de cumplir. */
 		remove_when_unmet?: boolean;
 		/** Su centro de costo (ccn_…): la obra, proyecto, sucursal o área a la que pertenece, para ver ingresos y gastos por centro en Reportes. No cambia el CFDI. Sus notas de crédito lo toman solas. */
@@ -12739,8 +12739,8 @@ export interface CreateRuleParams {
 	actions: {
 		/** tag (órdenes): poner la etiqueta `tag`; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; notify: avisar a `members` (mem_…). */
 		type: "tag" | "cost_center" | "stage" | "close" | "notify";
-		/** tag: la etiqueta. */
-		tag?: number;
+		/** tag: la etiqueta (tag_…, GET /v1/tags). Un número, el id de antes, también se acepta. */
+		tag?: string | number;
 		/** tag: quitarla si la orden deja de cumplir. */
 		remove_when_unmet?: boolean;
 		/** Su centro de costo (ccn_…): la obra, proyecto, sucursal o área a la que pertenece, para ver ingresos y gastos por centro en Reportes. No cambia el CFDI. Sus notas de crédito lo toman solas. */
@@ -12828,8 +12828,8 @@ export interface UpdateRuleParams {
 	actions?: {
 		/** tag (órdenes): poner la etiqueta `tag`; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; notify: avisar a `members` (mem_…). */
 		type: "tag" | "cost_center" | "stage" | "close" | "notify";
-		/** tag: la etiqueta. */
-		tag?: number;
+		/** tag: la etiqueta (tag_…, GET /v1/tags). Un número, el id de antes, también se acepta. */
+		tag?: string | number;
 		/** tag: quitarla si la orden deja de cumplir. */
 		remove_when_unmet?: boolean;
 		/** Su centro de costo (ccn_…): la obra, proyecto, sucursal o área a la que pertenece, para ver ingresos y gastos por centro en Reportes. No cambia el CFDI. Sus notas de crédito lo toman solas. */
