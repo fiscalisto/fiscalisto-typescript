@@ -1088,6 +1088,14 @@ export interface Employee {
 	variable_integrated_daily_salary: number;
 	/** Desde cuándo aplica variable_integrated_daily_salary (AAAA-MM-DD). */
 	variable_salary_from: string | null;
+	/** Días de aguinaldo al año (al menos 15). */
+	aguinaldo_days: number;
+	/** Prima vacacional, fracción del salario de las vacaciones (al menos 0.25). */
+	vacation_premium: number;
+	/** Vales de despensa al mes que lleva cada recibo ordinario (percepción 029). */
+	pantry_vouchers: number;
+	/** Fracción del sueldo que aportan al fondo de ahorro la empresa y el trabajador por igual (percepción 005). */
+	savings_fund_rate: number;
 	/** Tipo de contrato (TipoContrato), c_TipoContrato. Por omisión 01, por tiempo indeterminado. */
 	contract_type: string;
 	/** Tipo de jornada (TipoJornada), c_TipoJornada. Por omisión 01, diurna. */
@@ -9903,6 +9911,14 @@ export interface CreateEmployeeParams {
 	daily_salary: number;
 	/** Salario diario integrado (SalarioDiarioIntegrado): no menor al salario diario. */
 	integrated_daily_salary: number;
+	/** Días de aguinaldo al año: al menos 15 (LFT art. 87), que es el valor por omisión. */
+	aguinaldo_days?: number;
+	/** Prima vacacional como fracción del salario de sus vacaciones: al menos 0.25 (LFT art. 80), el valor por omisión. */
+	vacation_premium?: number;
+	/** Vales de despensa al mes (percepción 029), por los días pagados de cada recibo ordinario: exentos como previsión social con el límite del artículo 93 de la LISR. 0 por omisión. */
+	pantry_vouchers?: number;
+	/** Fondo de ahorro: fracción del sueldo de cada recibo que aporta la empresa y el trabajador por igual, hasta 0.13 (LISR art. 27 fr. XI). Va como percepción 005 y como deducciones 004 (claves FAT y FAE) de ambas aportaciones. 0 por omisión. */
+	savings_fund_rate?: number;
 	/** Tipo de contrato (TipoContrato), c_TipoContrato. Por omisión 01, por tiempo indeterminado. */
 	contract_type?: "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08";
 	/** Tipo de jornada (TipoJornada), c_TipoJornada. Por omisión 01, diurna. */
@@ -9974,6 +9990,14 @@ export interface UpdateEmployeeParams {
 	daily_salary?: number;
 	/** Salario diario integrado (SalarioDiarioIntegrado): no menor al salario diario. */
 	integrated_daily_salary?: number;
+	/** Días de aguinaldo al año: al menos 15 (LFT art. 87), que es el valor por omisión. */
+	aguinaldo_days?: number;
+	/** Prima vacacional como fracción del salario de sus vacaciones: al menos 0.25 (LFT art. 80), el valor por omisión. */
+	vacation_premium?: number;
+	/** Vales de despensa al mes (percepción 029), por los días pagados de cada recibo ordinario: exentos como previsión social con el límite del artículo 93 de la LISR. 0 por omisión. */
+	pantry_vouchers?: number;
+	/** Fondo de ahorro: fracción del sueldo de cada recibo que aporta la empresa y el trabajador por igual, hasta 0.13 (LISR art. 27 fr. XI). Va como percepción 005 y como deducciones 004 (claves FAT y FAE) de ambas aportaciones. 0 por omisión. */
+	savings_fund_rate?: number;
 	/** Tipo de contrato (TipoContrato), c_TipoContrato. Por omisión 01, por tiempo indeterminado. */
 	contract_type?: "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08";
 	/** Tipo de jornada (TipoJornada), c_TipoJornada. Por omisión 01, diurna. */
@@ -11365,7 +11389,7 @@ export interface CreateSatReviewParams {
 	notices: {
 		/** Qué oficio es, de los de su tipo (en desk_audit: solicitud, observaciones o resolucion); por omisión, el primero, el que abre la revisión. Otro contesta con los de su tipo. */
 		step?: string;
-		/** El día en que se lo notificaron (en el Buzón, el día en que lo abrió o el quinto día hábil después del aviso, lo que pase primero). No puede ser futuro. */
+		/** El día en que se lo notificaron (en el Buzón, el día en que lo abrió o, si no lo abrió, el cuarto día hábil después del aviso). No puede ser futuro. */
 		notified_on: string;
 		/** Los días hábiles que da el oficio, solo cuando no son los de la ley (una carta invitación con fecha, «otro» oficio). */
 		business_days?: number | null;
@@ -11418,7 +11442,7 @@ export interface UpdateSatReviewParams {
 	notices?: {
 		/** Qué oficio es, de los de su tipo (en desk_audit: solicitud, observaciones o resolucion); por omisión, el primero, el que abre la revisión. Otro contesta con los de su tipo. */
 		step?: string;
-		/** El día en que se lo notificaron (en el Buzón, el día en que lo abrió o el quinto día hábil después del aviso, lo que pase primero). No puede ser futuro. */
+		/** El día en que se lo notificaron (en el Buzón, el día en que lo abrió o, si no lo abrió, el cuarto día hábil después del aviso). No puede ser futuro. */
 		notified_on: string;
 		/** Los días hábiles que da el oficio, solo cuando no son los de la ley (una carta invitación con fecha, «otro» oficio). */
 		business_days?: number | null;
