@@ -2299,6 +2299,124 @@ export interface NetToGross {
 	net: number;
 }
 
+/** Los acumulados de nómina del año: por concepto, mes por mes, y por empleado. */
+export interface PayrollAccumulated {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "payroll_accumulated";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** iss_… */
+	issuer: string;
+	/** Año (Ejercicio). */
+	year: number;
+	/** El empleado que pidió (emp_…), o null. */
+	employee: string | null;
+	/** Los recibos vigentes con fecha de pago en el año. */
+	receipts: number;
+	/** Percepciones, luego deducciones y otros pagos, por clave del SAT. */
+	concepts: {
+		/** percepcion, deduccion u otro_pago. */
+		kind: "percepcion" | "deduccion" | "otro_pago";
+		/** c_TipoPercepcion, c_TipoDeduccion o c_TipoOtroPago. */
+		type: string;
+		/** La clave del patrón. */
+		key: string;
+		/** El concepto de la línea de captura (ISR, IVA…) como lo da el SAT. */
+		concept: string;
+		/** El importe de cada mes, de enero (posición 0) a diciembre. Percepciones: gravado más exento. */
+		months: number[];
+		/** Total en la moneda del comprobante (Total). */
+		total: number;
+		/** Percepciones: lo gravado. */
+		taxed: number | null;
+		/** Percepciones: lo exento. */
+		exempt: number | null;
+		/** Cuántos recibos lo llevan. */
+		receipts: number;
+	}[];
+	/** Cada empleado, de más a menos percepciones. */
+	employees: {
+		/** emp_…, o null. */
+		employee: string | null;
+		/** Nombre. */
+		name: string;
+		/** El RFC del empleado. */
+		rfc: string;
+		/** Número de empleado (NumEmpleado). */
+		number: string | null;
+		/** Sus recibos en el año. */
+		receipts: number;
+		/** El total de sus percepciones del año, gravado más exento. */
+		perceptions: number;
+		/** Monto gravado (MontoTotGrav). Por omisión, operation menos exempt. */
+		taxed: number;
+		/** Monto exento (MontoTotExent). Por omisión 0. */
+		exempt: number;
+		/** ISR retenido (deducción 002). */
+		isr_withheld: number;
+		/** IMSS retenido (deducción 001). */
+		imss_withheld: number;
+		/** Las demás deducciones (Infonavit, préstamos, fondo de ahorro…). */
+		other_deductions: number;
+		/** El total de sus otros pagos del año (el subsidio entregado entre ellos). */
+		other_payments: number;
+		/** Subsidio para el empleo causado (otro pago 002). */
+		employment_subsidy: number;
+		/** Su neto del año. */
+		net: number;
+	}[];
+}
+
+/** Lo que cuesta la nómina del año mes por mes: lo pagado más las cuotas del patrón y el impuesto sobre nómina. */
+export interface PayrollCost {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "payroll_cost";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** iss_… */
+	issuer: string;
+	/** Año (Ejercicio). */
+	year: number;
+	/** Si las cuotas del patrón y el ISN del año se pueden calcular. */
+	rates_loaded: boolean;
+	/** Cada mes con recibos, del más antiguo al más reciente. */
+	months: {
+		/** 2026-11 */
+		month: string;
+		/** Los recibos con fecha de pago en el mes. */
+		receipts: number;
+		/** Los empleados con recibo en el mes. */
+		employees: number;
+		/** Percepciones y otros pagos de los recibos, sin el subsidio para el empleo. */
+		paid: number;
+		/** Cuotas del patrón al IMSS, o null si las tasas del año aún no están cargadas. */
+		imss: number | null;
+		/** Retiro y cesantía y vejez del patrón, o null si las tasas del año aún no están cargadas. */
+		sar: number | null;
+		/** Aportación al Infonavit, o null si las tasas del año aún no están cargadas. */
+		infonavit: number | null;
+		/** Impuesto sobre nómina, o null si las tasas del año aún no están cargadas. */
+		payroll_tax: number | null;
+		/** Lo pagado más las cuotas y el ISN, o null si las tasas del año aún no están cargadas. */
+		total: number | null;
+	}[];
+	/** Totales (Totales). */
+	totals: {
+		/** Lo pagado a los empleados en el año. */
+		paid: number;
+		/** Cuotas del patrón al IMSS, o null si las tasas del año aún no están cargadas. */
+		imss: number | null;
+		/** Retiro y cesantía y vejez del patrón, o null si las tasas del año aún no están cargadas. */
+		sar: number | null;
+		/** Aportación al Infonavit, o null si las tasas del año aún no están cargadas. */
+		infonavit: number | null;
+		/** Impuesto sobre nómina, o null si las tasas del año aún no están cargadas. */
+		payroll_tax: number | null;
+		/** El costo total, o null si las tasas del año aún no están cargadas. */
+		total: number | null;
+	};
+}
+
 /** Qué no grava el impuesto sobre nómina del emisor y sus opciones de tasa. */
 export interface PayrollTaxSettings {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -11238,6 +11356,24 @@ export interface GetPayrollTaxParams {
 	month: string;
 }
 
+/** Los parámetros de GET /v1/payroll_reports/accumulated. */
+export interface GetPayrollAccumulatedParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** El año: 2026 (por omisión, el actual). */
+	year?: number;
+	/** Un empleado (emp_…): solo sus recibos. */
+	employee?: string;
+}
+
+/** Los parámetros de GET /v1/payroll_reports/cost. */
+export interface GetPayrollCostParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** El año: 2026 (por omisión, el actual). */
+	year?: number;
+}
+
 export interface UpdatePayrollTaxSettingsParams {
 	/** El emisor (iss_…); por omisión, el único de la cuenta. */
 	issuer?: string;
@@ -16519,6 +16655,38 @@ export class PayrollTaxesResource {
 	}
 }
 
+/** Nómina: fiscalisto.payrollReports. */
+export class PayrollReportsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Acumulados de nómina
+	 *
+	 * Los acumulados del año de los recibos de nómina timbrados vigentes (ordinarios y extraordinarios, por fecha de pago), como «Nómina › Reportes» de la app: cada percepción, deducción y otro pago por su clave del SAT y la del patrón, mes por mes, y los totales de cada empleado (percepciones gravadas y exentas, ISR e IMSS retenidos, subsidio para el empleo causado y neto). Con employee, solo los de ese empleado.
+	 *
+	 * GET /v1/payroll_reports/accumulated
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-payroll-accumulated
+	 */
+	accumulated(params?: GetPayrollAccumulatedParams, options?: RequestOptions): Promise<PayrollAccumulated> {
+		return this.#client.request({ method: "GET", path: "/v1/payroll_reports/accumulated", query: params }, options);
+	}
+
+	/**
+	 * Costo de la nómina
+	 *
+	 * Lo que cuesta la nómina del año mes por mes: lo pagado a los empleados (percepciones y otros pagos de los recibos timbrados, sin el subsidio para el empleo) más las cuotas del patrón al IMSS, SAR e Infonavit y el impuesto sobre nómina, calculados como GET /v1/accounting/payroll_provisions/{month}. En un año cuyas tasas aún no están cargadas (rates_loaded false), esas columnas y total vienen en null.
+	 *
+	 * GET /v1/payroll_reports/cost
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-payroll-cost
+	 */
+	cost(params?: GetPayrollCostParams, options?: RequestOptions): Promise<PayrollCost> {
+		return this.#client.request({ method: "GET", path: "/v1/payroll_reports/cost", query: params }, options);
+	}
+}
+
 /** Lotes: fiscalisto.invoiceBatches. */
 export class InvoiceBatchesResource {
 	readonly #client: Client;
@@ -20336,6 +20504,7 @@ export class FiscalistoApi extends Core {
 	readonly variableSalaries = new VariableSalariesResource(this);
 	readonly annualAdjustments = new AnnualAdjustmentsResource(this);
 	readonly payrollTaxes = new PayrollTaxesResource(this);
+	readonly payrollReports = new PayrollReportsResource(this);
 	readonly invoiceBatches = new InvoiceBatchesResource(this);
 	readonly taxIds = new TaxIdsResource(this);
 	readonly branches = new BranchesResource(this);
