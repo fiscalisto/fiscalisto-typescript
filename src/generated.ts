@@ -10285,6 +10285,16 @@ export interface UpdateEmployeeVacationsParams {
 	opening_taken_days?: number;
 }
 
+/** Los parámetros de GET /v1/employees/{id}/vacations/certificate. */
+export interface GetEmployeeVacationCertificateParams {
+	/** El día en que empezará a disfrutarlas (AAAA-MM-DD), con enjoy_to. */
+	enjoy_from?: string;
+	/** El día en que terminan (AAAA-MM-DD), con enjoy_from. */
+	enjoy_to?: string;
+	/** El día de la constancia (AAAA-MM-DD); por omisión hoy. */
+	as_of?: string;
+}
+
 export interface CreatePayrollReceiptParams {
 	/** El empleado (emp_…). */
 	employee: string;
@@ -15356,6 +15366,18 @@ export class EmployeesResource {
 	 */
 	updateVacations(id: string, params: UpdateEmployeeVacationsParams, options?: RequestOptions): Promise<EmployeeVacations> {
 		return this.#client.request({ method: "POST", path: `/v1/employees/${encodeURIComponent(id)}/vacations`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Constancia de vacaciones
+	 *
+	 * El PDF de la constancia que el artículo 81 de la LFT pide entregar cada año: su antigüedad al último aniversario, los días de vacaciones que le corresponden (artículo 76) con su prima vacacional, cuándo disfrutarlos (las fechas que mande, o los seis meses siguientes al aniversario) y los días pendientes de años anteriores con cuándo prescriben, con espacio para las firmas. Antes de su primer aniversario dice cuándo lo cumple y cuántos días le tocarán.
+	 *
+	 * GET /v1/employees/{id}/vacations/certificate
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-employee-vacation-certificate
+	 */
+	vacationCertificate(id: string, params?: GetEmployeeVacationCertificateParams, options?: RequestOptions): Promise<Uint8Array> {
+		return this.#client.request({ method: "GET", path: `/v1/employees/${encodeURIComponent(id)}/vacations/certificate`, query: params, as: "bytes" }, options);
 	}
 }
 
