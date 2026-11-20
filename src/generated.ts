@@ -5282,6 +5282,226 @@ export interface AccountRenumbering {
 	}[];
 }
 
+/** Los estados financieros consolidados de varios RFC de un mes: sus balanzas sumadas cuenta por cuenta menos las eliminaciones del mes. */
+export interface ConsolidatedStatements {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "consolidated_statements";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** Los RFC que consolida. */
+	rfcs: string[];
+	/** El estado de resultados consolidado: del mes y de enero al mes. */
+	income_statement: {
+		/** El estado de resultados del mes. */
+		month: {
+			/** Ingresos, costos, gastos, financiamiento y otros, cada uno con su total. */
+			sections: {
+				/** La sección: ingresos, costos, gastos, financiamiento u otros. */
+				key: "ingresos" | "costos" | "gastos" | "financiamiento" | "otros";
+				/** Nombre. */
+				name: string;
+				/** Total en la moneda del comprobante (Total). */
+				total: number;
+				/** Su monto por el primer nivel del código agrupador. */
+				groups: {
+					/** El primer nivel del código agrupador (401, 601…). */
+					grouping_code: string;
+					/** Nombre. */
+					name: string;
+					/** Importe. */
+					amount: number;
+					/** Las cuentas del grupo con su monto. */
+					accounts: {
+						/** Número de empleado (NumEmpleado). */
+						number: string;
+						/** Nombre. */
+						name: string;
+						/** Importe. */
+						amount: number;
+					}[];
+				}[];
+			}[];
+			/** La utilidad (o pérdida, negativa) antes de impuestos del mes. */
+			net_income: number;
+		};
+		/** El estado de resultados de enero al mes. */
+		year_to_date: {
+			/** Ingresos, costos, gastos, financiamiento y otros, cada uno con su total. */
+			sections: {
+				/** La sección: ingresos, costos, gastos, financiamiento u otros. */
+				key: "ingresos" | "costos" | "gastos" | "financiamiento" | "otros";
+				/** Nombre. */
+				name: string;
+				/** Total en la moneda del comprobante (Total). */
+				total: number;
+				/** Su monto por el primer nivel del código agrupador. */
+				groups: {
+					/** El primer nivel del código agrupador (401, 601…). */
+					grouping_code: string;
+					/** Nombre. */
+					name: string;
+					/** Importe. */
+					amount: number;
+					/** Las cuentas del grupo con su monto. */
+					accounts: {
+						/** Número de empleado (NumEmpleado). */
+						number: string;
+						/** Nombre. */
+						name: string;
+						/** Importe. */
+						amount: number;
+					}[];
+				}[];
+			}[];
+			/** La utilidad (o pérdida, negativa) antes de impuestos de enero al mes. */
+			net_income: number;
+		};
+	};
+	/** El balance general consolidado al cierre del mes. */
+	balance_sheet: {
+		/** El activo: su total y sus grupos. */
+		assets: {
+			/** Total en la moneda del comprobante (Total). */
+			total: number;
+			/** Su monto por el primer nivel del código agrupador. */
+			groups: {
+				/** El primer nivel del código agrupador (401, 601…). */
+				grouping_code: string;
+				/** Nombre. */
+				name: string;
+				/** Importe. */
+				amount: number;
+				/** Las cuentas del grupo con su monto. */
+				accounts: {
+					/** Número de empleado (NumEmpleado). */
+					number: string;
+					/** Nombre. */
+					name: string;
+					/** Importe. */
+					amount: number;
+				}[];
+			}[];
+		};
+		/** El pasivo: su total y sus grupos. */
+		liabilities: {
+			/** Total en la moneda del comprobante (Total). */
+			total: number;
+			/** Su monto por el primer nivel del código agrupador. */
+			groups: {
+				/** El primer nivel del código agrupador (401, 601…). */
+				grouping_code: string;
+				/** Nombre. */
+				name: string;
+				/** Importe. */
+				amount: number;
+				/** Las cuentas del grupo con su monto. */
+				accounts: {
+					/** Número de empleado (NumEmpleado). */
+					number: string;
+					/** Nombre. */
+					name: string;
+					/** Importe. */
+					amount: number;
+				}[];
+			}[];
+		};
+		/** El capital contable sin el resultado del ejercicio: su total y sus grupos. */
+		equity: {
+			/** Total en la moneda del comprobante (Total). */
+			total: number;
+			/** Su monto por el primer nivel del código agrupador. */
+			groups: {
+				/** El primer nivel del código agrupador (401, 601…). */
+				grouping_code: string;
+				/** Nombre. */
+				name: string;
+				/** Importe. */
+				amount: number;
+				/** Las cuentas del grupo con su monto. */
+				accounts: {
+					/** Número de empleado (NumEmpleado). */
+					number: string;
+					/** Nombre. */
+					name: string;
+					/** Importe. */
+					amount: number;
+				}[];
+			}[];
+		};
+		/** El resultado del ejercicio hasta el mes, parte del capital. */
+		net_income_year_to_date: number;
+		/** Pasivo más capital más el resultado del ejercicio. */
+		liabilities_and_equity: number;
+		/** Activo menos pasivo y capital: 0 cuando los libros cuadran. */
+		difference: number;
+	};
+	/** La hoja de consolidación: cada cuenta en cada RFC, lo eliminado y el consolidado. */
+	worksheet: {
+		/** El número de la cuenta. */
+		number: string;
+		/** Su nombre. */
+		name: string;
+		/** Su código agrupador del SAT. */
+		grouping_code: string;
+		/** Su saldo final en cada RFC, por RFC (las acreedoras en positivo). */
+		by_rfc: Record<string, number>;
+		/** Lo que las eliminaciones le suman (positivo) o restan. */
+		eliminations: number;
+		/** Su saldo final consolidado. */
+		balance: number;
+	}[];
+	/** Las eliminaciones del mes que se aplicaron. */
+	eliminations: ConsolidationElimination[];
+	/** Lo que los RFC se facturaron entre ellos en el año: lo que normalmente se elimina. */
+	intercompany: {
+		/** El RFC que facturó. */
+		issuer_rfc: string;
+		/** El RFC que recibió. */
+		receiver_rfc: string;
+		/** Lo facturado en el mes, sin impuestos, en pesos (egresos restan). */
+		month_amount: number;
+		/** Lo facturado de enero al mes, sin impuestos, en pesos. */
+		year_to_date_amount: number;
+		/** Cuántos CFDI en el año. */
+		invoices: number;
+	}[];
+}
+
+/** Una eliminación de consolidación: lo que el consolidado de varios RFC resta al cierre de un mes (ventas, saldos o inversiones entre ellos). Nunca cambia los libros de un RFC. */
+export interface ConsolidationElimination {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "consolidation_elimination";
+	/** El emisor. */
+	issuer: string;
+	/** El mes (AAAA-MM) a cuyo cierre se elimina. */
+	month: string;
+	/** Su concepto. */
+	description: string;
+	/** Los RFC entre los que es: se aplica cuando todos están en el consolidado. */
+	rfcs: string[];
+	/** Sus renglones de cargo y abono. */
+	lines: {
+		/** El número de cuenta. */
+		account: string;
+		/** El nombre de la cuenta. */
+		account_name: string;
+		/** El cargo. */
+		debit: number;
+		/** El abono. */
+		credit: number;
+	}[];
+	/** Cuándo se cambió por última vez. */
+	updated_at: string | null;
+}
+
 /** Una póliza modelo: las cuentas de una póliza que se captura seguido (una compra, una renta) con el porcentaje del total o el importe fijo de cada renglón, para hacerla otra vez con otro total. */
 export interface EntryTemplate {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
@@ -8151,6 +8371,17 @@ export interface ChartTemplateList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: ChartTemplate[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface ConsolidationEliminationList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: ConsolidationElimination[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -13084,6 +13315,62 @@ export interface RenumberAccountsParams {
 	}[];
 	/** true: dice qué cambiaría, sin cambiar nada. */
 	dry_run?: boolean;
+}
+
+/** Los parámetros de GET /v1/accounting/consolidated_statements. */
+export interface GetConsolidatedStatementsParams {
+	/** Los RFC que consolida, separados por coma (de 2 a 20). */
+	rfcs: string;
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+/** Los parámetros de GET /v1/accounting/consolidation_eliminations. */
+export interface ListConsolidationEliminationsParams {
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface CreateConsolidationEliminationParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** El mes (AAAA-MM) a cuyo cierre se elimina. */
+	month: string;
+	/** El concepto: «Ventas entre empresas del grupo». */
+	description: string;
+	/** Los RFC entre los que es, del espacio del emisor: se aplica cuando todos están en el consolidado. */
+	rfcs: string[];
+	/** Sus renglones: los cargos suman lo mismo que los abonos. */
+	lines: {
+		/** El número de la cuenta en su catálogo (GET /v1/accounting/accounts). */
+		account: string;
+		/** El cargo. */
+		debit?: number;
+		/** El abono. */
+		credit?: number;
+	}[];
+}
+
+export interface UpdateConsolidationEliminationParams {
+	/** El mes (AAAA-MM) a cuyo cierre se elimina. */
+	month: string;
+	/** El concepto: «Ventas entre empresas del grupo». */
+	description: string;
+	/** Los RFC entre los que es, del espacio del emisor: se aplica cuando todos están en el consolidado. */
+	rfcs: string[];
+	/** Sus renglones: los cargos suman lo mismo que los abonos. */
+	lines: {
+		/** El número de la cuenta en su catálogo (GET /v1/accounting/accounts). */
+		account: string;
+		/** El cargo. */
+		debit?: number;
+		/** El abono. */
+		credit?: number;
+	}[];
 }
 
 /** Los parámetros de GET /v1/accounting/entry_templates. */
@@ -18189,6 +18476,18 @@ export class AccountingResource {
 	}
 
 	/**
+	 * Ver los estados financieros consolidados
+	 *
+	 * El estado de resultados y el balance general de varios RFC del espacio del emisor sumados cuenta por cuenta (comparten el catálogo), menos las eliminaciones del mes (POST /v1/accounting/consolidation_eliminations), con la hoja de consolidación (el saldo de cada cuenta en cada RFC, lo eliminado y el consolidado) y lo que los RFC se facturaron entre ellos sin impuestos. Los libros de cada RFC no cambian. Un emisor con un solo RFC contesta parameter_invalid en rfcs.
+	 *
+	 * GET /v1/accounting/consolidated_statements
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-consolidated-statements
+	 */
+	consolidatedStatements(params: GetConsolidatedStatementsParams, options?: RequestOptions): Promise<ConsolidatedStatements> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/consolidated_statements", query: params }, options);
+	}
+
+	/**
 	 * Descargar la contabilidad electrónica
 	 *
 	 * El ZIP del mes para el Buzón Tributario: el catálogo (CT) y la balanza (BN, o BC si es complementaria), cada uno en su ZIP con el nombre que espera el SAT, en el formato 1.3 del Anexo 24. Con journal_request, también las pólizas (PL), que se entregan cuando el SAT las pide. Con month AAAA-13, la balanza de comprobación ajustada al cierre del ejercicio (regla 2.8.1.6 RMF): solo la balanza, con los saldos finales de diciembre como saldos iniciales y, con closing_entry, la póliza de cierre.
@@ -18710,6 +19009,62 @@ export class AccountRenumberingsResource {
 	 */
 	create(params?: RenumberAccountsParams, options?: RequestOptions): Promise<AccountRenumbering> {
 		return this.#client.request({ method: "POST", path: "/v1/accounting/account_renumberings", body: params, idempotent: true }, options);
+	}
+}
+
+/** Contabilidad: fiscalisto.consolidationEliminations. */
+export class ConsolidationEliminationsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar las eliminaciones de consolidación de un mes
+	 *
+	 * Las eliminaciones capturadas para el mes: lo que el consolidado resta al cierre de ese mes (ventas, saldos e inversiones entre los RFC).
+	 *
+	 * GET /v1/accounting/consolidation_eliminations
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/list-consolidation-eliminations
+	 */
+	list(params: ListConsolidationEliminationsParams, options?: RequestOptions): Promise<ConsolidationEliminationList> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/consolidation_eliminations", query: params }, options);
+	}
+
+	/**
+	 * Capturar una eliminación de consolidación
+	 *
+	 * Guarda una eliminación del mes entre los RFC que dice: renglones de cargo y abono que cuadran, sobre cuentas de su catálogo. Cada mes lleva sus eliminaciones completas a esa fecha (las ventas entre ellos del año hasta ese mes y los saldos entre ellos al cierre), como una hoja de consolidación. Solo cambia el consolidado, nunca los libros de un RFC.
+	 *
+	 * POST /v1/accounting/consolidation_eliminations
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/create-consolidation-elimination
+	 */
+	create(params: CreateConsolidationEliminationParams, options?: RequestOptions): Promise<ConsolidationElimination> {
+		return this.#client.request({ method: "POST", path: "/v1/accounting/consolidation_eliminations", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Cambiar una eliminación de consolidación
+	 *
+	 * La reemplaza con lo que manda.
+	 *
+	 * POST /v1/accounting/consolidation_eliminations/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/update-consolidation-elimination
+	 */
+	update(id: string, params: UpdateConsolidationEliminationParams, options?: RequestOptions): Promise<ConsolidationElimination> {
+		return this.#client.request({ method: "POST", path: `/v1/accounting/consolidation_eliminations/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Borrar una eliminación de consolidación
+	 *
+	 * Solo cambia el consolidado: los libros de cada RFC siguen igual.
+	 *
+	 * DELETE /v1/accounting/consolidation_eliminations/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/delete-consolidation-elimination
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/accounting/consolidation_eliminations/${encodeURIComponent(id)}` }, options);
 	}
 }
 
@@ -19709,6 +20064,7 @@ export class FiscalistoApi extends Core {
 	readonly bookDepreciationRates = new BookDepreciationRatesResource(this);
 	readonly chartTemplates = new ChartTemplatesResource(this);
 	readonly accountRenumberings = new AccountRenumberingsResource(this);
+	readonly consolidationEliminations = new ConsolidationEliminationsResource(this);
 	readonly entryTemplates = new EntryTemplatesResource(this);
 	readonly costCenterResults = new CostCenterResultsResource(this);
 	readonly payrollProvisions = new PayrollProvisionsResource(this);
