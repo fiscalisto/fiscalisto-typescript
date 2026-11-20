@@ -2139,6 +2139,68 @@ export interface PayrollTax {
 	excluded_perception_types: string[];
 }
 
+/** Las vacaciones de un empleado por año de servicio (LFT 76, 81 y 516). */
+export interface EmployeeVacations {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "employee_vacations";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El empleado (emp_…). */
+	employee: string;
+	/** El día del saldo. */
+	as_of: string;
+	/** Los días de años de servicio cumplidos que le quedan y no han prescrito: los que paga el finiquito. */
+	pending_days: number;
+	/** El año de servicio en curso. */
+	current_year: {
+		/** Su número: 1 el primer año de servicio. */
+		year: number;
+		/** Su aniversario. */
+		completes_on: string;
+		/** Los días que le tocan al cumplirlo. */
+		days: number;
+		/** Los que ya tomó por adelantado. */
+		taken_in_advance: number;
+		/** Su parte proporcional al día del saldo, menos lo adelantado. */
+		accrued_days: number;
+	};
+	/** Cada año de servicio cumplido, del más antiguo al más reciente. */
+	years: {
+		/** El año de servicio; 0 es el saldo de antes de Fiscalisto. */
+		year: number;
+		/** El aniversario que lo cumple. */
+		owed_from: string;
+		/** Los días que le tocan (artículo 76). */
+		days: number;
+		/** Los que ya tomó. */
+		taken_days: number;
+		/** Los que le quedan. */
+		remaining_days: number;
+		/** El último día para dárselos (artículo 81). */
+		grant_by: string;
+		/** El día en que prescriben (artículo 516). */
+		prescribes_on: string;
+		/** taken, disfrutadas; pending, por disfrutar; late, pasó el plazo para darlas y no han prescrito; prescribed, prescritas. */
+		status: "taken" | "pending" | "late" | "prescribed";
+	}[];
+	/** El saldo de antes de Fiscalisto, o null. */
+	opening: {
+		/** El día del saldo inicial. */
+		date: string;
+		/** Los de años cumplidos. */
+		pending_days: number;
+		/** Los tomados del año en curso. */
+		taken_days: number;
+	} | null;
+	/** Los días de vacaciones de sus recibos timbrados. */
+	taken: {
+		/** El fin del periodo del recibo. */
+		date: string;
+		/** Los días de vacaciones que pagó. */
+		days: number;
+	}[];
+}
+
 /** Qué no grava el impuesto sobre nómina del emisor y sus opciones de tasa. */
 export interface PayrollTaxSettings {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -9307,6 +9369,21 @@ export interface UpdateEmployeeParams {
 	exit_reason?: "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "A" | null;
 }
 
+/** Los parámetros de GET /v1/employees/{id}/vacations. */
+export interface GetEmployeeVacationsParams {
+	/** El día del saldo (AAAA-MM-DD); por omisión hoy, o su último día si ya salió. */
+	as_of?: string;
+}
+
+export interface UpdateEmployeeVacationsParams {
+	/** El día del saldo, según sus registros de antes de Fiscalisto; null lo quita. Los recibos timbrados antes de ese día no se cuentan. */
+	opening_date: string | null;
+	/** Los días que ese día le quedaban de años de servicio cumplidos. */
+	opening_pending_days?: number;
+	/** Los días del año de servicio en curso que ya había tomado ese día. */
+	opening_taken_days?: number;
+}
+
 export interface CreatePayrollReceiptParams {
 	/** El empleado (emp_…). */
 	employee: string;
@@ -9424,8 +9501,10 @@ export interface CreateExtraordinaryPayrollReceiptParams {
 	exit_reason?: "resignation" | "dismissal";
 	/** finiquito con dismissal: incluye 20 días por año de servicio (LFT art. 50), cuando el patrón no lo reinstala. */
 	twenty_days_per_year?: boolean;
-	/** finiquito: los días de vacaciones del año de servicio en curso que ya tomó. */
+	/** finiquito: los días de vacaciones del año de servicio en curso que ya tomó. Por omisión, los de sus recibos timbrados (GET /v1/employees/{id}/vacations). */
 	vacation_days_taken?: number;
+	/** finiquito: los días de vacaciones de años de servicio cumplidos que no disfrutó ni han prescrito; se pagan con su prima vacacional. Por omisión, pending_days de sus vacaciones. */
+	vacation_days_owed?: number;
 	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
 	send_email?: boolean;
 	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
@@ -9453,8 +9532,10 @@ export interface PreviewExtraordinaryPayrollReceiptParams {
 	exit_reason?: "resignation" | "dismissal";
 	/** finiquito con dismissal: incluye 20 días por año de servicio (LFT art. 50), cuando el patrón no lo reinstala. */
 	twenty_days_per_year?: boolean;
-	/** finiquito: los días de vacaciones del año de servicio en curso que ya tomó. */
+	/** finiquito: los días de vacaciones del año de servicio en curso que ya tomó. Por omisión, los de sus recibos timbrados (GET /v1/employees/{id}/vacations). */
 	vacation_days_taken?: number;
+	/** finiquito: los días de vacaciones de años de servicio cumplidos que no disfrutó ni han prescrito; se pagan con su prima vacacional. Por omisión, pending_days de sus vacaciones. */
+	vacation_days_owed?: number;
 	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
 	send_email?: boolean;
 	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
@@ -14006,6 +14087,30 @@ export class EmployeesResource {
 	 */
 	delete(id: string, options?: RequestOptions): Promise<Deleted> {
 		return this.#client.request({ method: "DELETE", path: `/v1/employees/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Vacaciones de un empleado
+	 *
+	 * Los días de vacaciones de cada año de servicio (artículo 76 de la LFT: 12 el primero, dos más cada año hasta 20 y luego dos más cada cinco), los que tomó (los días de vacaciones de sus recibos timbrados, restados del año más antiguo que le quede), hasta cuándo dárselos (seis meses después del aniversario, artículo 81) y cuándo prescriben (un año después, artículo 516). pending_days son los de años cumplidos que no han prescrito: los que paga el finiquito.
+	 *
+	 * GET /v1/employees/{id}/vacations
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-employee-vacations
+	 */
+	vacations(id: string, params?: GetEmployeeVacationsParams, options?: RequestOptions): Promise<EmployeeVacations> {
+		return this.#client.request({ method: "GET", path: `/v1/employees/${encodeURIComponent(id)}/vacations`, query: params }, options);
+	}
+
+	/**
+	 * Saldo de vacaciones antes de Fiscalisto
+	 *
+	 * Guarda lo que el empleado tenía en un día según sus registros: los días que le quedaban de años cumplidos y los que ya había tomado del año en curso. Los recibos timbrados antes de ese día no se cuentan. opening_date null lo quita.
+	 *
+	 * POST /v1/employees/{id}/vacations
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-employee-vacations
+	 */
+	updateVacations(id: string, params: UpdateEmployeeVacationsParams, options?: RequestOptions): Promise<EmployeeVacations> {
+		return this.#client.request({ method: "POST", path: `/v1/employees/${encodeURIComponent(id)}/vacations`, body: params, idempotent: true }, options);
 	}
 }
 
