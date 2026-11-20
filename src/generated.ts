@@ -1082,8 +1082,12 @@ export interface Employee {
 	end_date: string | null;
 	/** Salario diario. */
 	daily_salary: number;
-	/** Salario diario integrado (SalarioDiarioIntegrado): no menor al salario diario. */
+	/** El SDI de los elementos fijos (cuota diaria con aguinaldo, prima vacacional y demás prestaciones fijas). */
 	integrated_daily_salary: number;
+	/** La parte variable del SDI desde variable_salary_from: lo que las horas extra triples, la prima dominical y los premios del bimestre anterior suman por día (artículo 30 de la LSS). Se fija con POST /v1/variable_salaries; los recibos usan integrated_daily_salary más esta. */
+	variable_integrated_daily_salary: number;
+	/** Desde cuándo aplica variable_integrated_daily_salary (AAAA-MM-DD). */
+	variable_salary_from: string | null;
 	/** Tipo de contrato (TipoContrato), c_TipoContrato. Por omisión 01, por tiempo indeterminado. */
 	contract_type: string;
 	/** Tipo de jornada (TipoJornada), c_TipoJornada. Por omisión 01, diurna. */
@@ -1924,6 +1928,98 @@ export interface ImssMovement {
 	reported_at: string | null;
 	/** Lo que el IMSS rechazaría en su renglón (vacío: listo para el archivo). */
 	problems: string[];
+}
+
+/** Un descuento que se repite en cada recibo ordinario de un empleado: Infonavit, Fonacot, pensión alimenticia, préstamo, caja de ahorro o cuota sindical. Cada recibo lo toma con los límites de la Ley Federal del Trabajo. */
+export interface EmployeeDeduction {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "employee_deduction";
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** El empleado (emp_…). */
+	employee: string;
+	/** infonavit, fonacot, pension (pensión alimenticia), prestamo, anticipo (de salarios), caja (de ahorro) o sindical. */
+	kind: "infonavit" | "fonacot" | "pension" | "prestamo" | "anticipo" | "caja" | "sindical";
+	/** La clave del SAT con que va en el recibo (c_TipoDeduccion): 010, 011, 007, 004, 012, 018 o 019. */
+	deduction_type: string;
+	/** Cómo se calcula (vea POST /v1/employee_deductions). */
+	mode: "percent_sbc" | "fixed_month" | "vsm" | "percent_net" | "percent_gross" | "fixed_period" | "percent_salary";
+	/** El porcentaje, el factor de VSM o el monto. */
+	value: number;
+	/** El monto de un préstamo o anticipo. */
+	total: number | null;
+	/** Lo que ya descontaron los recibos timbrados. */
+	paid: number;
+	/** Lo que falta de un préstamo o anticipo. */
+	balance: number | null;
+	/** El número de crédito, el expediente o una nota. */
+	reference: string | null;
+	/** A quién se paga una pensión. */
+	beneficiary: string | null;
+	/** Desde qué día se descuenta. */
+	start_date: string;
+	/** Hasta qué día, o null. */
+	end_date: string | null;
+	/** Una pensión que también se descuenta del aguinaldo, la PTU y el finiquito. */
+	extraordinary: boolean;
+}
+
+/** La parte variable del SDI de un bimestre (artículo 30 de la LSS): las horas extra triples, la prima dominical, otros ingresos y lo que los premios de puntualidad y asistencia pasan del 10% del SBC, entre los días trabajados. */
+export interface VariableSalary {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "variable_salary";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** AAAA-B: 1 es enero–febrero, 6 noviembre–diciembre. */
+	bimester: string;
+	/** El primer día del bimestre. */
+	period_start: string;
+	/** El último día del bimestre. */
+	period_end: string;
+	/** Desde cuándo aplica: el primer día del bimestre siguiente. */
+	effective_date: string;
+	/** El último día para presentar la modificación en IDSE: el quinto día hábil del mes (artículo 34 de la LSS). */
+	deadline: string;
+	/** Cada empleado con ingresos variables, o con una parte variable que cambia. */
+	employees: {
+		/** El empleado (emp_…). */
+		employee: string;
+		/** Su número de empleado. */
+		employee_number: string;
+		/** Su nombre. */
+		employee_name: string;
+		/** Lo que se integra del bimestre (artículo 27 de la LSS). */
+		variable_income: number;
+		/** Los días de salario devengado: los del bimestre menos faltas e incapacidades. */
+		days: number;
+		/** variable_income entre days. */
+		daily_variable: number;
+		/** El SDI de los elementos fijos. */
+		fixed_integrated_daily_salary: number;
+		/** La parte variable que tiene hoy. */
+		current_variable: number;
+		/** El SDI desde effective_date: el fijo más daily_variable. */
+		new_integrated_daily_salary: number;
+		/** Si cambia lo que tiene. */
+		changes: boolean;
+		/** Si ya se aplicó este bimestre. */
+		applied: boolean;
+		/** De dónde sale variable_income. */
+		lines: {
+			/** El tipo de percepción (019, 020, 010, 049, 038). */
+			type: string;
+			/** Qué es. */
+			label: string;
+			/** Lo que se integra. */
+			amount: number;
+		}[];
+	}[];
 }
 
 /** Los archivos para presentar movimientos en IDSE o importarlos en SUA. */
@@ -6358,6 +6454,17 @@ export interface ImssMovementList {
 	url: string;
 }
 
+export interface EmployeeDeductionList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: EmployeeDeduction[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
 export interface InvoiceBatchList {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "list";
@@ -9233,6 +9340,75 @@ export interface CreateImssFilesParams {
 	movements?: string[];
 	/** IDSE: la guía de 5 dígitos de su subdelegación. Por omisión, la que se guardó en la app. */
 	guide?: string;
+}
+
+export interface CreateEmployeeDeductionParams {
+	/** El empleado (emp_…). */
+	employee: string;
+	/** infonavit (deducción 010), fonacot (011), pension (pensión alimenticia, 007), prestamo (préstamo del patrón, 004), anticipo (anticipo de salarios, 012), caja (caja de ahorro, 018) o sindical (cuota sindical, 019). */
+	kind: "infonavit" | "fonacot" | "pension" | "prestamo" | "anticipo" | "caja" | "sindical";
+	/** Cómo se calcula. infonavit: percent_sbc (porcentaje del SBC por día), fixed_month (cuota fija al mes) o vsm (factor de VSM al mes, por la UMI de 100.81), como dice el aviso de retención. fonacot: fixed_month (la retención mensual de la cédula). pension: percent_net (del neto después de ISR e IMSS), percent_gross (de todas las percepciones) o fixed_month. prestamo, anticipo y caja: fixed_period (monto por recibo). sindical: percent_salary (del sueldo) o fixed_period. */
+	mode: "percent_sbc" | "fixed_month" | "vsm" | "percent_net" | "percent_gross" | "fixed_period" | "percent_salary";
+	/** El porcentaje (de más de 0 a 100), el factor de VSM o el monto en pesos, según mode. */
+	value: number;
+	/** Solo prestamo y anticipo: el monto prestado. Se descuenta hasta pagarlo; no puede pasar de un mes de salario (artículo 110 de la LFT). */
+	total?: number | null;
+	/** El número de crédito de Infonavit o Fonacot, el expediente o una nota. */
+	reference?: string | null;
+	/** Solo pension, y obligatorio: a quién se paga. */
+	beneficiary?: string | null;
+	/** Desde qué día se descuenta (AAAA-MM-DD). */
+	start_date: string;
+	/** Hasta qué día (incluido). Sin él, hasta que se borre (o se pague el préstamo). */
+	end_date?: string | null;
+	/** Solo pension: también se descuenta del aguinaldo, la PTU y el finiquito (por omisión, true). */
+	extraordinary?: boolean;
+}
+
+/** Los parámetros de GET /v1/employee_deductions. */
+export interface ListEmployeeDeductionsParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Solo los de este empleado (emp_…). */
+	employee?: string;
+}
+
+export interface UpdateEmployeeDeductionParams {
+	/** infonavit (deducción 010), fonacot (011), pension (pensión alimenticia, 007), prestamo (préstamo del patrón, 004), anticipo (anticipo de salarios, 012), caja (caja de ahorro, 018) o sindical (cuota sindical, 019). */
+	kind?: "infonavit" | "fonacot" | "pension" | "prestamo" | "anticipo" | "caja" | "sindical";
+	/** Cómo se calcula. infonavit: percent_sbc (porcentaje del SBC por día), fixed_month (cuota fija al mes) o vsm (factor de VSM al mes, por la UMI de 100.81), como dice el aviso de retención. fonacot: fixed_month (la retención mensual de la cédula). pension: percent_net (del neto después de ISR e IMSS), percent_gross (de todas las percepciones) o fixed_month. prestamo, anticipo y caja: fixed_period (monto por recibo). sindical: percent_salary (del sueldo) o fixed_period. */
+	mode?: "percent_sbc" | "fixed_month" | "vsm" | "percent_net" | "percent_gross" | "fixed_period" | "percent_salary";
+	/** El porcentaje (de más de 0 a 100), el factor de VSM o el monto en pesos, según mode. */
+	value?: number;
+	/** Solo prestamo y anticipo: el monto prestado. Se descuenta hasta pagarlo; no puede pasar de un mes de salario (artículo 110 de la LFT). */
+	total?: number | null;
+	/** El número de crédito de Infonavit o Fonacot, el expediente o una nota. */
+	reference?: string | null;
+	/** Solo pension, y obligatorio: a quién se paga. */
+	beneficiary?: string | null;
+	/** Desde qué día se descuenta (AAAA-MM-DD). */
+	start_date?: string;
+	/** Hasta qué día (incluido). Sin él, hasta que se borre (o se pague el préstamo). */
+	end_date?: string | null;
+	/** Solo pension: también se descuenta del aguinaldo, la PTU y el finiquito (por omisión, true). */
+	extraordinary?: boolean;
+}
+
+/** Los parámetros de GET /v1/variable_salaries. */
+export interface GetVariableSalaryParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** AAAA-B: 2026-5 es septiembre–octubre de 2026. */
+	bimester: string;
+}
+
+export interface ApplyVariableSalaryParams {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** El bimestre: AAAA-B, de 1 (enero–febrero) a 6 (noviembre–diciembre). */
+	bimester: string;
+	/** Los empleados (emp_…) a los que se aplica. */
+	employees: string[];
 }
 
 export interface CreateInvoiceBatchParams {
@@ -13743,6 +13919,106 @@ export class ImssFilesResource {
 	}
 }
 
+/** Nómina: fiscalisto.employeeDeductions. */
+export class EmployeeDeductionsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Agregar un descuento a un empleado
+	 *
+	 * Infonavit, Fonacot, pensión alimenticia, préstamo o anticipo del patrón, caja de ahorro o cuota sindical. Cada recibo ordinario desde start_date lo toma solo (POST /v1/payroll_receipts), con los límites de la Ley Federal del Trabajo: Infonavit por cada día del periodo aunque haya faltas, más $15 de seguro de daños por bimestre; Fonacot hasta el 20% del sueldo; préstamos, anticipos y caja hasta el 30% de lo que el sueldo excede del salario mínimo; del salario mínimo solo la pensión, Infonavit (20%) y Fonacot (10%). La pensión va primero, y lo que no alcanza del neto no se descuenta.
+	 *
+	 * POST /v1/employee_deductions
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-employee-deduction
+	 */
+	create(params: CreateEmployeeDeductionParams, options?: RequestOptions): Promise<EmployeeDeduction> {
+		return this.#client.request({ method: "POST", path: "/v1/employee_deductions", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar descuentos
+	 *
+	 * Los descuentos vigentes del emisor, o de un empleado con employee.
+	 *
+	 * GET /v1/employee_deductions
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/list-employee-deductions
+	 */
+	list(params?: ListEmployeeDeductionsParams, options?: RequestOptions): Promise<EmployeeDeductionList> {
+		return this.#client.request({ method: "GET", path: "/v1/employee_deductions", query: params }, options);
+	}
+
+	/**
+	 * Ver un descuento
+	 *
+	 * El descuento con lo que ya tomaron los recibos (paid) y lo que falta de un préstamo (balance).
+	 *
+	 * GET /v1/employee_deductions/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-employee-deduction
+	 */
+	get(id: string, options?: RequestOptions): Promise<EmployeeDeduction> {
+		return this.#client.request({ method: "GET", path: `/v1/employee_deductions/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Cambiar un descuento
+	 *
+	 * Desde el siguiente recibo; los timbrados se quedan como están.
+	 *
+	 * POST /v1/employee_deductions/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-employee-deduction
+	 */
+	update(id: string, params?: UpdateEmployeeDeductionParams, options?: RequestOptions): Promise<EmployeeDeduction> {
+		return this.#client.request({ method: "POST", path: `/v1/employee_deductions/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Quitar un descuento
+	 *
+	 * Los recibos siguientes ya no lo toman; los timbrados lo conservan.
+	 *
+	 * DELETE /v1/employee_deductions/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/delete-employee-deduction
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/employee_deductions/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Nómina: fiscalisto.variableSalaries. */
+export class VariableSalariesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Salario variable de un bimestre
+	 *
+	 * Lo que las horas extra triples, la prima dominical, otros ingresos y lo que los premios de puntualidad y asistencia pasan del 10% del SBC suman al SDI de cada empleado, de los recibos timbrados del bimestre, entre sus días trabajados (artículos 27 y 30 de la LSS). Las horas dobles no cuentan. No cambia nada: aplíquelo con POST /v1/variable_salaries.
+	 *
+	 * GET /v1/variable_salaries
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-variable-salary
+	 */
+	get(params: GetVariableSalaryParams, options?: RequestOptions): Promise<VariableSalary> {
+		return this.#client.request({ method: "GET", path: "/v1/variable_salaries", query: params }, options);
+	}
+
+	/**
+	 * Aplicar el salario variable de un bimestre
+	 *
+	 * A los empleados que diga: su parte variable del SDI desde el primer día del bimestre siguiente (los recibos de periodos anteriores siguen con la que tenían) y la modificación de salario pendiente de presentar en IDSE (GET /v1/imss_movements), a más tardar el quinto día hábil del mes (artículo 34 de la LSS). Repetirlo no hace nada.
+	 *
+	 * POST /v1/variable_salaries
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/apply-variable-salary
+	 */
+	apply(params: ApplyVariableSalaryParams, options?: RequestOptions): Promise<VariableSalary> {
+		return this.#client.request({ method: "POST", path: "/v1/variable_salaries", body: params, idempotent: true }, options);
+	}
+}
+
 /** Lotes: fiscalisto.invoiceBatches. */
 export class InvoiceBatchesResource {
 	readonly #client: Client;
@@ -16935,6 +17211,8 @@ export class FiscalistoApi extends Core {
 	readonly payrollBankFiles = new PayrollBankFilesResource(this);
 	readonly imssMovements = new ImssMovementsResource(this);
 	readonly imssFiles = new ImssFilesResource(this);
+	readonly employeeDeductions = new EmployeeDeductionsResource(this);
+	readonly variableSalaries = new VariableSalariesResource(this);
 	readonly invoiceBatches = new InvoiceBatchesResource(this);
 	readonly taxIds = new TaxIdsResource(this);
 	readonly branches = new BranchesResource(this);
