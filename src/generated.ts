@@ -5502,6 +5502,40 @@ export interface ConsolidationElimination {
 	updated_at: string | null;
 }
 
+/** Un cambio en la contabilidad (bitácora): una póliza, los saldos iniciales, el catálogo, el cierre de un mes, una eliminación, una póliza modelo o la baja de un activo; quién lo hizo y cómo estaba antes y después. No se edita ni se borra. */
+export interface BooksLogEntry {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "books_log_entry";
+	/** El emisor. */
+	issuer: string;
+	/** Cuándo se hizo el cambio. */
+	created_at: string;
+	/** Qué cambió: una póliza a mano (manual_journal_entry), los saldos iniciales, una cuenta, el catálogo completo (una importación o una renumeración), el cierre del mes (period_close), una eliminación de consolidación, una póliza modelo o la baja de un activo fijo. */
+	subject: "manual_journal_entry" | "opening_balances" | "account" | "chart_of_accounts" | "period_close" | "consolidation_elimination" | "entry_template" | "fixed_asset";
+	/** El id de lo que cambió cuando tiene uno en la API (mje_, cel_, mjt_); null en los demás. */
+	subject_id: string | null;
+	/** created, updated, deleted, restored (deshecho), imported, closed (se cerró el mes) o reopened (se reabrió). */
+	action: "created" | "updated" | "deleted" | "restored" | "imported" | "closed" | "reopened";
+	/** Lo que cambió, para leerlo: «Póliza de diario del 2026-03-15: Préstamo». */
+	description: string;
+	/** Quién: un usuario del panel (user, con su nombre), una llave de la API (api_key, con su nombre en label) o un asistente por MCP (assistant: su nombre en label y el del usuario en name). */
+	actor: {
+		/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
+		type: "user" | "api_key" | "assistant";
+		/** Nombre. */
+		name: string | null;
+		label: string | null;
+	};
+	/** Cómo estaba (con los nombres de campo en español de la bitácora); null cuando no existía. */
+	before: unknown;
+	/** Cómo quedó; null cuando se borró. */
+	after: unknown;
+}
+
 /** Una póliza modelo: las cuentas de una póliza que se captura seguido (una compra, una renta) con el porcentaje del total o el importe fijo de cada renglón, para hacerla otra vez con otro total. */
 export interface EntryTemplate {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
@@ -8371,6 +8405,17 @@ export interface ChartTemplateList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: ChartTemplate[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface BooksLogEntryList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: BooksLogEntry[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -13315,6 +13360,22 @@ export interface RenumberAccountsParams {
 	}[];
 	/** true: dice qué cambiaría, sin cambiar nada. */
 	dry_run?: boolean;
+}
+
+/** Los parámetros de GET /v1/accounting/books_log. */
+export interface ListBooksLogParams {
+	/** Solo los cambios de una cosa: manual_journal_entry, opening_balances, account, chart_of_accounts, period_close, consolidation_elimination, entry_template o fixed_asset. */
+	subject?: "manual_journal_entry" | "opening_balances" | "account" | "chart_of_accounts" | "period_close" | "consolidation_elimination" | "entry_template" | "fixed_asset";
+	/** Desde este día (AAAA-MM-DD, hora de la Ciudad de México). */
+	from?: string;
+	/** Hasta este día, incluido. */
+	to?: string;
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
 }
 
 /** Los parámetros de GET /v1/accounting/consolidated_statements. */
@@ -19012,6 +19073,26 @@ export class AccountRenumberingsResource {
 	}
 }
 
+/** Contabilidad: fiscalisto.booksLog. */
+export class BooksLogResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar la bitácora de la contabilidad
+	 *
+	 * Cada cambio a la contabilidad del RFC del emisor, del más reciente al más antiguo: pólizas a mano (también las que hacen el cierre del mes, la revaluación y los bancos), saldos iniciales, cuentas y el catálogo (que comparten los RFC del espacio), cierres y reaperturas de mes, eliminaciones de consolidación, pólizas modelo y bajas de activos. Cada uno dice quién lo hizo (un usuario, una llave de la API o un asistente) y cómo estaba antes y después. Guardar algo sin cambios no deja registro.
+	 *
+	 * GET /v1/accounting/books_log
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/list-books-log
+	 */
+	list(params?: ListBooksLogParams, options?: RequestOptions): List<BooksLogEntry> {
+		return this.#client.list({ path: "/v1/accounting/books_log", query: params }, options);
+	}
+}
+
 /** Contabilidad: fiscalisto.consolidationEliminations. */
 export class ConsolidationEliminationsResource {
 	readonly #client: Client;
@@ -20064,6 +20145,7 @@ export class FiscalistoApi extends Core {
 	readonly bookDepreciationRates = new BookDepreciationRatesResource(this);
 	readonly chartTemplates = new ChartTemplatesResource(this);
 	readonly accountRenumberings = new AccountRenumberingsResource(this);
+	readonly booksLog = new BooksLogResource(this);
 	readonly consolidationEliminations = new ConsolidationEliminationsResource(this);
 	readonly entryTemplates = new EntryTemplatesResource(this);
 	readonly costCenterResults = new CostCenterResultsResource(this);
