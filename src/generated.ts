@@ -4130,6 +4130,8 @@ export interface Ticket {
 		/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
 		legal_name: string | null;
 	} | null;
+	/** La sucursal (brn_…) donde se hizo la venta, o null (la Matriz). Su factura se timbra desde ahí y el portal muestra su nombre y su logo. */
+	branch: string | null;
 	/** Quién pagó, como lo conoce el origen de la venta (el `buyer` que mandó, o el cliente de un pago de Stripe). No es el receptor de la factura (`customer`). */
 	buyer: {
 		/** Nombre. */
@@ -4371,7 +4373,7 @@ export interface JournalEntry {
 	/** El emisor. */
 	issuer: string;
 	/** De qué es: invoice (un CFDI de ingreso o egreso), payment_received o payment_made (un pago de un complemento), payroll (un recibo de nómina), employee_expenses (un anticipo, reembolso, devolución o comprobación de viáticos, contra 107.01 «Funcionarios y empleados»), depreciation (la depreciación del mes de los activos fijos), manual (una póliza capturada a mano, o la reversión de una provisión) o asset_disposal (la venta o baja de un activo fijo). */
-	type: "invoice" | "payment_received" | "payment_made" | "payroll" | "employee_expenses" | "depreciation" | "manual" | "asset_disposal";
+	type: "invoice" | "payment_received" | "payment_made" | "payroll" | "employee_expenses" | "depreciation" | "manual" | "asset_disposal" | "bank_identification";
 	/** Con type manual: la póliza capturada (mje_…), también en su reversión; null en las demás. */
 	manual_entry: string | null;
 	/** La fecha del CFDI o del pago; en la depreciación, el último día del mes. */
@@ -4611,7 +4613,94 @@ export interface FxRevaluation {
 		/** Su TipoCambio: los pesos por unidad a los que se registró. */
 		booked_rate: number;
 	}[];
+	/** Sus cuentas de banco en otra moneda: statement_balance (el saldo del último estado de cuenta al cierre, en su moneda, o null si no hay), statement_date y book_balance (lo que sus libros traen en pesos antes de la revaluación). La diferencia contra statement_balance × el tipo de cambio de cierre va a Utilidad o Pérdida cambiaria. */
+	bank_accounts: {
+		/** Nombre. */
+		name: string;
+		/** Moneda, clave ISO 4217 de c_Moneda (MXN, USD, EUR…). Por omisión MXN. */
+		currency: string;
+		/** El saldo de su último estado de cuenta del mes, en su moneda, o null si no hay. */
+		statement_balance: number | null;
+		/** La fecha de ese saldo, o null. */
+		statement_date: string | null;
+		/** Los pesos que la cuenta lleva en los libros al cierre, sin la póliza de revaluación. */
+		book_balance: number;
+	}[];
 	/** La póliza de revaluación (mje_…) si ya se registró, o null. Es una póliza a mano de tipo adjustment con reverse_next_month. */
+	manual_entry: string | null;
+}
+
+/** Las cuotas patronales de un mes en la contabilidad: lo que la empresa debe al IMSS, al SAR y al Infonavit por los días del mes según sus recibos de nómina timbrados, el impuesto sobre nómina del mes y la póliza de provisión que los registra, si ya se registró. */
+export interface PayrollProvision {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "payroll_provision";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** El último día del mes: la fecha de la póliza. */
+	date: string;
+	/** La prima de riesgo de trabajo del cálculo, como fracción (0.0054355 es 0.54355%). */
+	employer_risk_premium: number;
+	/** true si es la que se guardó al registrar; false si es la prima media de la clase de sus empleados. */
+	employer_risk_premium_saved: boolean;
+	/** Lo calculado: imss (enfermedades y maternidad, invalidez y vida, riesgos de trabajo y guarderías), sar (retiro y cesantía y vejez), infonavit y payroll_tax (el impuesto sobre nómina del mes, como GET /v1/payroll_taxes). */
+	calculated: {
+		/** Calculado: enfermedades y maternidad, invalidez y vida, riesgos de trabajo y guarderías. */
+		imss: number;
+		/** Calculado: retiro y cesantía en edad avanzada y vejez. */
+		sar: number;
+		/** Calculado: la aportación al Infonavit (5%). */
+		infonavit: number;
+		/** Calculado: el impuesto sobre nómina del mes. */
+		payroll_tax: number;
+	};
+	/** Los importes de la póliza registrada (pueden ser los que escribió), o null si no se ha registrado. */
+	posted: {
+		/** Registrado: enfermedades y maternidad, invalidez y vida, riesgos de trabajo y guarderías. */
+		imss: number;
+		/** Registrado: retiro y cesantía en edad avanzada y vejez. */
+		sar: number;
+		/** Registrado: la aportación al Infonavit (5%). */
+		infonavit: number;
+		/** Registrado: el impuesto sobre nómina del mes. */
+		payroll_tax: number;
+	} | null;
+	/** El cálculo por empleado: su salario base de cotización, los días de cada ramo (las faltas solo cotizan en enfermedades y maternidad; las incapacidades solo en retiro e Infonavit) y lo que toca a cada parte. minimum_wage: la empresa paga también la parte del trabajador (LSS art. 36). */
+	employees: {
+		/** El empleado (emp_…). */
+		employee: string | null;
+		/** Nombre. */
+		name: string;
+		/** Su salario base de cotización: el SDI del recibo, entre el salario mínimo y 25 UMA. */
+		sbc: number;
+		/** Días del mes en enfermedades y maternidad: menos las incapacidades. */
+		days_health: number;
+		/** Días en invalidez y vida, riesgos de trabajo, guarderías y cesantía y vejez: menos faltas (hasta 7 al mes) e incapacidades. */
+		days_disability_life: number;
+		/** Días en retiro e Infonavit: menos las faltas; las incapacidades sí cuentan. */
+		days_retirement: number;
+		/** Gana el salario mínimo: la empresa paga también su parte (LSS art. 36). */
+		minimum_wage: boolean;
+		/** Sus cuotas patronales al IMSS. */
+		imss: number;
+		/** Su retiro y cesantía y vejez. */
+		sar: number;
+		/** Su aportación al Infonavit. */
+		infonavit: number;
+	}[];
+	/** El impuesto sobre nómina de cada estado. */
+	payroll_tax_states: {
+		/** Entidad federativa donde trabaja (ClaveEntFed): JAL, CMX, NLE… */
+		state: string;
+		/** Base del impuesto retenido (BaseRet). */
+		base: number;
+		/** Importe. */
+		amount: number;
+	}[];
+	/** La póliza de provisión (mje_…) si ya se registró, o null. Es una póliza a mano de tipo adjustment. */
 	manual_entry: string | null;
 }
 
@@ -4675,6 +4764,24 @@ export interface CostOfSales {
 	suggested_ending_inventory: number | null;
 	/** La póliza de costo de ventas (mje_…) si ya se registró, o null. Es una póliza a mano de tipo adjustment. */
 	manual_entry: string | null;
+}
+
+/** Una cuenta de banco que la contabilidad lleva aparte: su propia subcuenta de Bancos, con la moneda en que se revalúa. */
+export interface LedgerBankAccount {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "ledger_bank_account";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** Los últimos 4 dígitos de la cuenta, como los muestra su estado de cuenta. */
+	last4: string;
+	/** Su nombre en el catálogo. */
+	name: string;
+	/** Su número de cuenta en el catálogo (código agrupador 102.01). */
+	account: string;
+	/** Su moneda (MXN, USD…). */
+	currency: string;
 }
 
 /** Las pólizas que entraron de otro sistema (CONTPAQi, COI, una hoja de cálculo) en una importación. */
@@ -4803,7 +4910,7 @@ export interface GeneralLedger {
 			/** La póliza (el mismo id de GET /v1/accounting/journal_entries). */
 			journal_entry: string;
 			/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
-			type: "invoice" | "payment_received" | "payment_made" | "payroll" | "employee_expenses" | "depreciation" | "manual" | "asset_disposal";
+			type: "invoice" | "payment_received" | "payment_made" | "payroll" | "employee_expenses" | "depreciation" | "manual" | "asset_disposal" | "bank_identification";
 			/** Descripción. */
 			description: string;
 			/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
@@ -7019,6 +7126,17 @@ export interface FixedAssetList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: FixedAsset[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface LedgerBankAccountList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: LedgerBankAccount[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -9719,6 +9837,11 @@ export interface UpdateBranchParams {
 	archived?: boolean;
 }
 
+export interface UploadBranchLogoParams {
+	/** El logo, PNG o JPG de hasta 1 MB, en base64 (con o sin el prefijo data:image/png;base64,). Uno muy grande se reduce para el PDF. */
+	file: string;
+}
+
 export interface CreateCostCenterParams {
 	/** El emisor (iss_…). Por omisión, su único emisor. */
 	issuer?: string;
@@ -10996,6 +11119,8 @@ export interface CreateTicketParams {
 		/** Su correo. */
 		email?: string;
 	};
+	/** Sucursal (brn_…) donde se hizo la venta: su factura se timbra desde ahí (su código postal en LugarExpedicion) y el portal muestra el nombre comercial y el logo de la sucursal. Sin ella, la Matriz. */
+	branch?: string;
 	/** Una venta de varios conceptos (el folio de un hotel: noches, desayunos, lavandería), cada uno con su producto o sus claves, sus impuestos y lo que se cobró por él; hasta 200. En lugar de `product`, `description`, `product_key`, `unit_key` e `iva`. La factura del cliente lleva un concepto por línea; la factura global, uno por cada combinación de impuestos del ticket. */
 	lines?: {
 		/** Un producto (prd_…) de su catálogo: sus claves, IVA e impuestos locales. */
@@ -11556,6 +11681,33 @@ export interface DeleteCostOfSalesParams {
 	issuer?: string;
 }
 
+/** Los parámetros de GET /v1/accounting/payroll_provisions/{month}. */
+export interface GetPayrollProvisionParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface CreatePayrollProvisionParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** La prima de riesgo de trabajo de su determinación anual, como fracción (0.0054355 es 0.54355%). Se guarda para los meses siguientes. Sin ella, la guardada o la prima media de la clase. */
+	employer_risk_premium?: number;
+	/** Las cuotas patronales al IMSS en pesos, si no quiere el calculado (el del SUA, por ejemplo). */
+	imss?: number;
+	/** Retiro y cesantía y vejez en pesos, si no quiere el calculado (el del SUA, por ejemplo). */
+	sar?: number;
+	/** La aportación al Infonavit en pesos, si no quiere el calculado (el del SUA, por ejemplo). */
+	infonavit?: number;
+	/** El impuesto sobre nómina en pesos, si no quiere el calculado (el del SUA, por ejemplo). */
+	payroll_tax?: number;
+}
+
+/** Los parámetros de DELETE /v1/accounting/payroll_provisions/{month}. */
+export interface DeletePayrollProvisionParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
 /** Los parámetros de GET /v1/accounting/tax_determinations/{month}. */
 export interface GetTaxDeterminationParams {
 	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
@@ -11573,6 +11725,21 @@ export interface CreateTaxDeterminationParams {
 export interface DeleteTaxDeterminationParams {
 	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
 	issuer?: string;
+}
+
+/** Los parámetros de GET /v1/accounting/bank_accounts. */
+export interface ListLedgerBankAccountsParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface UpdateLedgerBankAccountParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** La moneda de la cuenta (ISO 4217: MXN, USD…). Una en otra moneda se revalúa con las revaluaciones cambiarias. */
+	currency: string;
+	/** Su nombre en el catálogo. */
+	name?: string;
 }
 
 /** Los parámetros de GET /v1/accounting/bank_movements. */
@@ -14380,6 +14547,30 @@ export class BranchesResource {
 	delete(id: string, options?: RequestOptions): Promise<Deleted> {
 		return this.#client.request({ method: "DELETE", path: `/v1/branches/${encodeURIComponent(id)}` }, options);
 	}
+
+	/**
+	 * Subir el logo de la sucursal
+	 *
+	 * El logo de la sucursal (PNG o JPG de hasta 1 MB, en base64): va en lo que factura desde ella y en el portal de autofactura de los tickets que la nombran. Reemplaza el anterior; sin logo propio usa el del emisor.
+	 *
+	 * POST /v1/branches/{id}/logo
+	 * @see https://fiscalisto.com/docs/api/referencia/sucursales/upload-branch-logo
+	 */
+	uploadLogo(id: string, params: UploadBranchLogoParams, options?: RequestOptions): Promise<Branch> {
+		return this.#client.request({ method: "POST", path: `/v1/branches/${encodeURIComponent(id)}/logo`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Quitar el logo de la sucursal
+	 *
+	 * Lo que factura y sus tickets vuelven al logo del emisor. Sin logo contesta 404.
+	 *
+	 * DELETE /v1/branches/{id}/logo
+	 * @see https://fiscalisto.com/docs/api/referencia/sucursales/delete-branch-logo
+	 */
+	deleteLogo(id: string, options?: RequestOptions): Promise<Branch> {
+		return this.#client.request({ method: "DELETE", path: `/v1/branches/${encodeURIComponent(id)}/logo` }, options);
+	}
 }
 
 /** Centros de costo: fiscalisto.costCenters. */
@@ -16670,6 +16861,50 @@ export class CostOfSalesResource {
 	}
 }
 
+/** Contabilidad: fiscalisto.payrollProvisions. */
+export class PayrollProvisionsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ver las cuotas patronales de un mes
+	 *
+	 * Lo que la empresa debe al IMSS, al SAR y al Infonavit por los días del mes, calculado de sus recibos de nómina timbrados (su salario base de cotización y sus días, con faltas e incapacidades como dice la Ley del Seguro Social), el impuesto sobre nómina del mes y la póliza de provisión, si ya se registró. Como Cierre del mes › Cuotas patronales del mes en la app. Se calcula con las tasas de 2026; otro año contesta parameter_invalid en month.
+	 *
+	 * GET /v1/accounting/payroll_provisions/{month}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-payroll-provision
+	 */
+	get(month: string, params?: GetPayrollProvisionParams, options?: RequestOptions): Promise<PayrollProvision> {
+		return this.#client.request({ method: "GET", path: `/v1/accounting/payroll_provisions/${encodeURIComponent(month)}`, query: params }, options);
+	}
+
+	/**
+	 * Registrar las cuotas patronales de un mes
+	 *
+	 * Registra (o reemplaza) la provisión del último día del mes: Cuotas patronales al IMSS (601.26), Aportaciones patronales al Infonavit (601.27), al SAR (601.28) e Impuesto sobre nómina (601.29) contra IMSS, SAR e Infonavit por pagar (211.01 a 211.03) e Impuesto sobre nómina por pagar (213.04). Los importes que mande reemplazan los calculados; employer_risk_premium se guarda para los meses siguientes. Al pagarlos, registre el retiro del banco contra esas cuentas. Sin recibos ni importes contesta parameter_invalid en month; en un mes cerrado, period_closed.
+	 *
+	 * POST /v1/accounting/payroll_provisions/{month}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/create-payroll-provision
+	 */
+	create(month: string, params?: CreatePayrollProvisionParams, options?: RequestOptions): Promise<PayrollProvision> {
+		return this.#client.request({ method: "POST", path: `/v1/accounting/payroll_provisions/${encodeURIComponent(month)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Quitar las cuotas patronales de un mes
+	 *
+	 * Quita la póliza de provisión del mes. En un mes cerrado contesta period_closed.
+	 *
+	 * DELETE /v1/accounting/payroll_provisions/{month}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/delete-payroll-provision
+	 */
+	delete(month: string, params?: DeletePayrollProvisionParams, options?: RequestOptions): Promise<PayrollProvision> {
+		return this.#client.request({ method: "DELETE", path: `/v1/accounting/payroll_provisions/${encodeURIComponent(month)}`, query: params }, options);
+	}
+}
+
 /** Contabilidad: fiscalisto.taxDeterminations. */
 export class TaxDeterminationsResource {
 	readonly #client: Client;
@@ -16711,6 +16946,38 @@ export class TaxDeterminationsResource {
 	 */
 	delete(month: string, params?: DeleteTaxDeterminationParams, options?: RequestOptions): Promise<TaxDetermination> {
 		return this.#client.request({ method: "DELETE", path: `/v1/accounting/tax_determinations/${encodeURIComponent(month)}`, query: params }, options);
+	}
+}
+
+/** Contabilidad: fiscalisto.ledgerBankAccounts. */
+export class LedgerBankAccountsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar las cuentas de banco de la contabilidad
+	 *
+	 * Las cuentas de banco del emisor que la contabilidad lleva aparte, cada una su propia subcuenta de Bancos (102-01-<últimos 4>): las de sus cuentas bancarias y las que ya tienen pólizas. Lo que la conciliación identifica en el estado de cuenta (depósitos ligados a su CFDI, retiros marcados como pago de facturas) pasa de Bancos a esa cuenta; lo que ningún estado de cuenta explica se queda en Bancos.
+	 *
+	 * GET /v1/accounting/bank_accounts
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/list-ledger-bank-accounts
+	 */
+	list(params?: ListLedgerBankAccountsParams, options?: RequestOptions): Promise<LedgerBankAccountList> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/bank_accounts", query: params }, options);
+	}
+
+	/**
+	 * Cambiar la moneda de una cuenta de banco
+	 *
+	 * Cambia la moneda (y el nombre) de una cuenta de banco de la contabilidad, por sus últimos 4 dígitos. Una cuenta en otra moneda se revalúa en las revaluaciones cambiarias con el saldo de su último estado de cuenta.
+	 *
+	 * POST /v1/accounting/bank_accounts/{last_four}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/update-ledger-bank-account
+	 */
+	update(last_four: string, params: UpdateLedgerBankAccountParams, options?: RequestOptions): Promise<LedgerBankAccount> {
+		return this.#client.request({ method: "POST", path: `/v1/accounting/bank_accounts/${encodeURIComponent(last_four)}`, body: params, idempotent: true }, options);
 	}
 }
 
@@ -17492,7 +17759,9 @@ export class FiscalistoApi extends Core {
 	readonly closedPeriod = new ClosedPeriodResource(this);
 	readonly fxRevaluations = new FxRevaluationsResource(this);
 	readonly costOfSales = new CostOfSalesResource(this);
+	readonly payrollProvisions = new PayrollProvisionsResource(this);
 	readonly taxDeterminations = new TaxDeterminationsResource(this);
+	readonly ledgerBankAccounts = new LedgerBankAccountsResource(this);
 	readonly bankMovements = new BankMovementsResource(this);
 	readonly storeConnections = new StoreConnectionsResource(this);
 	readonly recurringInvoices = new RecurringInvoicesResource(this);
