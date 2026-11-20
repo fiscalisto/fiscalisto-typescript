@@ -5106,6 +5106,90 @@ export interface CostCenterResults {
 	}[];
 }
 
+/** El ajuste anual por inflación de una persona moral (artículo 44 de la Ley del ISR), con el promedio de los saldos mensuales de sus créditos y sus deudas. */
+export interface InflationAdjustment {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "inflation_adjustment";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El ejercicio. */
+	year: number;
+	/** El primer mes del ejercicio (1, o el mes en que empezó si fue en el año). */
+	from_month: number;
+	/** El último mes calculado: 12, o uno anterior para una estimación. */
+	through_month: number;
+	/** Cuántos meses se promediaron. */
+	months: number;
+	/** Cada cuenta de balance con saldo en el ejercicio. */
+	accounts: {
+		/** El número de la cuenta. */
+		account: string;
+		/** Su nombre. */
+		name: string;
+		/** Su código agrupador del SAT. */
+		grouping_code: string;
+		/** credit (crédito, art. 45 de la LISR), debt (deuda, art. 46) o none. */
+		treatment: "credit" | "debt" | "none";
+		/** true si se cambió del de su código agrupador (POST /v1/accounting/inflation_accounts). */
+		changed: boolean;
+		/** Por qué cuenta así, con el artículo de la ley. */
+		reason: string;
+		/** El saldo al último día de cada mes, positivo como crédito o como deuda (en none, el saldo contable). */
+		month_end_balances: number[];
+		/** La suma de los saldos entre los meses (0 en none). */
+		average_balance: number;
+	}[];
+	/** Los créditos al último día de cada mes. */
+	credits_by_month: number[];
+	/** Las deudas al último día de cada mes. */
+	debts_by_month: number[];
+	/** El saldo promedio anual de los créditos. */
+	average_credits: number;
+	/** El saldo promedio anual de las deudas. */
+	average_debts: number;
+	/** La diferencia entre los dos promedios, en positivo. */
+	difference: number;
+	/** El factor de ajuste anual: INPC del último mes entre el del último mes del ejercicio anterior, menos 1, al diezmilésimo. null sin INPC publicado. */
+	factor: number | null;
+	/** El INPC de la base. */
+	inpc_start: number | null;
+	/** El INPC del último mes. */
+	inpc_end: number | null;
+	/** De qué mes es inpc_end (AAAA-MM): diciembre, o el último publicado en una estimación. */
+	inpc_end_month: string | null;
+	/** true mientras no hay saldos de diciembre o INPC de diciembre: una estimación. */
+	estimated: boolean;
+	/** taxable (acumulable, art. 18 fr. X) cuando las deudas son mayores; deductible (art. 25 fr. VIII) cuando los créditos lo son. */
+	type: "taxable" | "deductible" | null;
+	/** El ajuste anual por inflación: difference × factor. */
+	amount: number | null;
+}
+
+/** Cómo cuentan las cuentas en el ajuste anual por inflación, después del cambio. */
+export interface InflationAccounts {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "inflation_accounts";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** Las cuentas que cambió, con cómo cuentan ahora. */
+	accounts: {
+		/** El número de la cuenta. */
+		account: string;
+		/** Su nombre. */
+		name: string;
+		/** Su código agrupador. */
+		grouping_code: string;
+		/** credit (crédito, art. 45 de la LISR), debt (deuda, art. 46) o none. */
+		treatment: "credit" | "debt" | "none";
+		/** true si difiere del de su código agrupador. */
+		changed: boolean;
+	}[];
+}
+
 /** El estado de flujos de efectivo (NIF B-2, método indirecto) del mes o de enero al mes, leído de la balanza: cada cuenta va a operación, inversión o financiamiento por su código agrupador. */
 export interface CashFlow {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -12619,6 +12703,28 @@ export interface SaveBudgetParams {
 	}[];
 }
 
+/** Los parámetros de GET /v1/accounting/inflation_adjustments/{year}. */
+export interface GetInflationAdjustmentParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** El primer mes del ejercicio, de 1 a 12. Por omisión 1; otro si la empresa empezó en el año. */
+	from_month?: number;
+	/** El último mes, de 1 a 12. Por omisión 12 en un año pasado y el mes actual en el año en curso. */
+	through_month?: number;
+}
+
+export interface SaveInflationAccountsParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** Las cuentas que cambia. */
+	accounts: {
+		/** El número de la cuenta en el catálogo (GET /v1/accounting/accounts). */
+		account: string;
+		/** credit (crédito, art. 45), debt (deuda, art. 46) o none. null regresa al de su código agrupador. */
+		treatment: "credit" | "debt" | "none" | null;
+	}[];
+}
+
 /** Los parámetros de GET /v1/accounting/cost_center_results/{month}. */
 export interface GetCostCenterResultsParams {
 	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
@@ -18041,6 +18147,46 @@ export class BudgetsResource {
 	}
 }
 
+/** Contabilidad: fiscalisto.inflationAdjustments. */
+export class InflationAdjustmentsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Calcular el ajuste anual por inflación
+	 *
+	 * El ajuste anual por inflación de una persona moral (artículo 44 de la Ley del ISR): la suma de los saldos al último día de cada mes de sus créditos y de sus deudas entre los meses del ejercicio, y la diferencia por el factor de ajuste anual. Deudas mayores dan un ajuste acumulable (taxable); créditos mayores, uno deducible. Cada cuenta cuenta por su código agrupador (con la razón en reason) o como la marcó con POST /v1/accounting/inflation_accounts. En el año en curso es una estimación hasta el mes actual. Como Estados financieros › Ajuste por inflación en la app.
+	 *
+	 * GET /v1/accounting/inflation_adjustments/{year}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-inflation-adjustment
+	 */
+	get(year: string, params?: GetInflationAdjustmentParams, options?: RequestOptions): Promise<InflationAdjustment> {
+		return this.#client.request({ method: "GET", path: `/v1/accounting/inflation_adjustments/${encodeURIComponent(year)}`, query: params }, options);
+	}
+}
+
+/** Contabilidad: fiscalisto.inflationAccounts. */
+export class InflationAccountsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Cambiar cómo cuenta una cuenta en el ajuste por inflación
+	 *
+	 * Marca cuentas de balance como crédito (credit), deuda (debt) o ninguno (none) para el ajuste anual por inflación, por ejemplo un préstamo a un socio persona moral o una deuda de un gasto no deducible. treatment null regresa al de su código agrupador. Una cuenta de resultados contesta parameter_invalid.
+	 *
+	 * POST /v1/accounting/inflation_accounts
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/save-inflation-accounts
+	 */
+	save(params: SaveInflationAccountsParams, options?: RequestOptions): Promise<InflationAccounts> {
+		return this.#client.request({ method: "POST", path: "/v1/accounting/inflation_accounts", body: params, idempotent: true }, options);
+	}
+}
+
 /** Contabilidad: fiscalisto.costCenterResults. */
 export class CostCenterResultsResource {
 	readonly #client: Client;
@@ -18963,6 +19109,8 @@ export class FiscalistoApi extends Core {
 	readonly fxRevaluations = new FxRevaluationsResource(this);
 	readonly costOfSales = new CostOfSalesResource(this);
 	readonly budgets = new BudgetsResource(this);
+	readonly inflationAdjustments = new InflationAdjustmentsResource(this);
+	readonly inflationAccounts = new InflationAccountsResource(this);
 	readonly costCenterResults = new CostCenterResultsResource(this);
 	readonly payrollProvisions = new PayrollProvisionsResource(this);
 	readonly taxDeterminations = new TaxDeterminationsResource(this);
