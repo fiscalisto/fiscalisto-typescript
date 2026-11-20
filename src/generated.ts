@@ -3455,6 +3455,142 @@ export interface CostCenter {
 	updated_at: string | null;
 }
 
+/** Una regla de la empresa: cuando pasa algo (trigger), si se cumplen sus condiciones, hace sus acciones. Las mismas de Ajustes › Reglas en la app. */
+export interface Rule {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "rule";
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Nombre. */
+	name: string;
+	/** Cuándo corre. */
+	trigger: "invoice.received" | "invoice.issued" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
+	/** Si: lo que tiene que cumplir la factura u orden. Sin condiciones, corre siempre. */
+	conditions: {
+		/** all: se cumplen todas; any: basta con una. */
+		match: "all" | "any";
+		/** Las condiciones sueltas. */
+		conditions: {
+			/** Qué se revisa (supplier, total, metodo, category…). */
+			field: string;
+			/** Cómo se compara. */
+			operator: "is" | "not" | "gte" | "lte" | "between" | "contains" | "not_contains" | "starts" | "yes" | "no" | "set" | "unset";
+			/** Para is / not: los valores (RFC, claves, ccn_…). */
+			values?: string[];
+			/** Para gte, lte y between: el monto en pesos. */
+			value?: number;
+			/** Para between: el monto hasta. */
+			to?: number;
+			/** Para contains, not_contains y starts. */
+			text?: string;
+		}[];
+		/** Condiciones que van juntas, con su propio match. */
+		groups: {
+			/** Cómo se juntan las del grupo. */
+			match: "all" | "any";
+			/** Las condiciones del grupo. */
+			conditions: {
+				/** Qué se revisa (supplier, total, metodo, category…). */
+				field: string;
+				/** Cómo se compara. */
+				operator: "is" | "not" | "gte" | "lte" | "between" | "contains" | "not_contains" | "starts" | "yes" | "no" | "set" | "unset";
+				/** Para is / not: los valores (RFC, claves, ccn_…). */
+				values?: string[];
+				/** Para gte, lte y between: el monto en pesos. */
+				value?: number;
+				/** Para between: el monto hasta. */
+				to?: number;
+				/** Para contains, not_contains y starts. */
+				text?: string;
+			}[];
+		}[];
+	};
+	/** Entonces: lo que hace, en este orden. */
+	actions: {
+		/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
+		type: "tag" | "cost_center" | "stage" | "close" | "notify";
+		/** tag: la etiqueta. */
+		tag?: number;
+		/** tag: se quita si la orden deja de cumplir. */
+		remove_when_unmet?: boolean;
+		/** Su centro de costo (ccn_…): la obra, proyecto, sucursal o área a la que pertenece, para ver ingresos y gastos por centro en Reportes. No cambia el CFDI. Sus notas de crédito lo toman solas. */
+		cost_center?: string;
+		/** stage: la etapa. */
+		stage?: number;
+		/** notify: a quién (mem_…). */
+		members?: string[];
+		/** notify: lo que dice el aviso. */
+		note?: string | null;
+	}[];
+	/** true: corre una sola vez por factura u orden. */
+	once_per_record: boolean;
+	/** true: si se cumple, las reglas que siguen no corren para ese registro. */
+	stop_after: boolean;
+	/** false: en pausa. */
+	enabled: boolean;
+	/** Su lugar en el orden en que corren (1 primero). */
+	position: number;
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string | null;
+	/** Cuándo cambió por última vez, ISO 8601 (-06:00). */
+	updated_at: string | null;
+}
+
+/** Lo que la regla haría con una factura u orden (sin cambiar nada). */
+export interface RuleTest {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "rule_test";
+	/** La factura u orden, en palabras. */
+	record: string;
+	/** El folio fiscal, para una factura. */
+	invoice_uuid?: string | null;
+	/** La orden de compra. */
+	purchase_order?: number;
+	/** Si se cumplen sus condiciones. */
+	matches: boolean;
+	/** Ya corrió sobre este registro y no lo hará de nuevo. */
+	already_ran: boolean;
+	/** Cada condición con lo que tiene el registro. */
+	conditions: {
+		/** La condición, en palabras. */
+		condition: string;
+		/** Si se cumple. */
+		holds: boolean;
+		/** Lo que tiene el registro. */
+		actual: string;
+	}[];
+	/** Lo que haría, en palabras (nada cambia). */
+	would_do: string[];
+}
+
+/** Una vez que la regla corrió sobre una factura u orden. */
+export interface RuleRun {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "rule_run";
+	/** La regla (rul_…). */
+	rule: string;
+	/** Cuándo corre. */
+	trigger: "invoice.received" | "invoice.issued" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
+	/** La factura u orden, en palabras. */
+	record: string;
+	/** Qué es el registro. */
+	record_type: "invoice" | "purchase_order";
+	/** done: hizo cambios; nothing: ya estaba así; failed: no pudo (ver error). */
+	outcome: "done" | "nothing" | "failed";
+	/** Lo que hizo, en palabras. */
+	did: string[];
+	/** Por qué no pudo, o null. */
+	error: string | null;
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string;
+}
+
 /** Una lista de precios: parte del precio del catálogo (o de otra lista), lo mueve un porcentaje y lo redondea, con precios propios por producto, presentación y desde cierta cantidad (escalones de mayoreo). items solo viene al ver una lista. */
 export interface PriceList {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
@@ -8979,6 +9115,39 @@ export interface BranchList {
 	url: string;
 }
 
+export interface RuleList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: Rule[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface RuleTestList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: RuleTest[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface RuleRunList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: RuleRun[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
 export interface CostCenterList {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "list";
@@ -12473,6 +12642,182 @@ export interface UpdateBranchParams {
 export interface UploadBranchLogoParams {
 	/** El logo, PNG o JPG de hasta 1 MB, en base64 (con o sin el prefijo data:image/png;base64,). Uno muy grande se reduce para el PDF. */
 	file: string;
+}
+
+export interface CreateRuleParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** Cómo se llama en Ajustes › Reglas. Sin él, se nombra por lo que hace. */
+	name?: string;
+	/** Cuándo corre: invoice.received (llega una factura de un proveedor), invoice.issued (se emite una factura), purchase_order.saved, .approved, .sent, .confirmed, .received_part, .received_all, .invoiced_all, .price_variance, .registered. */
+	trigger: "invoice.received" | "invoice.issued" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
+	/** Si: lo que tiene que cumplir. Sin condiciones, corre siempre. */
+	conditions?: {
+		/** all: se cumplen todas (las condiciones y los grupos); any: basta con una. */
+		match?: "all" | "any";
+		/** Las condiciones sueltas. */
+		conditions?: {
+			/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, total, subtotal, tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note. */
+			field: string;
+			/** Listas: is (alguno de values), not (ninguno), set, unset. Montos (MXN): gte, lte, between (value y to). Texto: contains, not_contains, starts (text; sin importar acentos ni mayúsculas), set, unset. Sí/no: yes, no. */
+			operator: "is" | "not" | "gte" | "lte" | "between" | "contains" | "not_contains" | "starts" | "yes" | "no" | "set" | "unset";
+			/** Para is / not: RFC, claves del SAT, ccn_…, whs_… o mem_…. */
+			values?: string[];
+			/** Valor de la mercancía (ValorMercancia); obligatorio en transporte aéreo. */
+			value?: number;
+			/** Para between: el monto hasta. */
+			to?: number;
+			/** Texto de la leyenda (textoLeyenda). */
+			text?: string;
+		}[];
+		/** Condiciones que van juntas, con su propio all / any (un nivel). */
+		groups?: {
+			/** Cómo se juntan las del grupo. */
+			match: "all" | "any";
+			/** Las condiciones del grupo. */
+			conditions: {
+				/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, total, subtotal, tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note. */
+				field: string;
+				/** Listas: is (alguno de values), not (ninguno), set, unset. Montos (MXN): gte, lte, between (value y to). Texto: contains, not_contains, starts (text; sin importar acentos ni mayúsculas), set, unset. Sí/no: yes, no. */
+				operator: "is" | "not" | "gte" | "lte" | "between" | "contains" | "not_contains" | "starts" | "yes" | "no" | "set" | "unset";
+				/** Para is / not: RFC, claves del SAT, ccn_…, whs_… o mem_…. */
+				values?: string[];
+				/** Valor de la mercancía (ValorMercancia); obligatorio en transporte aéreo. */
+				value?: number;
+				/** Para between: el monto hasta. */
+				to?: number;
+				/** Texto de la leyenda (textoLeyenda). */
+				text?: string;
+			}[];
+		}[];
+	};
+	/** Entonces: de 1 a 8, en este orden. */
+	actions: {
+		/** tag (órdenes): poner la etiqueta `tag`; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; notify: avisar a `members` (mem_…). */
+		type: "tag" | "cost_center" | "stage" | "close" | "notify";
+		/** tag: la etiqueta. */
+		tag?: number;
+		/** tag: quitarla si la orden deja de cumplir. */
+		remove_when_unmet?: boolean;
+		/** Su centro de costo (ccn_…): la obra, proyecto, sucursal o área a la que pertenece, para ver ingresos y gastos por centro en Reportes. No cambia el CFDI. Sus notas de crédito lo toman solas. */
+		cost_center?: string;
+		/** stage: la etapa. */
+		stage?: number;
+		/** notify: a quién (mem_…, GET /v1/members). */
+		members?: string[];
+		/** notify: lo que dice el aviso. */
+		note?: string | null;
+	}[];
+	/** true: corre una sola vez por factura u orden. Por omisión true, salvo purchase_order.saved. */
+	once_per_record?: boolean;
+	/** true: si se cumple, las reglas que siguen no corren para ese registro. */
+	stop_after?: boolean;
+	/** false la deja en pausa. */
+	enabled?: boolean;
+}
+
+/** Los parámetros de GET /v1/rules. */
+export interface ListRulesParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Solo las de este trigger, por ejemplo invoice.received. */
+	trigger?: string;
+}
+
+export interface OrderRulesParams {
+	/** El emisor (iss_…). */
+	issuer?: string;
+	/** Las reglas (rul_…), de la primera a la última. */
+	rules: string[];
+}
+
+export interface UpdateRuleParams {
+	/** Cómo se llama en Ajustes › Reglas. Sin él, se nombra por lo que hace. */
+	name?: string;
+	/** Cuándo corre: invoice.received (llega una factura de un proveedor), invoice.issued (se emite una factura), purchase_order.saved, .approved, .sent, .confirmed, .received_part, .received_all, .invoiced_all, .price_variance, .registered. */
+	trigger?: "invoice.received" | "invoice.issued" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
+	/** Si: lo que tiene que cumplir. Sin condiciones, corre siempre. */
+	conditions?: {
+		/** all: se cumplen todas (las condiciones y los grupos); any: basta con una. */
+		match?: "all" | "any";
+		/** Las condiciones sueltas. */
+		conditions?: {
+			/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, total, subtotal, tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note. */
+			field: string;
+			/** Listas: is (alguno de values), not (ninguno), set, unset. Montos (MXN): gte, lte, between (value y to). Texto: contains, not_contains, starts (text; sin importar acentos ni mayúsculas), set, unset. Sí/no: yes, no. */
+			operator: "is" | "not" | "gte" | "lte" | "between" | "contains" | "not_contains" | "starts" | "yes" | "no" | "set" | "unset";
+			/** Para is / not: RFC, claves del SAT, ccn_…, whs_… o mem_…. */
+			values?: string[];
+			/** Valor de la mercancía (ValorMercancia); obligatorio en transporte aéreo. */
+			value?: number;
+			/** Para between: el monto hasta. */
+			to?: number;
+			/** Texto de la leyenda (textoLeyenda). */
+			text?: string;
+		}[];
+		/** Condiciones que van juntas, con su propio all / any (un nivel). */
+		groups?: {
+			/** Cómo se juntan las del grupo. */
+			match: "all" | "any";
+			/** Las condiciones del grupo. */
+			conditions: {
+				/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, total, subtotal, tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note. */
+				field: string;
+				/** Listas: is (alguno de values), not (ninguno), set, unset. Montos (MXN): gte, lte, between (value y to). Texto: contains, not_contains, starts (text; sin importar acentos ni mayúsculas), set, unset. Sí/no: yes, no. */
+				operator: "is" | "not" | "gte" | "lte" | "between" | "contains" | "not_contains" | "starts" | "yes" | "no" | "set" | "unset";
+				/** Para is / not: RFC, claves del SAT, ccn_…, whs_… o mem_…. */
+				values?: string[];
+				/** Valor de la mercancía (ValorMercancia); obligatorio en transporte aéreo. */
+				value?: number;
+				/** Para between: el monto hasta. */
+				to?: number;
+				/** Texto de la leyenda (textoLeyenda). */
+				text?: string;
+			}[];
+		}[];
+	};
+	/** Entonces: de 1 a 8, en este orden. */
+	actions?: {
+		/** tag (órdenes): poner la etiqueta `tag`; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; notify: avisar a `members` (mem_…). */
+		type: "tag" | "cost_center" | "stage" | "close" | "notify";
+		/** tag: la etiqueta. */
+		tag?: number;
+		/** tag: quitarla si la orden deja de cumplir. */
+		remove_when_unmet?: boolean;
+		/** Su centro de costo (ccn_…): la obra, proyecto, sucursal o área a la que pertenece, para ver ingresos y gastos por centro en Reportes. No cambia el CFDI. Sus notas de crédito lo toman solas. */
+		cost_center?: string;
+		/** stage: la etapa. */
+		stage?: number;
+		/** notify: a quién (mem_…, GET /v1/members). */
+		members?: string[];
+		/** notify: lo que dice el aviso. */
+		note?: string | null;
+	}[];
+	/** true: corre una sola vez por factura u orden. Por omisión true, salvo purchase_order.saved. */
+	once_per_record?: boolean;
+	/** true: si se cumple, las reglas que siguen no corren para ese registro. */
+	stop_after?: boolean;
+	/** false la deja en pausa. */
+	enabled?: boolean;
+}
+
+export interface TestRuleParams {
+	/** El folio fiscal (UUID) de una factura; sin él, las más recientes. */
+	uuid?: string;
+	/** Cuántas de las más recientes (10 por omisión). */
+	limit?: number;
+}
+
+/** Los parámetros de GET /v1/rules/{id}/runs. */
+export interface ListRuleRunsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
 }
 
 export interface CreateCostCenterParams {
@@ -18070,6 +18415,110 @@ export class BranchesResource {
 	}
 }
 
+/** Reglas: fiscalisto.rules. */
+export class RulesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Crear una regla
+	 *
+	 * Cuando pasa trigger, si se cumplen conditions, hace actions. Corre desde ese momento con lo que llegue; no cambia lo que ya existe. Va al final del orden de su empresa. Lo que no se puede guardar contesta rule_invalid con el porqué (una acción que no va con su trigger, una etiqueta o centro de costo que no existe).
+	 *
+	 * POST /v1/rules
+	 * @see https://fiscalisto.com/docs/api/referencia/reglas/create-rule
+	 */
+	create(params: CreateRuleParams, options?: RequestOptions): Promise<Rule> {
+		return this.#client.request({ method: "POST", path: "/v1/rules", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar reglas
+	 *
+	 * En el orden en que corren, también las que están en pausa (enabled: false).
+	 *
+	 * GET /v1/rules
+	 * @see https://fiscalisto.com/docs/api/referencia/reglas/list-rules
+	 */
+	list(params?: ListRulesParams, options?: RequestOptions): List<Rule> {
+		return this.#client.list({ path: "/v1/rules", query: params }, options);
+	}
+
+	/**
+	 * Ordenar las reglas
+	 *
+	 * rules de la primera a la última; las que no mande siguen después, en su orden. Importa cuando una tiene stop_after o dos ponen cosas distintas: corren de arriba abajo.
+	 *
+	 * POST /v1/rules/order
+	 * @see https://fiscalisto.com/docs/api/referencia/reglas/order-rules
+	 */
+	order(params: OrderRulesParams, options?: RequestOptions): Promise<RuleList> {
+		return this.#client.request({ method: "POST", path: "/v1/rules/order", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Ver una regla
+	 *
+	 * Una regla de la empresa del emisor.
+	 *
+	 * GET /v1/rules/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/reglas/get-rule
+	 */
+	get(id: string, options?: RequestOptions): Promise<Rule> {
+		return this.#client.request({ method: "GET", path: `/v1/rules/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Cambiar una regla
+	 *
+	 * Solo lo que mande cambia; conditions y actions se reemplazan completos. enabled: false la pone en pausa. Lo que ya hizo se queda.
+	 *
+	 * POST /v1/rules/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/reglas/update-rule
+	 */
+	update(id: string, params?: UpdateRuleParams, options?: RequestOptions): Promise<Rule> {
+		return this.#client.request({ method: "POST", path: `/v1/rules/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Borrar una regla
+	 *
+	 * Deja de correr. Lo que ya puso (centros de costo, etiquetas, etapas) se queda; para dejarla de usar un tiempo, mejor enabled: false.
+	 *
+	 * DELETE /v1/rules/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/reglas/delete-rule
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/rules/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Probar una regla
+	 *
+	 * Lo que haría con una factura (uuid) o con las más recientes de su trigger, sin cambiar nada: cada condición con lo que tiene el registro y si se cumple.
+	 *
+	 * POST /v1/rules/{id}/test
+	 * @see https://fiscalisto.com/docs/api/referencia/reglas/test-rule
+	 */
+	test(id: string, params?: TestRuleParams, options?: RequestOptions): Promise<RuleTestList> {
+		return this.#client.request({ method: "POST", path: `/v1/rules/${encodeURIComponent(id)}/test`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Historial de una regla
+	 *
+	 * Cada vez que corrió, la más reciente primero: sobre qué factura u orden, qué hizo (did) o por qué no pudo (error). Se guardan 180 días.
+	 *
+	 * GET /v1/rules/{id}/runs
+	 * @see https://fiscalisto.com/docs/api/referencia/reglas/list-rule-runs
+	 */
+	listRuns(id: string, params?: ListRuleRunsParams, options?: RequestOptions): List<RuleRun> {
+		return this.#client.list({ path: `/v1/rules/${encodeURIComponent(id)}/runs`, query: params }, options);
+	}
+}
+
 /** Centros de costo: fiscalisto.costCenters. */
 export class CostCentersResource {
 	readonly #client: Client;
@@ -21921,6 +22370,7 @@ export class FiscalistoApi extends Core {
 	readonly invoiceBatches = new InvoiceBatchesResource(this);
 	readonly taxIds = new TaxIdsResource(this);
 	readonly branches = new BranchesResource(this);
+	readonly rules = new RulesResource(this);
 	readonly costCenters = new CostCentersResource(this);
 	readonly priceLists = new PriceListsResource(this);
 	readonly customerGroups = new CustomerGroupsResource(this);

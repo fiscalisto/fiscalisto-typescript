@@ -231,6 +231,8 @@ export const ErrorCode = {
 	RetentionRejected: "retention_rejected",
 	/** No existe esa ruta. Revise la dirección y la versión (/v1). */
 	RouteNotFound: "route_not_found",
+	/** La regla no se puede guardar así: el mensaje dice por qué (una acción que no va con su trigger, como cost_center en una orden de compra; una etiqueta, etapa o centro de costo que no existe; un campo o un valor que no va con su operador; más de 200 reglas). */
+	RuleInvalid: "rule_invalid",
 	/** El pedido está en borrador: confírmelo primero con POST /v1/sales_orders/{id}/confirm. */
 	SalesOrderDraft: "sales_order_draft",
 	/** El pedido no se pudo guardar o no se puede hacer eso en su estado (por ejemplo, ya no queda nada por entregar o facturar, o está cancelado). El mensaje dice por qué. */
