@@ -10336,6 +10336,15 @@ export interface CreatePayrollReceiptParams {
 			/** Lo que paga la empresa de cada día de incapacidad, como fracción del salario diario: 1 todo; 0.4 lo que completa el 60% que paga el IMSS. */
 			rate: number;
 		};
+		/** Retroactivo de un aumento: la diferencia de salario de los días ya pagados con el anterior, como percepción 001 (clave RET) gravada, que paga ISR con el sueldo del periodo (art. 96 de la LISR). Las cuotas IMSS de la diferencia las cubre la modificación de salario con su fecha en el SUA; el recibo no retiene la parte del trabajador (art. 38 de la LSS). */
+		retroactive?: {
+			/** Día desde el que rige el aumento (YYYY-MM-DD), antes del periodo y hasta un año antes. */
+			from: string;
+			/** Salario diario que tenía el empleado antes del aumento. El de ahora es el del empleado: cámbielo antes con PATCH /v1/employees/{id}. */
+			previous_salary: number;
+			/** Días que se pagaron con el salario anterior desde from. Si no lo manda, los de los periodos ya pagados desde ese día. */
+			days?: number;
+		};
 		/** Premios, comisiones y bonos del periodo, gravados. */
 		bonuses?: {
 			/** 010 premio de puntualidad, 049 premio de asistencia, 028 comisiones, 038 otro bono (c_TipoPercepcion). */
@@ -10396,6 +10405,15 @@ export interface PreviewPayrollReceiptParams {
 			type: "01" | "02" | "03" | "04";
 			/** Lo que paga la empresa de cada día de incapacidad, como fracción del salario diario: 1 todo; 0.4 lo que completa el 60% que paga el IMSS. */
 			rate: number;
+		};
+		/** Retroactivo de un aumento: la diferencia de salario de los días ya pagados con el anterior, como percepción 001 (clave RET) gravada, que paga ISR con el sueldo del periodo (art. 96 de la LISR). Las cuotas IMSS de la diferencia las cubre la modificación de salario con su fecha en el SUA; el recibo no retiene la parte del trabajador (art. 38 de la LSS). */
+		retroactive?: {
+			/** Día desde el que rige el aumento (YYYY-MM-DD), antes del periodo y hasta un año antes. */
+			from: string;
+			/** Salario diario que tenía el empleado antes del aumento. El de ahora es el del empleado: cámbielo antes con PATCH /v1/employees/{id}. */
+			previous_salary: number;
+			/** Días que se pagaron con el salario anterior desde from. Si no lo manda, los de los periodos ya pagados desde ese día. */
+			days?: number;
 		};
 		/** Premios, comisiones y bonos del periodo, gravados. */
 		bonuses?: {
