@@ -5204,6 +5204,84 @@ export interface InflationAccounts {
 	}[];
 }
 
+/** Un catálogo por giro: las cuentas que usa un negocio de ese tipo además de las que la app ya lleva. */
+export interface ChartTemplate {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "chart_template";
+	/** El nombre del giro. */
+	name: string;
+	/** Para qué negocio es. */
+	description: string;
+	/** Las cuentas del giro. */
+	accounts: {
+		/** El número de la cuenta en su catálogo. */
+		number: string;
+		/** Su nombre. */
+		name: string;
+		/** Su código agrupador del SAT. */
+		grouping_code: string;
+		/** true si su código agrupador ya tiene cuenta en su catálogo (number y name son los de esa); no se agrega. */
+		in_chart: boolean;
+	}[];
+}
+
+/** Lo que agregó un catálogo por giro y lo que ya estaba. */
+export interface ChartTemplateResult {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "chart_template_result";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El giro. */
+	chart_template: string;
+	/** Las cuentas que se agregaron. */
+	added: {
+		/** El número de la cuenta en su catálogo. */
+		number: string;
+		/** Su nombre. */
+		name: string;
+		/** Su código agrupador del SAT. */
+		grouping_code: string;
+	}[];
+	/** Las que ya estaban (su código ya tenía cuenta). */
+	existing: {
+		/** El número de la cuenta en su catálogo. */
+		number: string;
+		/** Su nombre. */
+		name: string;
+		/** Su código agrupador del SAT. */
+		grouping_code: string;
+	}[];
+}
+
+/** Una renumeración del catálogo: cada cuenta que cambia de número (o no puede) con el de antes y el nuevo. */
+export interface AccountRenumbering {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "account_renumbering";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** true si solo dijo qué cambiaría. */
+	dry_run: boolean;
+	/** Cuántas cuentas cambian de número. */
+	changes: number;
+	/** Cuántas no pueden tomar su número nuevo (si hay, no cambia ninguna). */
+	problems: number;
+	/** Las cuentas que cambian o no pueden. */
+	accounts: {
+		/** El número de la cuenta en su catálogo. */
+		number: string;
+		/** Su nombre. */
+		name: string;
+		/** Su código agrupador del SAT. */
+		grouping_code: string;
+		/** Su número antes. */
+		previous_number: string;
+		/** Por qué no puede tomar el número nuevo, o null. */
+		problem: string | null;
+	}[];
+}
+
 /** Una póliza modelo: las cuentas de una póliza que se captura seguido (una compra, una renta) con el porcentaje del total o el importe fijo de cada renglón, para hacerla otra vez con otro total. */
 export interface EntryTemplate {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
@@ -8062,6 +8140,17 @@ export interface FixedAssetList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: FixedAsset[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface ChartTemplateList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: ChartTemplate[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -12966,6 +13055,35 @@ export interface SaveBookDepreciationRateParams {
 	annual_rate: number | null;
 	/** El valor residual como fracción del monto original (NIF C-6); 0 si no se manda. */
 	residual_rate?: number;
+}
+
+/** Los parámetros de GET /v1/accounting/chart_templates. */
+export interface ListChartTemplatesParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface ApplyChartTemplateParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+}
+
+export interface RenumberAccountsParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** Lo que separa los niveles: «-» (601-48), «.» (601.48) o «» (60148). */
+	separator?: "-" | "." | "";
+	/** Los dígitos de cada nivel, rellenados con ceros a la izquierda: [4, 3] hace 601-48 0601-048. Los niveles que no lleva conservan los suyos. */
+	widths?: number[];
+	/** En vez de separator y widths: el número nuevo de cada cuenta que cambia, por ejemplo los del sistema de su contador. */
+	mapping?: {
+		/** El número de hoy. */
+		from: string;
+		/** Su número nuevo. */
+		to: string;
+	}[];
+	/** true: dice qué cambiaría, sin cambiar nada. */
+	dry_run?: boolean;
 }
 
 /** Los parámetros de GET /v1/accounting/entry_templates. */
@@ -18543,6 +18661,58 @@ export class BookDepreciationRatesResource {
 	}
 }
 
+/** Contabilidad: fiscalisto.chartTemplates. */
+export class ChartTemplatesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar los catálogos por giro
+	 *
+	 * Los catálogos por giro (comercio, restaurante, construcción, servicios profesionales, manufactura, transporte, arrendamiento, agropecuario) con las cuentas que agregaría cada uno a su catálogo y cuáles ya tiene.
+	 *
+	 * GET /v1/accounting/chart_templates
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/list-chart-templates
+	 */
+	list(params?: ListChartTemplatesParams, options?: RequestOptions): Promise<ChartTemplateList> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/chart_templates", query: params }, options);
+	}
+
+	/**
+	 * Agregar las cuentas de un giro
+	 *
+	 * Agrega a su catálogo las cuentas del giro que faltan, cada una bajo su código agrupador. Un código que ya tiene cuenta la conserva y nada se borra ni se renombra, así que se puede llamar otra vez sin duplicar.
+	 *
+	 * POST /v1/accounting/chart_templates/{id}/apply
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/apply-chart-template
+	 */
+	apply(id: string, params?: ApplyChartTemplateParams, options?: RequestOptions): Promise<ChartTemplateResult> {
+		return this.#client.request({ method: "POST", path: `/v1/accounting/chart_templates/${encodeURIComponent(id)}/apply`, body: params, idempotent: true }, options);
+	}
+}
+
+/** Contabilidad: fiscalisto.accountRenumberings. */
+export class AccountRenumberingsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Renumerar el catálogo
+	 *
+	 * Cambia el número de todas las cuentas a la vez: con separator y widths (cada nivel rellenado con ceros) o con mapping (el número nuevo de cada una). Las pólizas, saldos iniciales y presupuestos siguen en las mismas cuentas. Si alguna no puede tomar su número (un nivel que no cabe, el de una cuenta de mayor, dos cuentas en un número) no cambia ninguna y contesta parameter_invalid; con dry_run solo dice qué cambiaría. Las subcuentas de banco conservan el suyo.
+	 *
+	 * POST /v1/accounting/account_renumberings
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/renumber-accounts
+	 */
+	create(params?: RenumberAccountsParams, options?: RequestOptions): Promise<AccountRenumbering> {
+		return this.#client.request({ method: "POST", path: "/v1/accounting/account_renumberings", body: params, idempotent: true }, options);
+	}
+}
+
 /** Contabilidad: fiscalisto.entryTemplates. */
 export class EntryTemplatesResource {
 	readonly #client: Client;
@@ -19537,6 +19707,8 @@ export class FiscalistoApi extends Core {
 	readonly inflationAccounts = new InflationAccountsResource(this);
 	readonly depreciationReconciliations = new DepreciationReconciliationsResource(this);
 	readonly bookDepreciationRates = new BookDepreciationRatesResource(this);
+	readonly chartTemplates = new ChartTemplatesResource(this);
+	readonly accountRenumberings = new AccountRenumberingsResource(this);
 	readonly entryTemplates = new EntryTemplatesResource(this);
 	readonly costCenterResults = new CostCenterResultsResource(this);
 	readonly payrollProvisions = new PayrollProvisionsResource(this);
