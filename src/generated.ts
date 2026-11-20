@@ -2022,6 +2022,137 @@ export interface VariableSalary {
 	}[];
 }
 
+/** El ajuste anual del ISR de un ejercicio (artículo 97 de la Ley del ISR): el ISR del año de cada empleado contra lo retenido. */
+export interface AnnualAdjustment {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "annual_adjustment";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** El ejercicio. */
+	year: number;
+	/** Desde cuándo lo llevan los recibos: el 1 de enero del año siguiente. */
+	applies_from: string;
+	/** La fecha de pago del último recibo timbrado del año. */
+	last_payment_date: string | null;
+	/** Cada empleado que trabajó en el año. */
+	employees: {
+		/** El empleado (emp_…). */
+		employee: string;
+		/** Su número de empleado. */
+		employee_number: string;
+		/** Su nombre. */
+		employee_name: string;
+		/** Todo lo que le pagaron sus recibos del año, gravado y exento: si pasa de $400,000 presenta su propia declaración. */
+		income: number;
+		/** Lo gravado del año. */
+		taxable_income: number;
+		/** El ISR del ejercicio: la tarifa del artículo 152 sobre taxable_income. */
+		annual_tax: number;
+		/** El subsidio para el empleo que le correspondió en el año. */
+		employment_subsidy: number;
+		/** annual_tax menos employment_subsidy, nunca negativo. */
+		tax_due: number;
+		/** El ISR que le retuvieron sus recibos del año. */
+		tax_withheld: number;
+		/** tax_due menos tax_withheld: positivo a cargo, negativo a favor. */
+		balance: number;
+		/** Por qué no se le calcula (artículo 97): started, entró después del 1 de enero; left, salió antes del 1 de diciembre; income, ganó más de $400,000; files_own, presenta su declaración. */
+		excluded: "started" | "left" | "income" | "files_own" | null;
+		/** Si avisó por escrito que presentará su declaración anual. */
+		files_own_return: boolean;
+		/** Los meses sin recibo timbrado: falta alguno de otro sistema. */
+		missing_months: number[];
+		/** La diferencia aplicada (positiva a cargo, negativa a favor), o null. */
+		applied_amount: number | null;
+		/** Lo que de applied_amount aún no lleva ningún recibo timbrado. */
+		remaining: number | null;
+	}[];
+}
+
+/** El impuesto sobre nómina de un mes, por estado. */
+export interface PayrollTax {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "payroll_tax";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** El mes: 2026-11. */
+	month: string;
+	/** Lo que paga en todos los estados. */
+	total: number;
+	/** Cada estado con recibos del mes, de mayor a menor base. */
+	states: {
+		/** El estado donde trabajan (c_Estado de ClaveEntFed): CMX. */
+		state: string;
+		/** Su nombre. */
+		name: string;
+		/** Los empleados con recibo. */
+		employees: number;
+		/** Los recibos timbrados. */
+		receipts: number;
+		/** Lo que pagaron sus percepciones, gravado y exento. */
+		paid: number;
+		/** Lo de excluded_perception_types: no suma a la base. */
+		excluded: number;
+		/** paid menos excluded. */
+		base: number;
+		/** La tasa (0.03 es 3%); en Sinaloa, la efectiva de su tabla. */
+		rate: number;
+		/** El impuesto sobre nómina: base por rate. */
+		tax: number;
+		/** Las sobretasas del estado sobre el impuesto o la base. */
+		surcharges: {
+			/** La sobretasa. */
+			label: string;
+			/** Importe. */
+			amount: number;
+		}[];
+		/** tax más surcharges. */
+		total: number;
+		/** La opción de tasa elegida, en los estados que la tienen. */
+		option: string | null;
+		/** Las opciones de tasa del estado (tamaño de la empresa), o null. */
+		options: {
+			/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+			id: string;
+			/** La opción, como la muestra la app. */
+			label: string;
+		}[] | null;
+		/** El artículo que lo cobra. */
+		law: string | null;
+	}[];
+	/** Las percepciones del mes. */
+	perceptions: {
+		/** c_TipoPercepcion. */
+		type: string;
+		/** Su nombre en el catálogo del SAT. */
+		label: string;
+		/** Lo que pagó en el mes. */
+		amount: number;
+		/** Si no suma a la base. */
+		excluded: boolean;
+	}[];
+	/** Las percepciones que no suman a la base. */
+	excluded_perception_types: string[];
+}
+
+/** Qué no grava el impuesto sobre nómina del emisor y sus opciones de tasa. */
+export interface PayrollTaxSettings {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "payroll_tax_settings";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Las percepciones que no suman a la base; null, las comunes. */
+	excluded_perception_types: string[] | null;
+	/** La opción de tasa de cada estado, por su c_Estado. */
+	state_options: Record<string, string>;
+}
+
 /** Los archivos para presentar movimientos en IDSE o importarlos en SUA. */
 export interface ImssFiles {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -9403,12 +9534,48 @@ export interface GetVariableSalaryParams {
 }
 
 export interface ApplyVariableSalaryParams {
-	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	/** El emisor (iss_…); por omisión, el único de la cuenta. */
 	issuer?: string;
 	/** El bimestre: AAAA-B, de 1 (enero–febrero) a 6 (noviembre–diciembre). */
 	bimester: string;
 	/** Los empleados (emp_…) a los que se aplica. */
 	employees: string[];
+}
+
+/** Los parámetros de GET /v1/annual_adjustments. */
+export interface GetAnnualAdjustmentParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** El ejercicio: 2026. */
+	year: number;
+}
+
+export interface UpdateAnnualAdjustmentParams {
+	/** El emisor (iss_…); por omisión, el único de la cuenta. */
+	issuer?: string;
+	/** El ejercicio: 2026. */
+	year: number;
+	/** apply: aplica la diferencia en sus siguientes recibos (desde enero del año siguiente). undo: la quita si ningún recibo timbrado la lleva. files_own_return: avisó por escrito que presentará su declaración anual (artículo 97, c): no se le calcula. no_own_return: lo deshace. */
+	action: "apply" | "undo" | "files_own_return" | "no_own_return";
+	/** Los empleados (emp_…). */
+	employees: string[];
+}
+
+/** Los parámetros de GET /v1/payroll_taxes. */
+export interface GetPayrollTaxParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** El mes: 2026-11. */
+	month: string;
+}
+
+export interface UpdatePayrollTaxSettingsParams {
+	/** El emisor (iss_…); por omisión, el único de la cuenta. */
+	issuer?: string;
+	/** Las percepciones (c_TipoPercepcion) que no suman a la base, como las deja fuera la ley de su estado. Reemplaza la lista entera. */
+	excluded_perception_types?: string[];
+	/** La opción de tasa de cada estado que la tiene, por su c_Estado: {"BCN": "hasta50"}. */
+	state_options?: Record<string, string>;
 }
 
 export interface CreateInvoiceBatchParams {
@@ -14019,6 +14186,70 @@ export class VariableSalariesResource {
 	}
 }
 
+/** Nómina: fiscalisto.annualAdjustments. */
+export class AnnualAdjustmentsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ajuste anual del ISR
+	 *
+	 * El ISR del ejercicio de cada empleado (tarifa del artículo 152 sobre lo gravado de sus recibos timbrados del año, menos el subsidio para el empleo del año) contra lo que le retuvieron (artículo 97 de la Ley del ISR). balance positivo es a cargo del empleado; negativo, a su favor. excluded dice por qué no se le calcula. No cambia nada: aplíquelo con POST /v1/annual_adjustments.
+	 *
+	 * GET /v1/annual_adjustments
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-annual-adjustment
+	 */
+	get(params: GetAnnualAdjustmentParams, options?: RequestOptions): Promise<AnnualAdjustment> {
+		return this.#client.request({ method: "GET", path: "/v1/annual_adjustments", query: params }, options);
+	}
+
+	/**
+	 * Aplicar el ajuste anual
+	 *
+	 * action apply: la diferencia de cada empleado va en sus siguientes recibos ordinarios pagados desde el 1 de enero del año siguiente: a cargo como Deducción 101 (hasta su neto; el resto, en el siguiente), a favor como OtroPago 004 con CompensacionSaldosAFavor. Repetirlo no hace nada. undo la quita mientras ningún recibo timbrado la lleve. files_own_return y no_own_return marcan si el empleado presentará su propia declaración anual.
+	 *
+	 * POST /v1/annual_adjustments
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-annual-adjustment
+	 */
+	update(params: UpdateAnnualAdjustmentParams, options?: RequestOptions): Promise<AnnualAdjustment> {
+		return this.#client.request({ method: "POST", path: "/v1/annual_adjustments", body: params, idempotent: true }, options);
+	}
+}
+
+/** Nómina: fiscalisto.payrollTaxes. */
+export class PayrollTaxesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Impuesto sobre nómina del mes
+	 *
+	 * El impuesto sobre nómina de cada estado: la suma de los recibos timbrados con fecha de pago en el mes, por el estado donde trabaja cada empleado (ClaveEntFed), menos las percepciones de excluded_perception_types, por la tasa del estado y sus sobretasas. Se declara y paga en el portal de finanzas de cada estado.
+	 *
+	 * GET /v1/payroll_taxes
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-payroll-tax
+	 */
+	get(params: GetPayrollTaxParams, options?: RequestOptions): Promise<PayrollTax> {
+		return this.#client.request({ method: "GET", path: "/v1/payroll_taxes", query: params }, options);
+	}
+
+	/**
+	 * Qué no grava el impuesto sobre nómina
+	 *
+	 * Las percepciones que no suman a la base (por omisión, las que casi todos los estados dejan fuera: PTU, reembolsos, indemnizaciones, primas de antigüedad, jubilaciones, cuotas de seguridad social pagadas por el patrón y viáticos) y la opción de tasa de cada estado que la tiene, guardadas para el emisor. Lo que no mande se queda como estaba.
+	 *
+	 * POST /v1/payroll_taxes/settings
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-payroll-tax-settings
+	 */
+	updateSettings(params?: UpdatePayrollTaxSettingsParams, options?: RequestOptions): Promise<PayrollTaxSettings> {
+		return this.#client.request({ method: "POST", path: "/v1/payroll_taxes/settings", body: params, idempotent: true }, options);
+	}
+}
+
 /** Lotes: fiscalisto.invoiceBatches. */
 export class InvoiceBatchesResource {
 	readonly #client: Client;
@@ -17213,6 +17444,8 @@ export class FiscalistoApi extends Core {
 	readonly imssFiles = new ImssFilesResource(this);
 	readonly employeeDeductions = new EmployeeDeductionsResource(this);
 	readonly variableSalaries = new VariableSalariesResource(this);
+	readonly annualAdjustments = new AnnualAdjustmentsResource(this);
+	readonly payrollTaxes = new PayrollTaxesResource(this);
 	readonly invoiceBatches = new InvoiceBatchesResource(this);
 	readonly taxIds = new TaxIdsResource(this);
 	readonly branches = new BranchesResource(this);
