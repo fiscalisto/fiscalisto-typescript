@@ -4861,11 +4861,11 @@ export interface CostCenterResults {
 	object: "cost_center_results";
 	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
 	livemode: boolean;
-	/** El emisor (iss_…). */
+	/** El emisor. */
 	issuer: string;
-	/** Un solo mes, del 1 al 12 (MesIni y MesFin iguales). */
+	/** El mes (AAAA-MM). */
 	month: string;
-	/** El mes. */
+	/** Cada centro de costo en el mes. */
 	month_results: {
 		/** El centro de costo (ccn_…), o null: lo que no tiene centro. */
 		cost_center: string | null;
@@ -4886,7 +4886,7 @@ export interface CostCenterResults {
 		/** Utilidad entre ingresos, en porcentaje (null sin ingresos). */
 		margin_percent: number | null;
 	}[];
-	/** De enero al mes. */
+	/** Cada centro de costo de enero al mes. */
 	year_to_date: {
 		/** El centro de costo (ccn_…), o null: lo que no tiene centro. */
 		cost_center: string | null;
@@ -4907,6 +4907,306 @@ export interface CostCenterResults {
 		/** Utilidad entre ingresos, en porcentaje (null sin ingresos). */
 		margin_percent: number | null;
 	}[];
+}
+
+/** El estado de flujos de efectivo (NIF B-2, método indirecto) del mes o de enero al mes, leído de la balanza: cada cuenta va a operación, inversión o financiamiento por su código agrupador. */
+export interface CashFlow {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "cash_flow";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** El mes solo (month) o de enero al mes (year_to_date). */
+	period: "month" | "year_to_date";
+	/** La utilidad (o pérdida) antes de impuestos del periodo. */
+	net_income: number;
+	/** Actividades de operación. */
+	operating: {
+		/** Lo que se suma porque no salió efectivo: depreciación (171), deterioro (172) y amortización (183). */
+		non_cash: {
+			/** El código agrupador del SAT (su primer nivel, o 202.01 a 202.12). */
+			grouping_code: string;
+			/** Su nombre en el código agrupador. */
+			name: string;
+			/** Lo que su cambio sumó al efectivo (positivo) o le quitó (negativo). */
+			amount: number;
+		}[];
+		/** El cambio en clientes, inventarios, proveedores, impuestos y demás cuentas de operación. */
+		working_capital: {
+			/** El código agrupador del SAT (su primer nivel, o 202.01 a 202.12). */
+			grouping_code: string;
+			/** Su nombre en el código agrupador. */
+			name: string;
+			/** Lo que su cambio sumó al efectivo (positivo) o le quitó (negativo). */
+			amount: number;
+		}[];
+		/** El flujo neto de actividades de operación. */
+		total: number;
+	};
+	/** Actividades de inversión: activos fijos, terrenos, diferidos e inversiones permanentes. */
+	investing: {
+		/** Cada grupo de cuentas que cambió. */
+		lines: {
+			/** El código agrupador del SAT (su primer nivel, o 202.01 a 202.12). */
+			grouping_code: string;
+			/** Su nombre en el código agrupador. */
+			name: string;
+			/** Lo que su cambio sumó al efectivo (positivo) o le quitó (negativo). */
+			amount: number;
+		}[];
+		/** El flujo neto de la actividad. */
+		total: number;
+	};
+	/** Actividades de financiamiento: préstamos bancarios, dividendos, aportaciones y capital. */
+	financing: {
+		/** Cada grupo de cuentas que cambió. */
+		lines: {
+			/** El código agrupador del SAT (su primer nivel, o 202.01 a 202.12). */
+			grouping_code: string;
+			/** Su nombre en el código agrupador. */
+			name: string;
+			/** Lo que su cambio sumó al efectivo (positivo) o le quitó (negativo). */
+			amount: number;
+		}[];
+		/** El flujo neto de la actividad. */
+		total: number;
+	};
+	/** Aumento (o disminución) neto de efectivo. */
+	net_change: number;
+	/** Caja, bancos e inversiones (101 a 103) al inicio del periodo. */
+	cash_beginning: number;
+	/** Caja, bancos e inversiones al cierre del periodo. */
+	cash_end: number;
+	/** cash_end − (cash_beginning + net_change): 0 cuando la balanza cuadra. */
+	difference: number;
+}
+
+/** El estado de cambios en el capital contable (NIF B-4) de enero al mes. */
+export interface EquityChanges {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "equity_changes";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** Cada cuenta de capital con saldo o movimiento. */
+	accounts: {
+		/** El código agrupador (301 capital social, 304 resultados de ejercicios anteriores…). */
+		grouping_code: string;
+		/** Su nombre. */
+		name: string;
+		/** Al 1 de enero. */
+		beginning: number;
+		/** Aportaciones, retiros, dividendos y traspasos de enero al mes. */
+		movements: number;
+		/** Al cierre del mes. */
+		ending: number;
+	}[];
+	/** El resultado del ejercicio, de enero al mes. */
+	net_income: number;
+	/** El capital contable al 1 de enero. */
+	beginning: number;
+	/** Los movimientos de capital de enero al mes. */
+	movements: number;
+	/** El capital contable al cierre: beginning + movements + net_income, igual al del balance general más el resultado del ejercicio. */
+	ending: number;
+}
+
+/** El estado de resultados y el balance general de un mes junto a los del mes anterior o del mismo mes del año anterior, con la variación y su porcentaje. */
+export interface ComparativeStatements {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "comparative_statements";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** El mes con que se compara (AAAA-MM). */
+	compared_to: string;
+	/** El estado de resultados comparativo. */
+	income_statement: {
+		/** Del mes contra el mes comparado. */
+		month: {
+			/** Cada sección del estado de resultados. Costos y gastos en positivo: un aumento es más gasto. */
+			sections: {
+				/** La sección. */
+				key: "ingresos" | "costos" | "gastos" | "financiamiento" | "otros";
+				/** Su nombre. */
+				name: string;
+				/** Cada grupo de cuentas. */
+				lines: {
+					/** El código agrupador (primer nivel). */
+					grouping_code: string;
+					/** Su nombre. */
+					name: string;
+					/** El importe del periodo. */
+					current: number;
+					/** El del periodo con que se compara. */
+					previous: number;
+					/** current − previous. */
+					change: number;
+					/** change entre previous, en porcentaje (null cuando previous es 0). */
+					change_percent: number | null;
+				}[];
+				/** El total de la sección. */
+				total: {
+					/** El importe del periodo. */
+					current: number;
+					/** El del periodo con que se compara. */
+					previous: number;
+					/** current − previous. */
+					change: number;
+					/** change entre previous, en porcentaje (null cuando previous es 0). */
+					change_percent: number | null;
+				};
+			}[];
+			/** La utilidad antes de impuestos. */
+			income_before_taxes: {
+				/** El importe del periodo. */
+				current: number;
+				/** El del periodo con que se compara. */
+				previous: number;
+				/** current − previous. */
+				change: number;
+				/** change entre previous, en porcentaje (null cuando previous es 0). */
+				change_percent: number | null;
+			};
+		};
+		/** De enero al mes contra enero al mes comparado. */
+		year_to_date: {
+			/** Cada sección del estado de resultados. Costos y gastos en positivo: un aumento es más gasto. */
+			sections: {
+				/** La sección. */
+				key: "ingresos" | "costos" | "gastos" | "financiamiento" | "otros";
+				/** Su nombre. */
+				name: string;
+				/** Cada grupo de cuentas. */
+				lines: {
+					/** El código agrupador (primer nivel). */
+					grouping_code: string;
+					/** Su nombre. */
+					name: string;
+					/** El importe del periodo. */
+					current: number;
+					/** El del periodo con que se compara. */
+					previous: number;
+					/** current − previous. */
+					change: number;
+					/** change entre previous, en porcentaje (null cuando previous es 0). */
+					change_percent: number | null;
+				}[];
+				/** El total de la sección. */
+				total: {
+					/** El importe del periodo. */
+					current: number;
+					/** El del periodo con que se compara. */
+					previous: number;
+					/** current − previous. */
+					change: number;
+					/** change entre previous, en porcentaje (null cuando previous es 0). */
+					change_percent: number | null;
+				};
+			}[];
+			/** La utilidad antes de impuestos. */
+			income_before_taxes: {
+				/** El importe del periodo. */
+				current: number;
+				/** El del periodo con que se compara. */
+				previous: number;
+				/** current − previous. */
+				change: number;
+				/** change entre previous, en porcentaje (null cuando previous es 0). */
+				change_percent: number | null;
+			};
+		};
+	};
+	/** El balance general al cierre de cada mes. */
+	balance_sheet: {
+		/** La sección. */
+		key: "assets" | "liabilities" | "equity";
+		/** Su nombre. */
+		name: string;
+		/** Cada grupo de cuentas. */
+		lines: {
+			/** El código agrupador (primer nivel). */
+			grouping_code: string;
+			/** Su nombre. */
+			name: string;
+			/** El importe del periodo. */
+			current: number;
+			/** El del periodo con que se compara. */
+			previous: number;
+			/** current − previous. */
+			change: number;
+			/** change entre previous, en porcentaje (null cuando previous es 0). */
+			change_percent: number | null;
+		}[];
+		/** El total de la sección. */
+		total: {
+			/** El importe del periodo. */
+			current: number;
+			/** El del periodo con que se compara. */
+			previous: number;
+			/** current − previous. */
+			change: number;
+			/** change entre previous, en porcentaje (null cuando previous es 0). */
+			change_percent: number | null;
+		};
+	}[];
+}
+
+/** Razones financieras al cierre de un mes: de su balance general y de sus resultados de enero al mes. */
+export interface FinancialRatios {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "financial_ratios";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** Liquidez, endeudamiento, rentabilidad y rotación. */
+	ratios: {
+		/** La razón. */
+		key: "liquidez" | "prueba_acida" | "endeudamiento" | "apalancamiento" | "margen_bruto" | "margen_operacion" | "margen_neto" | "rendimiento_capital" | "rendimiento_activo" | "dias_cobro" | "dias_pago" | "dias_inventario";
+		/** Su nombre. */
+		name: string;
+		/** Su valor (null cuando no hay con qué dividir). */
+		value: number | null;
+		/** Veces, porcentaje o días. */
+		unit: "times" | "percent" | "days";
+		/** Cómo se calcula. */
+		description: string;
+	}[];
+	/** Las cifras de que salen. */
+	inputs: {
+		/** Activo circulante (101 a 121). */
+		current_assets: number;
+		/** Pasivo a corto plazo (201 a 218). */
+		current_liabilities: number;
+		/** Inventario (115, menos su estimación 116). */
+		inventory: number;
+		/** Clientes (105, menos incobrables 108). */
+		receivables: number;
+		/** Proveedores (201). */
+		payables: number;
+		/** Activo total. */
+		total_assets: number;
+		/** Pasivo total. */
+		total_liabilities: number;
+		/** Capital contable con el resultado del ejercicio. */
+		equity: number;
+		/** Ingresos de enero al mes. */
+		revenue_year_to_date: number;
+		/** Utilidad antes de impuestos de enero al mes. */
+		income_before_taxes_year_to_date: number;
+	};
 }
 
 /** La determinación de impuestos de un mes en la contabilidad: el IVA cobrado y pagado del mes (de sus pólizas) que pasa a IVA por pagar o a favor, el pago provisional de ISR sugerido y la póliza que los registra, si ya se registró. */
@@ -11668,6 +11968,42 @@ export interface GetFinancialStatementsParams {
 	issuer?: string;
 }
 
+/** Los parámetros de GET /v1/accounting/cash_flow. */
+export interface GetCashFlowParams {
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** month (solo el mes) o year_to_date (de enero al mes, por omisión). */
+	period?: "month" | "year_to_date";
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+/** Los parámetros de GET /v1/accounting/equity_changes. */
+export interface GetEquityChangesParams {
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+/** Los parámetros de GET /v1/accounting/comparative_statements. */
+export interface GetComparativeStatementsParams {
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** previous_year (el mismo mes del año anterior, por omisión) o previous_month. */
+	compare_to?: "previous_year" | "previous_month";
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+/** Los parámetros de GET /v1/accounting/financial_ratios. */
+export interface GetFinancialRatiosParams {
+	/** El mes (AAAA-MM). */
+	month: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
 /** Los parámetros de GET /v1/accounting/cross_checks. */
 export interface GetCrossChecksParams {
 	/** El ejercicio. Por omisión, el actual. */
@@ -16730,6 +17066,54 @@ export class AccountingResource {
 	 */
 	financialStatements(params: GetFinancialStatementsParams, options?: RequestOptions): Promise<FinancialStatements> {
 		return this.#client.request({ method: "GET", path: "/v1/accounting/financial_statements", query: params }, options);
+	}
+
+	/**
+	 * Ver el estado de flujos de efectivo
+	 *
+	 * El estado de flujos de efectivo (NIF B-2, método indirecto) del mes o de enero al mes: la utilidad, la depreciación y amortización que se suman, el cambio en capital de trabajo, y las actividades de inversión y de financiamiento, hasta el efectivo al cierre. Cada cuenta va a su actividad por su código agrupador; difference es 0 cuando la balanza cuadra. Como Estados financieros › Flujo de efectivo en la app.
+	 *
+	 * GET /v1/accounting/cash_flow
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-cash-flow
+	 */
+	cashFlow(params: GetCashFlowParams, options?: RequestOptions): Promise<CashFlow> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/cash_flow", query: params }, options);
+	}
+
+	/**
+	 * Ver el estado de cambios en el capital contable
+	 *
+	 * El estado de cambios en el capital contable (NIF B-4) de enero al mes: cada cuenta de capital del 1 de enero al cierre, con sus aportaciones, retiros, dividendos y traspasos, y el resultado del ejercicio. Como Estados financieros › Capital contable en la app.
+	 *
+	 * GET /v1/accounting/equity_changes
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-equity-changes
+	 */
+	equityChanges(params: GetEquityChangesParams, options?: RequestOptions): Promise<EquityChanges> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/equity_changes", query: params }, options);
+	}
+
+	/**
+	 * Comparar los estados financieros con otro mes
+	 *
+	 * El estado de resultados (del mes y de enero al mes) y el balance general junto a los del mismo mes del año anterior (compare_to=previous_year, por omisión) o del mes anterior (previous_month), con la variación y su porcentaje por grupo de cuentas. Como Estados financieros › Comparativo en la app.
+	 *
+	 * GET /v1/accounting/comparative_statements
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-comparative-statements
+	 */
+	comparativeStatements(params: GetComparativeStatementsParams, options?: RequestOptions): Promise<ComparativeStatements> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/comparative_statements", query: params }, options);
+	}
+
+	/**
+	 * Ver las razones financieras
+	 *
+	 * Liquidez, prueba ácida, endeudamiento, apalancamiento, márgenes, rendimiento sobre capital y sobre activo, y días de cobro, de pago y de inventario al cierre del mes, con las cifras de que salen. Rentabilidad y rotación usan los resultados de enero al mes. Como Estados financieros › Razones financieras en la app.
+	 *
+	 * GET /v1/accounting/financial_ratios
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-financial-ratios
+	 */
+	financialRatios(params: GetFinancialRatiosParams, options?: RequestOptions): Promise<FinancialRatios> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/financial_ratios", query: params }, options);
 	}
 
 	/**
