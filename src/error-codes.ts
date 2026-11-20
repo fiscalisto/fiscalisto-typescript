@@ -265,6 +265,10 @@ export const ErrorCode = {
 	SubstitutionUnsupported: "substitution_unsupported",
 	/** La factura del proveedor no admite eso en su estado (por ejemplo, programar una que no está aprobada, una fecha de pago pasada o marcar pagada una ya pagada), o el SAT la reporta cancelada. El mensaje dice por qué. */
 	SupplierInvoiceInvalid: "supplier_invoice_invalid",
+	/** Ya hay una etiqueta con ese nombre (sin importar mayúsculas ni acentos): el mensaje trae su id (tag_…). */
+	TagExists: "tag_exists",
+	/** La empresa llegó a 200 etiquetas: borre las que ya no use. */
+	TagLimit: "tag_limit",
 	/** El cambio da, quita o toca un permiso delicado (equipo, credenciales, seguridad o plan), o nombra a un propietario: pide confirmar la identidad de quien lo hace, y eso se hace en la app, en Ajustes › Miembros o Ajustes › Roles. */
 	TeamChangeRequiresApp: "team_change_requires_app",
 	/** El cambio no se puede: la persona ya es miembro, quedaría la empresa sin propietario, ya hay un rol con ese nombre, el rol lo tiene alguien, o se mandaron demasiadas invitaciones hoy. El mensaje dice cuál. */

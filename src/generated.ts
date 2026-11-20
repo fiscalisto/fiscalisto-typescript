@@ -3005,6 +3005,17 @@ export interface SatInvoice {
 	} | null;
 	/** Su centro de costo (ccn_…), o null. Póngalo o cámbielo con POST /v1/sat_invoices/{id}. */
 	cost_center: string | null;
+	/** Sus etiquetas, por nombre. automatic: true en las que puso una regla (la orden de compra a la que se vinculó o una regla de Ajustes › Reglas). Cámbielas con POST /v1/sat_invoices/{id}. */
+	tags: {
+		/** La etiqueta (tag_…). */
+		id: string;
+		/** Su nombre. */
+		name: string;
+		/** Su color. */
+		color: string;
+		/** true si la puso una regla (su orden de compra o Ajustes › Reglas), no una persona. */
+		automatic: boolean;
+	}[];
 	/** La descarga (sdl_…) que la trajo, o null. */
 	sat_download: string | null;
 	/** Cuándo llegó. */
@@ -3453,6 +3464,28 @@ export interface CostCenter {
 	created_at: string | null;
 	/** Cuándo cambió por última vez. */
 	updated_at: string | null;
+}
+
+/** Una etiqueta del emisor: una palabra suya para juntar facturas y órdenes de compra. */
+export interface Tag {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "tag";
+	/** El emisor de la etiqueta. */
+	issuer: string;
+	/** Cómo la llama su equipo, por ejemplo «Obra Norte». */
+	name: string;
+	/** Su color: info, positive, warning, critical o muted. */
+	color: "info" | "positive" | "warning" | "critical" | "muted";
+	/** Cuántas órdenes de compra la llevan. */
+	purchase_orders: number;
+	/** Cuántas facturas la llevan, emitidas y recibidas. */
+	invoices: number;
+	/** Cuándo se creó. */
+	created_at: string | null;
 }
 
 /** Una regla de la empresa: cuando pasa algo (trigger), si se cumplen sus condiciones, hace sus acciones. Las mismas de Ajustes › Reglas en la app. */
@@ -9159,6 +9192,17 @@ export interface CostCenterList {
 	url: string;
 }
 
+export interface TagList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: Tag[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
 export interface PriceListList {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "list";
@@ -12856,6 +12900,32 @@ export interface DeleteCostCenterParams {
 	move_to?: string;
 }
 
+export interface CreateTagParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** Cómo la llama su equipo, por ejemplo «Obra Norte». No se repite (sin importar mayúsculas ni acentos). */
+	name: string;
+	/** Su color: info (azul), positive (verde), warning (ámbar), critical (rojo) o muted (gris). Por omisión, el siguiente de la lista. */
+	color?: "info" | "positive" | "warning" | "critical" | "muted";
+}
+
+/** Los parámetros de GET /v1/tags. */
+export interface ListTagsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface UpdateTagParams {
+	/** Cómo la llama su equipo, por ejemplo «Obra Norte». No se repite (sin importar mayúsculas ni acentos). */
+	name?: string;
+	/** Su color: info (azul), positive (verde), warning (ámbar), critical (rojo) o muted (gris). Por omisión, el siguiente de la lista. */
+	color?: "info" | "positive" | "warning" | "critical" | "muted";
+}
+
 export interface CreatePriceListParams {
 	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
 	issuer?: string;
@@ -14045,11 +14115,15 @@ export interface ListSatInvoicesParams {
 	date_lte?: string;
 	/** Solo las de este centro de costo (ccn_…), o none para las que no tienen. */
 	cost_center?: string;
+	/** Solo las que llevan esta etiqueta (tag_…). */
+	tag?: string;
 }
 
 export interface UpdateSatInvoiceParams {
 	/** Su centro de costo (ccn_…), o null para quitárselo. Los complementos de pago y los traslados no llevan. */
 	cost_center?: string | null;
+	/** Sus etiquetas, exactamente estas (hasta 10): ids (tag_…) o nombres; un nombre nuevo crea la etiqueta. [] se las quita. Una que puso una regla y no manda se queda quitada. */
+	tags?: string[];
 }
 
 export interface MarkSatInvoicePaidParams {
@@ -18587,6 +18661,74 @@ export class CostCentersResource {
 	}
 }
 
+/** Etiquetas: fiscalisto.tags. */
+export class TagsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Crear una etiqueta
+	 *
+	 * Una palabra suya para juntar facturas y órdenes de compra: una obra, un evento, un cliente, «Urgente». Es la misma lista de Etiquetas en la app. Un nombre que ya existe (sin importar mayúsculas ni acentos) contesta tag_exists con su id. Hasta 200 por empresa.
+	 *
+	 * POST /v1/tags
+	 * @see https://fiscalisto.com/docs/api/referencia/etiquetas/create-tag
+	 */
+	create(params: CreateTagParams, options?: RequestOptions): Promise<Tag> {
+		return this.#client.request({ method: "POST", path: "/v1/tags", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar etiquetas
+	 *
+	 * Las etiquetas del emisor, las más recientes primero, con cuántas órdenes de compra y facturas lleva cada una.
+	 *
+	 * GET /v1/tags
+	 * @see https://fiscalisto.com/docs/api/referencia/etiquetas/list-tags
+	 */
+	list(params?: ListTagsParams, options?: RequestOptions): List<Tag> {
+		return this.#client.list({ path: "/v1/tags", query: params }, options);
+	}
+
+	/**
+	 * Ver una etiqueta
+	 *
+	 * Una etiqueta del emisor.
+	 *
+	 * GET /v1/tags/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/etiquetas/get-tag
+	 */
+	get(id: string, options?: RequestOptions): Promise<Tag> {
+		return this.#client.request({ method: "GET", path: `/v1/tags/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Actualizar una etiqueta
+	 *
+	 * Cambia su nombre o su color; se ve así en todas sus facturas y órdenes. Un nombre que ya tiene otra contesta tag_exists.
+	 *
+	 * POST /v1/tags/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/etiquetas/update-tag
+	 */
+	update(id: string, params?: UpdateTagParams, options?: RequestOptions): Promise<Tag> {
+		return this.#client.request({ method: "POST", path: `/v1/tags/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Borrar una etiqueta
+	 *
+	 * Se quita de sus facturas y órdenes de compra, que no cambian en nada más, y se borran sus etiquetas automáticas. No se puede deshacer.
+	 *
+	 * DELETE /v1/tags/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/etiquetas/delete-tag
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/tags/${encodeURIComponent(id)}` }, options);
+	}
+}
+
 /** Listas de precios: fiscalisto.priceLists. */
 export class PriceListsResource {
 	readonly #client: Client;
@@ -20069,7 +20211,7 @@ export class SatInvoicesResource {
 	/**
 	 * Actualizar una factura del SAT
 	 *
-	 * Lo que se puede cambiar de un CFDI del SAT sin tocarlo: su centro de costo (cost_center, o null para quitárselo), para ver sus gastos por obra, proyecto o área.
+	 * Lo que se puede cambiar de un CFDI del SAT sin tocarlo: su centro de costo (cost_center, o null para quitárselo), para ver sus gastos por obra, proyecto o área, y sus etiquetas (tags, exactamente las que manda: ids tag_… o nombres; un nombre nuevo crea la etiqueta).
 	 *
 	 * POST /v1/sat_invoices/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/descargas-del-sat/update-sat-invoice
@@ -22372,6 +22514,7 @@ export class FiscalistoApi extends Core {
 	readonly branches = new BranchesResource(this);
 	readonly rules = new RulesResource(this);
 	readonly costCenters = new CostCentersResource(this);
+	readonly tags = new TagsResource(this);
 	readonly priceLists = new PriceListsResource(this);
 	readonly customerGroups = new CustomerGroupsResource(this);
 	readonly prices = new PricesResource(this);
