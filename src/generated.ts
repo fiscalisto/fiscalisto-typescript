@@ -1830,7 +1830,7 @@ export interface PayrollBatch {
 		total: number | null;
 		/** Por qué no se timbró este recibo: su código y su mensaje. */
 		error: {
-			/** payroll_invalid, payroll_period_overlap, payroll_receipt_exists, invoice_rejected, invoice_invalid, insufficient_balance… */
+			/** payroll_invalid, payroll_approval_required, payroll_period_overlap, payroll_receipt_exists, invoice_rejected, invoice_invalid, insufficient_balance… */
 			code: string;
 			/** Qué pasó y cómo corregirlo, para una persona. */
 			message: string;
@@ -2400,6 +2400,65 @@ export interface EmployeeRaise {
 		/** Por qué no puede recibir el aumento, o null. */
 		error: string | null;
 	}[];
+}
+
+/** Una prenómina pedida para aprobación: con ella aprobada se timbran sus recibos, con esos importes. */
+export interface PayrollApproval {
+	/** pap_… */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "payroll_approval";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** iss_… */
+	issuer: string;
+	/** Periodicidad de la nómina (c_PeriodicidadPago): 02, 03, 04 o 05. */
+	periodicity: string;
+	/** El periodo de pago de la nómina: FechaInicialPago, FechaFinalPago y FechaPago de sus recibos. */
+	period: {
+		/** Primer día pagado. */
+		start: string;
+		/** Último día pagado. */
+		end: string;
+		/** Día de pago. */
+		payment_date: string;
+	};
+	/** pending (por aprobar), approved, rejected (note dice por qué), withdrawn (retirada) o replaced (se pidió otra del mismo periodo). */
+	status: "pending" | "approved" | "rejected" | "withdrawn" | "replaced";
+	/** El neto de todos sus recibos. */
+	net: number;
+	/** El recibo de cada empleado, como se calculó al pedirla. */
+	receipts: {
+		/** emp_… */
+		employee: string;
+		/** Su nombre. */
+		name: string;
+		/** Días pagados. */
+		days: number;
+		/** Faltas. */
+		absences: number;
+		/** Días de incapacidad. */
+		disability_days: number;
+		/** Los importes aprobados: se timbra solo un recibo que los tenga. */
+		totals: {
+			/** Percepciones. */
+			perceptions: number;
+			/** Deducciones. */
+			deductions: number;
+			/** Otros pagos. */
+			other_payments: number;
+			/** ISR retenido. */
+			taxes_withheld: number;
+			/** Neto a pagar. */
+			net: number;
+		};
+	}[];
+	/** Cuándo se pidió (ISO 8601). */
+	requested_at: string;
+	/** Cuándo se aprobó, rechazó o retiró, o null. */
+	decided_at: string | null;
+	/** Por qué se rechazó (o el comentario de quien la aprobó), o null. */
+	note: string | null;
 }
 
 /** Lo que cuesta la nómina del año mes por mes: lo pagado más las cuotas del patrón y el impuesto sobre nómina. */
@@ -4875,7 +4934,7 @@ export interface JournalEntry {
 	/** El emisor. */
 	issuer: string;
 	/** De qué es: invoice (un CFDI de ingreso o egreso), payment_received o payment_made (un pago de un complemento), payroll (un recibo de nómina), employee_expenses (un anticipo, reembolso, devolución o comprobación de viáticos, contra 107.01 «Funcionarios y empleados»), depreciation (la depreciación del mes de los activos fijos), manual (una póliza capturada a mano, o la reversión de una provisión) o asset_disposal (la venta o baja de un activo fijo). */
-	type: "invoice" | "payment_received" | "payment_made" | "payroll" | "employee_expenses" | "depreciation" | "manual" | "asset_disposal" | "bank_identification";
+	type: "invoice" | "payment_received" | "payment_made" | "payroll" | "employee_expenses" | "depreciation" | "manual" | "asset_disposal" | "bank_identification" | "foreign_supplier_operations";
 	/** Con type manual: la póliza capturada (mje_…), también en su reversión; null en las demás. */
 	manual_entry: string | null;
 	/** La fecha del CFDI o del pago; en la depreciación, el último día del mes. */
@@ -6411,7 +6470,7 @@ export interface GeneralLedger {
 			/** La póliza (el mismo id de GET /v1/accounting/journal_entries). */
 			journal_entry: string;
 			/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
-			type: "invoice" | "payment_received" | "payment_made" | "payroll" | "employee_expenses" | "depreciation" | "manual" | "asset_disposal" | "bank_identification";
+			type: "invoice" | "payment_received" | "payment_made" | "payroll" | "employee_expenses" | "depreciation" | "manual" | "asset_disposal" | "bank_identification" | "foreign_supplier_operations";
 			/** Descripción. */
 			description: string;
 			/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
@@ -8176,6 +8235,17 @@ export interface VacationRequestList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: VacationRequest[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface PayrollApprovalList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: PayrollApproval[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -11235,6 +11305,85 @@ export interface ListPayrollBatchesParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface CreatePayrollApprovalParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** El periodo de pago de la nómina: FechaInicialPago, FechaFinalPago y FechaPago de sus recibos. */
+	period: {
+		/** Primer día pagado (FechaInicialPago). */
+		start: string;
+		/** Último día pagado (FechaFinalPago). */
+		end: string;
+		/** Día de pago (FechaPago); sin él, el último día del periodo. */
+		payment_date?: string;
+	};
+	/** El recibo de cada empleado de la nómina, como se timbraría con POST /v1/payroll_receipts. Todos de la misma periodicidad. */
+	receipts: {
+		/** El empleado (emp_…) del emisor. */
+		employee: string;
+		/** Días pagados; sin él, todos los días que le tocan del periodo menos absences y disability_days. */
+		days?: number;
+		/** Faltas del periodo (días sin goce de sueldo), de 0 a 31. */
+		absences?: number;
+		/** Días de incapacidad que expidió el IMSS en el periodo, de 0 a 31. */
+		disability_days?: number;
+		/** Incidencias del periodo, como en Nómina › Emitir recibos: horas extra, domingos, descansos y festivos trabajados, vacaciones, premios y comisiones. Fiscalisto calcula sus importes, su parte exenta y el ISR con el sueldo. */
+		incidents?: {
+			/** Horas extra dobles (pagadas al doble), horas completas: hasta 9 por semana en 2026 y 2027, 10 en 2028, 11 en 2029 y 12 desde 2030 (LFT arts. 66 y transitorio cuarto del decreto DOF 01-05-2026). Exentas la mitad, hasta 5 UMA por semana; todas si gana el salario mínimo (LISR art. 93 fr. I). */
+			double_hours?: number;
+			/** Horas extra triples, las que pasan de las dobles de la semana (LFT art. 68). Gravadas. */
+			triple_hours?: number;
+			/** Días en que se trabajaron las horas extra (nodo HorasExtra); uno por cada 3 horas si no lo manda. */
+			overtime_days?: number;
+			/** Domingos trabajados: prima dominical del 25% del salario diario por cada uno (LFT art. 71), exenta hasta 1 UMA por domingo. */
+			sundays?: number;
+			/** Días de descanso semanal que trabajó sin descansar otro en su lugar: salario doble por cada uno además del día (LFT art. 73). Exentos con las horas extra: la mitad, hasta 5 UMA por semana entre ambos; todo si gana el salario mínimo (LISR art. 93 fr. I). */
+			rest_days_worked?: number;
+			/** Días de descanso obligatorio que trabajó (1 de enero, 1 de mayo, 16 de septiembre, 25 de diciembre, los lunes del art. 74 y la jornada electoral): salario doble por cada uno además del día (LFT art. 75), exento como rest_days_worked. */
+			holidays_worked?: number;
+			/** Días de vacaciones que disfrutó en el periodo (se pagan como sueldo dentro de days): su prima vacacional con el porcentaje del empleado, exenta hasta 15 UMA en el año. */
+			vacation_days?: number;
+			/** Si la empresa paga los disability_days del recibo: percepción 014 con su nodo Incapacidad. Exenta como previsión social con el límite de 7 UMA al año (art. 93 de la LISR); la de un riesgo de trabajo, toda. */
+			disability_pay?: {
+				/** Tipo de incapacidad (c_TipoIncapacidad): 01 riesgo de trabajo, 02 enfermedad general, 03 maternidad, 04 licencia por cuidados médicos de hijos con cáncer. */
+				type: "01" | "02" | "03" | "04";
+				/** Lo que paga la empresa de cada día de incapacidad, como fracción del salario diario: 1 todo; 0.4 lo que completa el 60% que paga el IMSS. */
+				rate: number;
+			};
+			/** Retroactivo de un aumento: la diferencia de salario de los días ya pagados con el anterior, como percepción 001 (clave RET) gravada, que paga ISR con el sueldo del periodo (art. 96 de la LISR). Las cuotas IMSS de la diferencia las cubre la modificación de salario con su fecha en el SUA; el recibo no retiene la parte del trabajador (art. 38 de la LSS). */
+			retroactive?: {
+				/** Día desde el que rige el aumento (YYYY-MM-DD), antes del periodo y hasta un año antes. */
+				from: string;
+				/** Salario diario que tenía el empleado antes del aumento. El de ahora es el del empleado: cámbielo antes con PATCH /v1/employees/{id}. */
+				previous_salary: number;
+				/** Días que se pagaron con el salario anterior desde from. Si no lo manda, los de los periodos ya pagados desde ese día. */
+				days?: number;
+			};
+			/** Premios, comisiones y bonos del periodo, gravados. */
+			bonuses?: {
+				/** 010 premio de puntualidad, 049 premio de asistencia, 028 comisiones, 038 otro bono (c_TipoPercepcion). */
+				type: "010" | "049" | "028" | "038";
+				/** Importe. */
+				amount: number;
+				/** Concepto del pago (ConceptoPago), c_TipoContribuyenteSujetoRetencion. */
+				concept?: string;
+			}[];
+		};
+	}[];
+}
+
+/** Los parámetros de GET /v1/payroll_approvals. */
+export interface ListPayrollApprovalsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** pending, approved, rejected, withdrawn o replaced. */
+	status?: "pending" | "approved" | "rejected" | "withdrawn" | "replaced";
 	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
 	issuer?: string;
 }
@@ -16142,7 +16291,7 @@ export class EmployeesResource {
 	 * POST /v1/employee_raises
 	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-employee-raise
 	 */
-	raise(params?: CreateEmployeeRaiseParams, options?: RequestOptions): Promise<EmployeeRaise> {
+	giveRaise(params?: CreateEmployeeRaiseParams, options?: RequestOptions): Promise<EmployeeRaise> {
 		return this.#client.request({ method: "POST", path: "/v1/employee_raises", body: params, idempotent: true }, options);
 	}
 
@@ -16432,6 +16581,62 @@ export class PayrollBatchesResource {
 	 */
 	get(id: string, options?: RequestOptions): Promise<PayrollBatch> {
 		return this.#client.request({ method: "GET", path: `/v1/payroll_batches/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Nómina: fiscalisto.payrollApprovals. */
+export class PayrollApprovalsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Pedir aprobación de la prenómina
+	 *
+	 * Para un emisor que pide aprobar la prenómina antes de timbrar (Ajustes › Aprobaciones › Prenómina en la app): manda la nómina del periodo a aprobación. Calcula cada recibo como lo timbraría POST /v1/payroll_receipts y guarda sus importes; reemplaza la que se haya pedido antes para el mismo periodo, y avisa a quienes pueden aprobarla. La aprueba o rechaza una persona en Nómina › Emitir recibos (no una llave). Mientras no esté aprobada, POST /v1/payroll_receipts y POST /v1/payroll_batches de ese periodo contestan payroll_approval_required; aprobada, timbran solo los recibos de ella con los mismos importes y fecha de pago.
+	 *
+	 * POST /v1/payroll_approvals
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-payroll-approval
+	 */
+	create(params: CreatePayrollApprovalParams, options?: RequestOptions): Promise<PayrollApproval> {
+		return this.#client.request({ method: "POST", path: "/v1/payroll_approvals", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar prenóminas por aprobar
+	 *
+	 * Las prenóminas pedidas para aprobación, las más recientes primero.
+	 *
+	 * GET /v1/payroll_approvals
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/list-payroll-approvals
+	 */
+	list(params?: ListPayrollApprovalsParams, options?: RequestOptions): List<PayrollApproval> {
+		return this.#client.list({ path: "/v1/payroll_approvals", query: params }, options);
+	}
+
+	/**
+	 * Ver una prenómina por aprobar
+	 *
+	 * Con su estado y los importes de cada recibo.
+	 *
+	 * GET /v1/payroll_approvals/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-payroll-approval
+	 */
+	get(id: string, options?: RequestOptions): Promise<PayrollApproval> {
+		return this.#client.request({ method: "GET", path: `/v1/payroll_approvals/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Retirar una prenómina por aprobar
+	 *
+	 * Retira una que espera aprobación (status withdrawn), para corregirla y pedirla de nuevo, o porque no se pagará.
+	 *
+	 * POST /v1/payroll_approvals/{id}/cancel
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/cancel-payroll-approval
+	 */
+	cancel(id: string, options?: RequestOptions): Promise<PayrollApproval> {
+		return this.#client.request({ method: "POST", path: `/v1/payroll_approvals/${encodeURIComponent(id)}/cancel`, idempotent: true }, options);
 	}
 }
 
@@ -20561,6 +20766,7 @@ export class FiscalistoApi extends Core {
 	readonly vacationRequests = new VacationRequestsResource(this);
 	readonly payrollReceipts = new PayrollReceiptsResource(this);
 	readonly payrollBatches = new PayrollBatchesResource(this);
+	readonly payrollApprovals = new PayrollApprovalsResource(this);
 	readonly payrollBankFiles = new PayrollBankFilesResource(this);
 	readonly imssMovements = new ImssMovementsResource(this);
 	readonly imssFiles = new ImssFilesResource(this);
