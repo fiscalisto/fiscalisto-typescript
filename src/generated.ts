@@ -2523,6 +2523,66 @@ export interface PayrollTaxSettings {
 	excluded_perception_types: string[] | null;
 	/** La opción de tasa de cada estado, por su c_Estado. */
 	state_options: Record<string, string>;
+	/** El día del mes siguiente en que se paga el impuesto de cada estado que lo indicó, por su c_Estado; los demás, el de su ley. */
+	due_days: Record<string, number>;
+}
+
+/** Una fecha del calendario de nómina. */
+export interface PayrollCalendarEvent {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "payroll_calendar_event";
+	/** pago (una nómina, en su fecha de pago), imss (cuotas del mes, LSS art. 39), rcv_infonavit (bimestrales), isn (impuesto sobre nómina de un estado), aguinaldo (LFT art. 87), ptu (LFT art. 122), prima_riesgo (determinación anual, RACERF art. 32) o ajuste_anual (LISR art. 97). */
+	obligation: "pago" | "imss" | "rcv_infonavit" | "isn" | "aguinaldo" | "ptu" | "prima_riesgo" | "ajuste_anual";
+	/** Lo identifica junto con obligation: 2026-11 (mes), 2026-B6 (bimestre), 2026 (año), 2026-11:CMX (ISN de un estado) o 2026-11-16/2026-11-30:04 (una nómina). */
+	key: string;
+	/** Qué es, como lo dice la app. */
+	title: string;
+	/** El último día para pagarlo (YYYY-MM-DD), ya movido al siguiente día hábil cuando la ley lo mueve. */
+	due_date: string;
+	/** El artículo de la ley que da la fecha. */
+	basis: string;
+	/** Si se debe depende de algo que no sabemos (una PTU sin utilidad, una prima que no cambió) o falta el día de pago del ISN de un estado: qué confirmar. No se avisa. */
+	to_confirm: string | null;
+	/** Marcado como pagado; una nómina, cuando todos sus recibos están timbrados. */
+	paid: boolean;
+	/** Cuándo se marcó pagado (ISO 8601); una nómina timbrada, su fecha de pago. */
+	paid_at: string | null;
+	/** El c_Estado de un isn. */
+	state: string | null;
+	/** Una nómina (obligation pago): su periodo y cuántos recibos van. */
+	payroll: {
+		/** c_PeriodicidadPago. */
+		periodicity: string;
+		/** El periodo de pago: FechaInicialPago, FechaFinalPago y FechaPago de sus recibos. */
+		period: {
+			/** FechaInicialPago. */
+			start: string;
+			/** FechaFinalPago. */
+			end: string;
+			/** FechaPago. */
+			payment_date: string;
+		};
+		/** El último día para timbrar sus recibos (RMF 2.7.5.1: 3 a 11 días hábiles después del pago, según cuántos trabajadores). */
+		stamp_by: string;
+		/** Los empleados que paga ese periodo. */
+		employees: number;
+		/** Los que ya tienen su recibo timbrado. */
+		stamped: number;
+	} | null;
+}
+
+/** El calendario de nómina del emisor, por fecha. */
+export interface PayrollCalendar {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "payroll_calendar";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Hoy en la Ciudad de México (YYYY-MM-DD). */
+	today: string;
+	/** Eventos que quiere recibir, o ["*"] para todos (por omisión). La lista con cuándo llega cada uno: [Tipos de evento](https://fiscalisto.com/docs/api/webhooks#tipos-de-evento). */
+	events: PayrollCalendarEvent[];
 }
 
 /** Los archivos para presentar movimientos en IDSE o importarlos en SUA. */
@@ -11588,6 +11648,27 @@ export interface GetPayrollCostParams {
 	year?: number;
 }
 
+/** Los parámetros de GET /v1/payroll_calendar. */
+export interface GetPayrollCalendarParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Hasta cuántos días adelante (por omisión 90, hasta 366). */
+	days_ahead?: number;
+	/** Desde cuántos días atrás (por omisión 31, hasta 366). */
+	days_back?: number;
+}
+
+export interface MarkPayrollCalendarEventParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** imss, rcv_infonavit, isn, aguinaldo, ptu, prima_riesgo o ajuste_anual. */
+	obligation: "imss" | "rcv_infonavit" | "isn" | "aguinaldo" | "ptu" | "prima_riesgo" | "ajuste_anual";
+	/** Como lo da GET /v1/payroll_calendar: 2026-11, 2026-B6, 2026, 2026-11:CMX. */
+	key: string;
+	/** true lo marca pagado; false lo desmarca. */
+	paid: boolean;
+}
+
 export interface UpdatePayrollTaxSettingsParams {
 	/** El emisor (iss_…); por omisión, el único de la cuenta. */
 	issuer?: string;
@@ -11595,6 +11676,8 @@ export interface UpdatePayrollTaxSettingsParams {
 	excluded_perception_types?: string[];
 	/** La opción de tasa de cada estado que la tiene, por su c_Estado: {"BCN": "hasta50"}. */
 	state_options?: Record<string, string>;
+	/** El día del mes siguiente en que se paga el impuesto de cada estado, por su c_Estado: {"NLE": 17}. null vuelve al día de su ley (Ciudad de México 17, Jalisco 12, Estado de México 10); los demás estados, sin día, salen por confirmar en GET /v1/payroll_calendar. Solo cambia los estados que mande. */
+	due_days?: Record<string, number | null>;
 }
 
 export interface CreateInvoiceBatchParams {
@@ -16980,6 +17063,38 @@ export class PayrollReportsResource {
 	}
 }
 
+/** Nómina: fiscalisto.payrollCalendar. */
+export class PayrollCalendarResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Calendario de nómina
+	 *
+	 * Como «Nómina › Calendario» de la app: cada nómina en su fecha de pago (con cuántos de sus recibos están timbrados y el último día para timbrarlos), y lo que se paga por ella, con el artículo de la ley de cada fecha: cuotas del IMSS (día 17 del mes siguiente, LSS art. 39), RCV e Infonavit (bimestrales, día 17), impuesto sobre nómina de cada estado donde trabajan sus empleados, aguinaldo (antes del 20 de diciembre), PTU, prima de riesgo de trabajo (febrero) y ajuste anual. Una fecha de pago al IMSS que cae en día inhábil o viernes pasa al siguiente día hábil (CFF art. 12, RACERF art. 3).
+	 *
+	 * GET /v1/payroll_calendar
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-payroll-calendar
+	 */
+	get(params?: GetPayrollCalendarParams, options?: RequestOptions): Promise<PayrollCalendar> {
+		return this.#client.request({ method: "GET", path: "/v1/payroll_calendar", query: params }, options);
+	}
+
+	/**
+	 * Marcar un pago de nómina como pagado
+	 *
+	 * Marca (paid true) o desmarca (false) un pago del calendario de nómina: imss, rcv_infonavit, isn, aguinaldo, ptu, prima_riesgo o ajuste_anual, con su key como lo da GET /v1/payroll_calendar. Una nómina (pago) queda hecha al timbrar sus recibos.
+	 *
+	 * POST /v1/payroll_calendar/mark
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/mark-payroll-calendar-event
+	 */
+	mark(params: MarkPayrollCalendarEventParams, options?: RequestOptions): Promise<PayrollCalendarEvent> {
+		return this.#client.request({ method: "POST", path: "/v1/payroll_calendar/mark", body: params, idempotent: true }, options);
+	}
+}
+
 /** Lotes: fiscalisto.invoiceBatches. */
 export class InvoiceBatchesResource {
 	readonly #client: Client;
@@ -20823,6 +20938,7 @@ export class FiscalistoApi extends Core {
 	readonly annualAdjustments = new AnnualAdjustmentsResource(this);
 	readonly payrollTaxes = new PayrollTaxesResource(this);
 	readonly payrollReports = new PayrollReportsResource(this);
+	readonly payrollCalendar = new PayrollCalendarResource(this);
 	readonly invoiceBatches = new InvoiceBatchesResource(this);
 	readonly taxIds = new TaxIdsResource(this);
 	readonly branches = new BranchesResource(this);
