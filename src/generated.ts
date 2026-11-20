@@ -7812,6 +7812,232 @@ export interface SupplierInvoice {
 	approved_at: string | null;
 }
 
+/** Un pago a proveedores con Fintoc: una o varias transferencias SPEI que salen juntas en su día, después de las firmas que la empresa pide. La API lo prepara; solo se firma en la app. */
+export interface Payout {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "payout";
+	/** El emisor (iss_…) que paga. */
+	issuer: string;
+	/** Su número en la empresa (Pago 12), como en la app. */
+	number: number;
+	/** draft (borrador: falta que alguien lo firme en la app), pending_approval (faltan firmas), approved (firmado: sale en su día), sending, paid (llegaron todas), partially_paid (llegaron algunas), failed (no llegó ninguna) o canceled. */
+	status: "draft" | "pending_approval" | "approved" | "sending" | "paid" | "partially_paid" | "failed" | "canceled";
+	/** El día en que sale (AAAA-MM-DD, hora de la Ciudad de México). */
+	pay_on: string;
+	/** La suma de sus transferencias, en pesos. */
+	total: number;
+	/** Siempre MXN: las transferencias SPEI son en pesos. */
+	currency: "MXN";
+	/** La nota para quien lo revisa, o null. */
+	note: string | null;
+	/** De dónde salió: app, api, assistant (un asistente como ChatGPT o Claude), rule (una regla que paga sola) o recurring (un pago recurrente). */
+	source: "app" | "api" | "assistant" | "rule" | "recurring";
+	/** El pago recurrente (pym_…) que lo hizo, o null. */
+	payout_mandate: string | null;
+	/** required: cuántas firmas pide (null mientras es borrador); given: cuántas personas ya firmaron. La API nunca firma. */
+	signatures: {
+		/** Cuántas firmas pide, o null mientras es borrador. */
+		required: number | null;
+		/** Cuántas personas ya lo firmaron en la app. */
+		given: number;
+	};
+	/** Dónde lo revisa y lo firma alguien del equipo, en la app. */
+	app_url: string;
+	/** Sus transferencias, una por proveedor y cuenta. */
+	transfers: PayoutTransfer[];
+	/** Por qué se canceló, o null. */
+	cancel_reason: string | null;
+	/** true si lo preparó la API. */
+	created_by_api: boolean;
+	/** Cuándo se preparó. */
+	created_at: string | null;
+	/** Cuándo tuvo todas sus firmas, o null. */
+	approved_at: string | null;
+	/** Cuándo empezaron a salir sus transferencias, o null. */
+	sent_at: string | null;
+	/** Cuándo terminó (todas llegaron o se resolvieron), o null. */
+	settled_at: string | null;
+	/** Cuándo se canceló, o null. */
+	canceled_at: string | null;
+}
+
+/** Una transferencia SPEI de un pago a proveedores: a una cuenta de un proveedor, con las facturas que paga, su clave de rastreo y su CEP. */
+export interface PayoutTransfer {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "payout_transfer";
+	/** El emisor (iss_…) que paga. */
+	issuer: string;
+	/** El pago (pyo_…) al que pertenece. */
+	payout: string;
+	/** El RFC del proveedor. */
+	supplier_tax_id: string;
+	/** El nombre del proveedor, o null. */
+	supplier_name: string | null;
+	/** La cuenta del proveedor (pya_…) a la que va. */
+	payee_account: string;
+	/** La CLABE de 18 dígitos a la que va. */
+	clabe: string;
+	/** El banco de la CLABE, o null. */
+	bank: string | null;
+	/** Cuánto, en pesos. */
+	amount: number;
+	/** Siempre MXN. */
+	currency: "MXN";
+	/** El concepto que ve el proveedor en su banco. */
+	concept: string;
+	/** La referencia numérica SPEI, o null. */
+	reference: string | null;
+	/** queued (por salir), sending, in_transit (en camino), unknown (por confirmar con el banco), succeeded (llegó), failed (no salió), returning (el banco la está devolviendo), returned (la devolvieron), not_sent o removed (se quitó del pago). */
+	status: "queued" | "sending" | "in_transit" | "unknown" | "succeeded" | "failed" | "returning" | "returned" | "not_sent" | "removed";
+	/** La clave de rastreo SPEI, o null antes de salir. */
+	tracking_key: string | null;
+	/** La liga al CEP de Banxico, o null mientras no llega. */
+	cep_url: string | null;
+	/** Por qué no salió o por qué la devolvieron, o null. */
+	failure_reason: string | null;
+	/** Lo que paga: cada factura (uuid) con su monto en su moneda, o un pago sin factura (without_invoice, con description). */
+	invoices: {
+		/** Folio fiscal que asigna el SAT (UUID del Timbre Fiscal Digital), en mayúsculas. */
+		uuid: string | null;
+		/** Importe. */
+		amount: number;
+		/** Moneda, clave ISO 4217 de c_Moneda (MXN, USD, EUR…). Por omisión MXN. */
+		currency: string;
+		/** true si es un pago sin factura (anticipo, depósito…). */
+		without_invoice: boolean;
+		/** Descripción. */
+		description: string | null;
+	}[];
+	/** Cuándo salió, o null. */
+	sent_at: string | null;
+	/** Cuándo llegó o se resolvió, o null. */
+	settled_at: string | null;
+}
+
+/** Una factura recibida con lo que falta por pagar, como la muestra Pagos › Por pagar: lo pagado cuenta complementos, notas de crédito, pagos de Fiscalisto y pagos registrados a mano. */
+export interface PayableInvoice {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "payable_invoice";
+	/** El folio fiscal. */
+	uuid: string;
+	/** La factura descargada del SAT (sat_…). */
+	sat_invoice: string;
+	/** El RFC del proveedor. */
+	supplier_tax_id: string;
+	/** El nombre del proveedor, o null. */
+	supplier_name: string | null;
+	/** Su serie, o null. */
+	series: string | null;
+	/** Su folio, o null. */
+	folio: string | null;
+	/** La fecha de la factura. */
+	date: string;
+	/** Su moneda. */
+	currency: string;
+	/** Su total, en su moneda. */
+	total: number;
+	/** Lo pagado ya, en su moneda. */
+	paid: number;
+	/** Lo que falta por pagar, en su moneda. */
+	amount_due: number;
+	/** PUE o PPD, o null. */
+	payment_method: string | null;
+	/** El pago abierto (pyo_…) en el que ya está, o null. */
+	in_payout: string | null;
+	/** Lo que las Reglas antes de pagar encontraron (por ejemplo cancelada en el SAT, o proveedor en la lista 69-B). */
+	warnings: string[];
+	/** La factura en la app. */
+	app_url: string;
+}
+
+/** Una cuenta de un proveedor a la que se le paga (Pagos › Cuentas de proveedores), verificada con el banco. Solo lectura: una CLABE se agrega o se cambia en la app. */
+export interface PayeeAccount {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "payee_account";
+	/** El emisor (iss_…) que paga. */
+	issuer: string;
+	/** El RFC del proveedor. */
+	supplier_tax_id: string;
+	/** El nombre del proveedor, o null. */
+	supplier_name: string | null;
+	/** La CLABE de 18 dígitos. */
+	clabe: string;
+	/** El banco, o null. */
+	bank: string | null;
+	/** El RFC del titular que confirmó el banco, o null. */
+	holder_tax_id: string | null;
+	/** El nombre del titular que confirmó el banco, o null. */
+	holder_name: string | null;
+	/** true si es de un tercero que la empresa autorizó. */
+	third_party: boolean;
+	/** verifying (verificando con el banco), pending_approval (verificada, por aprobar), holder_mismatch (es de otra persona), failed (no existe o no recibe), approved, rejected o replaced (la sustituyó otra). */
+	status: "verifying" | "pending_approval" | "holder_mismatch" | "failed" | "approved" | "rejected" | "replaced";
+	/** true si ya se le puede pagar (aprobada y pasó la espera de la empresa). */
+	usable: boolean;
+	/** Desde cuándo se le puede pagar, o null. */
+	usable_from: string | null;
+	/** Cuándo la confirmó el banco, o null. */
+	verified_at: string | null;
+	/** Cuándo se agregó. */
+	created_at: string | null;
+}
+
+/** Un pago recurrente (Pagos › Recurrentes): firmado una vez, sale cada mes a la misma cuenta por hasta ese monto. Solo lectura. */
+export interface PayoutMandate {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "payout_mandate";
+	/** El emisor (iss_…) que paga. */
+	issuer: string;
+	/** El RFC del proveedor. */
+	supplier_tax_id: string;
+	/** El nombre del proveedor, o null. */
+	supplier_name: string | null;
+	/** La cuenta (pya_…) a la que sale. */
+	payee_account: string;
+	/** La CLABE a la que sale. */
+	clabe: string;
+	/** Lo más que sale cada mes, en pesos. */
+	amount: number;
+	/** Siempre MXN. */
+	currency: "MXN";
+	/** El día del mes; si no es hábil, sale el día hábil anterior. */
+	day: number;
+	/** El primer mes (AAAA-MM). */
+	first_month: string;
+	/** El último mes (AAAA-MM). */
+	last_month: string;
+	/** El concepto de cada transferencia. */
+	concept: string;
+	/** pending_signatures (falta firmarlo en la app), active, canceled o ended (pasó su último mes). */
+	status: "pending_signatures" | "active" | "canceled" | "ended";
+	/** El próximo día en que sale, o null. */
+	next_pay_on: string | null;
+	/** Los pagos (pyo_…) que ya hizo, uno por mes. */
+	payouts: string[];
+	/** Cuándo se creó. */
+	created_at: string | null;
+	/** Cuándo quedó firmado, o null. */
+	activated_at: string | null;
+	/** Cuándo se canceló, o null. */
+	canceled_at: string | null;
+}
+
 /** Una entrega del pedido, con su remisión (REM-1): lo que salió del almacén. */
 export interface SalesOrderDelivery {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
@@ -8460,7 +8686,7 @@ export interface CfdiVerification {
 }
 
 /** Lo que puede pasar: el tipo de cada evento. */
-export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready";
+export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "payout.approved" | "payout.paid" | "payout.partially_paid" | "payout.failed" | "payout.canceled" | "payout_transfer.succeeded" | "payout_transfer.failed" | "payout_transfer.returned" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready";
 
 /** Algo que pasó en su cuenta: el objeto completo como quedó. Se manda a sus webhooks firmado (Standard Webhooks). */
 export interface EventBase<T extends EventType = EventType, O = unknown> {
@@ -8468,7 +8694,7 @@ export interface EventBase<T extends EventType = EventType, O = unknown> {
 	id: string;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "event";
-	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, invoice.cancellation_failed, invoice.paid, invoice.partially_paid, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, payroll_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, sat_declaration.created, sat_declaration.updated, sat_refresh.completed, sat_refresh.failed, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, quote.withdrawn, sales_order.confirmed, sales_order.customer_confirmed, sales_order.delivered, sales_order.paid, sales_order.canceled, supplier_invoice.received, supplier_invoice.approved, supplier_invoice.rejected, supplier_invoice.scheduled, supplier_invoice.paid, portal_supplier.approved, issuer.ready, balance.low, usage.high o test_clock.ready. */
+	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, invoice.cancellation_failed, invoice.paid, invoice.partially_paid, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, payroll_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, sat_declaration.created, sat_declaration.updated, sat_refresh.completed, sat_refresh.failed, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, quote.withdrawn, sales_order.confirmed, sales_order.customer_confirmed, sales_order.delivered, sales_order.paid, sales_order.canceled, supplier_invoice.received, supplier_invoice.approved, supplier_invoice.rejected, supplier_invoice.scheduled, supplier_invoice.paid, portal_supplier.approved, payout.approved, payout.paid, payout.partially_paid, payout.failed, payout.canceled, payout_transfer.succeeded, payout_transfer.failed, payout_transfer.returned, issuer.ready, balance.low, usage.high o test_clock.ready. */
 	type: T;
 	/** Versión de la API con que se armó el objeto. */
 	api_version: string;
@@ -8523,6 +8749,14 @@ export type Event =
 	| EventBase<"supplier_invoice.scheduled", SupplierInvoice>
 	| EventBase<"supplier_invoice.paid", SupplierInvoice>
 	| EventBase<"portal_supplier.approved", PortalSupplier>
+	| EventBase<"payout.approved", Payout>
+	| EventBase<"payout.paid", Payout>
+	| EventBase<"payout.partially_paid", Payout>
+	| EventBase<"payout.failed", Payout>
+	| EventBase<"payout.canceled", Payout>
+	| EventBase<"payout_transfer.succeeded", PayoutTransfer>
+	| EventBase<"payout_transfer.failed", PayoutTransfer>
+	| EventBase<"payout_transfer.returned", PayoutTransfer>
 	| EventBase<"issuer.ready", Issuer>
 	| EventBase<"balance.low", Balance>
 	| EventBase<"usage.high", Usage>
@@ -9072,6 +9306,50 @@ export interface SupplierInvoiceList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: SupplierInvoice[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface PayableInvoiceList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: PayableInvoice[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface PayoutList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: Payout[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface PayeeAccountList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: PayeeAccount[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface PayoutMandateList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: PayoutMandate[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -13497,6 +13775,71 @@ export interface MarkSupplierInvoicePaidParams {
 	reference?: string | null;
 }
 
+/** Los parámetros de GET /v1/payable_invoices. */
+export interface ListPayableInvoicesParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Cuántas, de 1 a 500. Por omisión 100. */
+	limit?: number;
+	/** Solo las de este proveedor (su RFC). */
+	supplier_tax_id?: string;
+	/** Solo estas: hasta 100 folios fiscales separados por comas. */
+	uuid?: string;
+}
+
+export interface CreatePayoutParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** El día en que sale (AAAA-MM-DD, hoy o después). Por omisión, hoy: sale en cuanto lo firmen. */
+	pay_on?: string;
+	/** Una nota para quien lo revisa y lo firma. */
+	note?: string | null;
+	/** Las facturas recibidas a pagar (de 1 a 500). Las de un mismo proveedor van en una sola transferencia a su cuenta aprobada. */
+	invoices: {
+		/** El folio fiscal de la factura recibida. */
+		uuid: string;
+		/** Cuánto pagar, en la moneda de la factura. Por omisión, todo lo que falta (amount_due). */
+		amount?: number;
+		/** Por qué paga menos de lo que falta («Parcial», «Anticipo»…). */
+		reason?: string | null;
+	}[];
+}
+
+/** Los parámetros de GET /v1/payouts. */
+export interface ListPayoutsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Solo los que estén en este estado. */
+	status?: "draft" | "pending_approval" | "approved" | "sending" | "paid" | "partially_paid" | "failed" | "canceled";
+	/** Solo los que salen desde este día (AAAA-MM-DD). */
+	pay_on_from?: string;
+	/** Solo los que salen hasta este día (AAAA-MM-DD). */
+	pay_on_to?: string;
+}
+
+export interface CancelPayoutParams {
+	/** Por qué se cancela; lo ve el equipo en el pago. */
+	reason?: string | null;
+}
+
+/** Los parámetros de GET /v1/payee_accounts. */
+export interface ListPayeeAccountsParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Solo las de este proveedor (su RFC). */
+	supplier_tax_id?: string;
+}
+
+/** Los parámetros de GET /v1/payout_mandates. */
+export interface ListPayoutMandatesParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
 export interface RefreshSatDeclarationsParams {
 	/** El emisor (iss_…). Por omisión, su único emisor. */
 	issuer?: string;
@@ -15605,7 +15948,7 @@ export interface RollWebhookSecretParams {
 
 export interface TestWebhookEndpointParams {
 	/** El evento a mandar. Por omisión invoice.stamped. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "payout.approved" | "payout.paid" | "payout.partially_paid" | "payout.failed" | "payout.canceled" | "payout_transfer.succeeded" | "payout_transfer.failed" | "payout_transfer.returned" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready";
 }
 
 /** Los parámetros de GET /v1/webhook_endpoints/{id}/deliveries. */
@@ -15625,7 +15968,7 @@ export interface ListEventsParams {
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
 	/** Solo de este tipo (invoice.stamped), o todos los de un recurso con un comodín (invoice.*). */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready" | "invoice.*" | "invoice_batch.*" | "payroll_batch.*" | "recurring_invoice.*" | "quote.*" | "sales_order.*" | "supplier_invoice.*" | "portal_supplier.*" | "ticket.*" | "retention.*" | "customer_data_request.*" | "sat_download.*" | "sat_declaration.*" | "sat_refresh.*" | "issuer.*" | "balance.*" | "usage.*" | "test_clock.*";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "payout.approved" | "payout.paid" | "payout.partially_paid" | "payout.failed" | "payout.canceled" | "payout_transfer.succeeded" | "payout_transfer.failed" | "payout_transfer.returned" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready" | "invoice.*" | "invoice_batch.*" | "payroll_batch.*" | "recurring_invoice.*" | "quote.*" | "sales_order.*" | "supplier_invoice.*" | "portal_supplier.*" | "payout.*" | "payout_transfer.*" | "ticket.*" | "retention.*" | "customer_data_request.*" | "sat_download.*" | "sat_declaration.*" | "sat_refresh.*" | "issuer.*" | "balance.*" | "usage.*" | "test_clock.*";
 	/** Solo los de este objeto (inv_…, ret_…, bat_…). */
 	object?: string;
 	/** false: los que algún webhook no recibió (su último intento falló). true: los que recibieron todos los webhooks a los que se mandaron. */
@@ -19465,6 +19808,122 @@ export class SupplierInvoicesResource {
 	}
 }
 
+/** Pagos a proveedores: fiscalisto.payableInvoices. */
+export class PayableInvoicesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar lo que falta por pagar
+	 *
+	 * Las facturas recibidas con algo por pagar, como Pagos › Por pagar, las más recientes primero; con uuid, esas facturas (pagadas o no). Lo pagado cuenta complementos, notas de crédito, pagos de Fiscalisto y pagos registrados a mano. Si el emisor no paga con Fintoc, 400 payouts_not_enabled.
+	 *
+	 * GET /v1/payable_invoices
+	 * @see https://fiscalisto.com/docs/api/referencia/pagos-a-proveedores/list-payable-invoices
+	 */
+	list(params?: ListPayableInvoicesParams, options?: RequestOptions): Promise<PayableInvoiceList> {
+		return this.#client.request({ method: "GET", path: "/v1/payable_invoices", query: params }, options);
+	}
+}
+
+/** Pagos a proveedores: fiscalisto.payouts. */
+export class PayoutsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Preparar un pago a proveedores
+	 *
+	 * Un pago en borrador con estas facturas, revisado como en la app: las reglas antes de pagar, los límites y las cuentas aprobadas de cada proveedor. Las de un proveedor van en una transferencia. Nunca sale solo: alguien del equipo lo abre en app_url y lo firma con su llave de acceso. Solo si la empresa lo permite en Pagos › Configurar pagos (si no, 403 payouts_api_disabled); lo que no se puede pagar contesta 400 payout_invalid con el motivo. Pide Idempotency-Key: si la respuesta se pierde, repítala con el mismo valor y contesta el mismo pago, nunca uno nuevo.
+	 *
+	 * POST /v1/payouts
+	 * @see https://fiscalisto.com/docs/api/referencia/pagos-a-proveedores/create-payout
+	 */
+	create(params: CreatePayoutParams, options?: RequestOptions): Promise<Payout> {
+		return this.#client.request({ method: "POST", path: "/v1/payouts", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar pagos a proveedores
+	 *
+	 * Los pagos del emisor, hechos en la app o por la API, los más recientes primero, con sus transferencias.
+	 *
+	 * GET /v1/payouts
+	 * @see https://fiscalisto.com/docs/api/referencia/pagos-a-proveedores/list-payouts
+	 */
+	list(params?: ListPayoutsParams, options?: RequestOptions): List<Payout> {
+		return this.#client.list({ path: "/v1/payouts", query: params }, options);
+	}
+
+	/**
+	 * Ver un pago a proveedores
+	 *
+	 * Con sus firmas, cada transferencia, su clave de rastreo y su CEP cuando llega.
+	 *
+	 * GET /v1/payouts/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/pagos-a-proveedores/get-payout
+	 */
+	get(id: string, options?: RequestOptions): Promise<Payout> {
+		return this.#client.request({ method: "GET", path: `/v1/payouts/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Cancelar un pago a proveedores
+	 *
+	 * Uno que preparó la API, mientras no ha salido nada (draft, pending_approval o approved): sus facturas vuelven a Por pagar y llega payout.canceled. Uno preparado en la app se cancela en la app (400 payout_not_from_api).
+	 *
+	 * POST /v1/payouts/{id}/cancel
+	 * @see https://fiscalisto.com/docs/api/referencia/pagos-a-proveedores/cancel-payout
+	 */
+	cancel(id: string, params?: CancelPayoutParams, options?: RequestOptions): Promise<Payout> {
+		return this.#client.request({ method: "POST", path: `/v1/payouts/${encodeURIComponent(id)}/cancel`, body: params, idempotent: true }, options);
+	}
+}
+
+/** Pagos a proveedores: fiscalisto.payeeAccounts. */
+export class PayeeAccountsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar cuentas de proveedores
+	 *
+	 * Las cuentas a las que se les paga a sus proveedores, verificadas con el banco, y si ya se les puede pagar. Solo lectura: agregar o cambiar una CLABE se hace en la app, con su espera y su aprobación.
+	 *
+	 * GET /v1/payee_accounts
+	 * @see https://fiscalisto.com/docs/api/referencia/pagos-a-proveedores/list-payee-accounts
+	 */
+	list(params?: ListPayeeAccountsParams, options?: RequestOptions): Promise<PayeeAccountList> {
+		return this.#client.request({ method: "GET", path: "/v1/payee_accounts", query: params }, options);
+	}
+}
+
+/** Pagos a proveedores: fiscalisto.payoutMandates. */
+export class PayoutMandatesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar pagos recurrentes
+	 *
+	 * Los pagos recurrentes firmados en la app (o por firmar): a qué cuenta, cuánto como máximo, qué día y qué meses, y los pagos que ya hicieron. Solo lectura.
+	 *
+	 * GET /v1/payout_mandates
+	 * @see https://fiscalisto.com/docs/api/referencia/pagos-a-proveedores/list-payout-mandates
+	 */
+	list(params?: ListPayoutMandatesParams, options?: RequestOptions): Promise<PayoutMandateList> {
+		return this.#client.request({ method: "GET", path: "/v1/payout_mandates", query: params }, options);
+	}
+}
+
 /** Declaraciones del SAT: fiscalisto.satDeclarations. */
 export class SatDeclarationsResource {
 	readonly #client: Client;
@@ -21472,6 +21931,10 @@ export class FiscalistoApi extends Core {
 	readonly satRetentions = new SatRetentionsResource(this);
 	readonly portalSuppliers = new PortalSuppliersResource(this);
 	readonly supplierInvoices = new SupplierInvoicesResource(this);
+	readonly payableInvoices = new PayableInvoicesResource(this);
+	readonly payouts = new PayoutsResource(this);
+	readonly payeeAccounts = new PayeeAccountsResource(this);
+	readonly payoutMandates = new PayoutMandatesResource(this);
 	readonly satDeclarations = new SatDeclarationsResource(this);
 	readonly satRefreshes = new SatRefreshesResource(this);
 	readonly tickets = new TicketsResource(this);
