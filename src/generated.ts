@@ -4525,6 +4525,8 @@ export interface ManualJournalEntry {
 		debit: number;
 		/** El abono, en pesos. */
 		credit: number;
+		/** Su centro de costo (ccn_…), o null. */
+		cost_center: string | null;
 	}[];
 	/** Cuándo se capturó. */
 	created_at: string | null;
@@ -4764,6 +4766,147 @@ export interface PayrollProvision {
 	}[];
 	/** La póliza de provisión (mje_…) si ya se registró, o null. Es una póliza a mano de tipo adjustment. */
 	manual_entry: string | null;
+}
+
+/** El presupuesto de un año (de toda la empresa o de un centro de costo) por cuenta de resultados y mes, y cómo va lo real contra él: el mes y de enero a ese mes. */
+export interface Budget {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "budget";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Año (Ejercicio). */
+	year: number;
+	/** El mes de la comparación: el que pidió, el actual en el año en curso, 12 en uno pasado (0 en uno futuro). */
+	month: number;
+	/** El centro de costo (ccn_…) del presupuesto, o null: toda la empresa. */
+	cost_center: string | null;
+	/** Lo presupuestado por cuenta, como se guardó. */
+	lines: {
+		/** El número de cuenta. */
+		account: string;
+		/** El nombre de la cuenta. */
+		account_name: string;
+		/** Su código agrupador del SAT. */
+		grouping_code: string;
+		/** Enero a diciembre. */
+		months: number[];
+		/** La suma de los 12 meses. */
+		annual: number;
+	}[];
+	/** Cada cuenta con presupuesto o con movimiento: lo presupuestado contra lo real. */
+	comparison: {
+		/** El número de la cuenta en su catálogo. */
+		account: string;
+		/** Su nombre. */
+		account_name: string;
+		/** Su código agrupador del SAT. */
+		grouping_code: string;
+		/** Su parte del estado de resultados. */
+		section: "revenue" | "cost_of_sales" | "operating_expenses" | "financing" | "other";
+		/** El mes. */
+		month: {
+			/** El mes: lo presupuestado. */
+			budget: number;
+			/** El mes: lo real, de sus pólizas. */
+			actual: number;
+			/** Real menos presupuesto. */
+			variance: number;
+			/** La variación como porcentaje del presupuesto (null sin presupuesto). */
+			variance_percent: number | null;
+			/** true si lo real deja al menos la utilidad presupuestada: más ingresos o menos gastos. */
+			favorable: boolean;
+		};
+		/** De enero al mes. */
+		year_to_date: {
+			/** De enero al mes: lo presupuestado. */
+			budget: number;
+			/** De enero al mes: lo real, de sus pólizas. */
+			actual: number;
+			/** Real menos presupuesto. */
+			variance: number;
+			/** La variación como porcentaje del presupuesto (null sin presupuesto). */
+			variance_percent: number | null;
+			/** true si lo real deja al menos la utilidad presupuestada: más ingresos o menos gastos. */
+			favorable: boolean;
+		};
+		/** Lo presupuestado en todo el año. */
+		annual_budget: number;
+	}[];
+	/** La utilidad antes de impuestos. */
+	income_before_taxes: {
+		/** El mes. */
+		month: {
+			/** Presupuestada. */
+			budget: number;
+			/** Real. */
+			actual: number;
+		};
+		/** De enero al mes. */
+		year_to_date: {
+			/** Presupuestada. */
+			budget: number;
+			/** Real. */
+			actual: number;
+		};
+		/** Presupuestada en todo el año. */
+		annual_budget: number;
+	};
+}
+
+/** El estado de resultados por centro de costo: lo que cada uno dejó de utilidad, de las facturas que se le pusieron y de los renglones de póliza que lo llevan. Juntos suman el estado de resultados de la empresa. */
+export interface CostCenterResults {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "cost_center_results";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Un solo mes, del 1 al 12 (MesIni y MesFin iguales). */
+	month: string;
+	/** El mes. */
+	month_results: {
+		/** El centro de costo (ccn_…), o null: lo que no tiene centro. */
+		cost_center: string | null;
+		/** Su nombre. */
+		cost_center_name: string | null;
+		/** Ingresos. */
+		revenue: number;
+		/** Costo de ventas, en negativo. */
+		cost_of_sales: number;
+		/** Gastos de operación, en negativo. */
+		operating_expenses: number;
+		/** Resultado integral de financiamiento. */
+		financing: number;
+		/** Otros ingresos y gastos. */
+		other: number;
+		/** Utilidad (o pérdida) antes de impuestos. */
+		income_before_taxes: number;
+		/** Utilidad entre ingresos, en porcentaje (null sin ingresos). */
+		margin_percent: number | null;
+	}[];
+	/** De enero al mes. */
+	year_to_date: {
+		/** El centro de costo (ccn_…), o null: lo que no tiene centro. */
+		cost_center: string | null;
+		/** Su nombre. */
+		cost_center_name: string | null;
+		/** Ingresos. */
+		revenue: number;
+		/** Costo de ventas, en negativo. */
+		cost_of_sales: number;
+		/** Gastos de operación, en negativo. */
+		operating_expenses: number;
+		/** Resultado integral de financiamiento. */
+		financing: number;
+		/** Otros ingresos y gastos. */
+		other: number;
+		/** Utilidad (o pérdida) antes de impuestos. */
+		income_before_taxes: number;
+		/** Utilidad entre ingresos, en porcentaje (null sin ingresos). */
+		margin_percent: number | null;
+	}[];
 }
 
 /** La determinación de impuestos de un mes en la contabilidad: el IVA cobrado y pagado del mes (de sus pólizas) que pasa a IVA por pagar o a favor, el pago provisional de ISR sugerido y la póliza que los registra, si ya se registró. */
@@ -11587,6 +11730,8 @@ export interface CreateManualEntryParams {
 		debit?: number;
 		/** El abono. */
 		credit?: number;
+		/** Su centro de costo (ccn_…, GET /v1/cost_centers), opcional: los resultados por centro de costo y los presupuestos lo leen. */
+		cost_center?: string | null;
 	}[];
 }
 
@@ -11629,6 +11774,8 @@ export interface UpdateManualEntryParams {
 		debit?: number;
 		/** El abono. */
 		credit?: number;
+		/** Su centro de costo (ccn_…, GET /v1/cost_centers), opcional: los resultados por centro de costo y los presupuestos lo leen. */
+		cost_center?: string | null;
 	}[];
 }
 
@@ -11653,6 +11800,8 @@ export interface ImportManualEntriesParams {
 			debit?: number;
 			/** El abono. */
 			credit?: number;
+			/** Su centro de costo (ccn_…, GET /v1/cost_centers), opcional: los resultados por centro de costo y los presupuestos lo leen. */
+			cost_center?: string | null;
 		}[];
 	}[];
 }
@@ -11758,6 +11907,36 @@ export interface CreateCostOfSalesParams {
 
 /** Los parámetros de DELETE /v1/accounting/cost_of_sales/{month}. */
 export interface DeleteCostOfSalesParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+/** Los parámetros de GET /v1/accounting/budgets/{year}. */
+export interface GetBudgetParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** El centro de costo (ccn_…). Sin él, toda la empresa. */
+	cost_center?: string;
+	/** El mes de la comparación, de 1 a 12. Por omisión el actual en el año en curso, 12 en uno pasado. */
+	month?: number;
+}
+
+export interface SaveBudgetParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** El centro de costo (ccn_…) del presupuesto. Sin él, el de toda la empresa. Cada centro tiene el suyo. */
+	cost_center?: string | null;
+	/** Las cuentas del presupuesto. Reemplaza todo el presupuesto de ese año (y centro): una cuenta que no mande sale; una lista vacía lo borra. */
+	lines: {
+		/** El número de una cuenta de resultados (código agrupador 4 a 7) de su catálogo, por ejemplo 601-84. */
+		account: string;
+		/** Los 12 meses, de enero a diciembre, en pesos y en la naturaleza de la cuenta: un ingreso como ingreso, un gasto como gasto. */
+		months: number[];
+	}[];
+}
+
+/** Los parámetros de GET /v1/accounting/cost_center_results/{month}. */
+export interface GetCostCenterResultsParams {
 	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
 	issuer?: string;
 }
@@ -16966,6 +17145,58 @@ export class CostOfSalesResource {
 	}
 }
 
+/** Contabilidad: fiscalisto.budgets. */
+export class BudgetsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ver el presupuesto de un año contra lo real
+	 *
+	 * El presupuesto del año por cuenta de resultados y mes, y la comparación con lo real de sus pólizas: el mes y de enero a ese mes, con la variación, su porcentaje y si es favorable (deja más utilidad que lo planeado). Con cost_center, el presupuesto y lo real de ese centro de costo; sin él, de toda la empresa. Como Estados financieros › Presupuesto en la app.
+	 *
+	 * GET /v1/accounting/budgets/{year}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-budget
+	 */
+	get(year: string, params?: GetBudgetParams, options?: RequestOptions): Promise<Budget> {
+		return this.#client.request({ method: "GET", path: `/v1/accounting/budgets/${encodeURIComponent(year)}`, query: params }, options);
+	}
+
+	/**
+	 * Guardar el presupuesto de un año
+	 *
+	 * Reemplaza el presupuesto del año (de toda la empresa, o del centro de costo de cost_center) con las cuentas que mande: cada una con sus 12 meses en la naturaleza de la cuenta. Solo cuentas de resultados (códigos agrupadores 4 a 7); una cuenta dos veces contesta parameter_invalid en lines. Una lista vacía borra el presupuesto.
+	 *
+	 * POST /v1/accounting/budgets/{year}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/save-budget
+	 */
+	save(year: string, params: SaveBudgetParams, options?: RequestOptions): Promise<Budget> {
+		return this.#client.request({ method: "POST", path: `/v1/accounting/budgets/${encodeURIComponent(year)}`, body: params, idempotent: true }, options);
+	}
+}
+
+/** Contabilidad: fiscalisto.costCenterResults. */
+export class CostCenterResultsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ver el estado de resultados por centro de costo
+	 *
+	 * Lo que cada centro de costo dejó de utilidad en el mes y de enero a ese mes: sus ingresos, costo de ventas, gastos y otros, de las facturas que se le pusieron (POST /v1/cost_centers/{id}/invoices) y de los renglones de póliza a mano que lo llevan (lines[].cost_center). Lo que no tiene centro va con cost_center null; todos suman el estado de resultados de la empresa.
+	 *
+	 * GET /v1/accounting/cost_center_results/{month}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-cost-center-results
+	 */
+	get(month: string, params?: GetCostCenterResultsParams, options?: RequestOptions): Promise<CostCenterResults> {
+		return this.#client.request({ method: "GET", path: `/v1/accounting/cost_center_results/${encodeURIComponent(month)}`, query: params }, options);
+	}
+}
+
 /** Contabilidad: fiscalisto.payrollProvisions. */
 export class PayrollProvisionsResource {
 	readonly #client: Client;
@@ -17864,6 +18095,8 @@ export class FiscalistoApi extends Core {
 	readonly closedPeriod = new ClosedPeriodResource(this);
 	readonly fxRevaluations = new FxRevaluationsResource(this);
 	readonly costOfSales = new CostOfSalesResource(this);
+	readonly budgets = new BudgetsResource(this);
+	readonly costCenterResults = new CostCenterResultsResource(this);
 	readonly payrollProvisions = new PayrollProvisionsResource(this);
 	readonly taxDeterminations = new TaxDeterminationsResource(this);
 	readonly ledgerBankAccounts = new LedgerBankAccountsResource(this);
