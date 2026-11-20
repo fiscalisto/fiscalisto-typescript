@@ -4123,6 +4123,195 @@ export interface MaterialityInvoice {
 	}[];
 }
 
+/** Una carta invitación, requerimiento u oficio del SAT al RFC del emisor: su plazo en días hábiles desde que surte efectos la notificación (sin los inhábiles del SAT), lo que pide, cuánto de eso tiene Fiscalisto y su última respuesta armada. */
+export interface SatReview {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "sat_review";
+	/** El emisor cuyo RFC recibió el oficio. */
+	issuer: string;
+	/** Qué le llegó (invitation_letter, desk_audit, field_audit…). */
+	type: "invitation_letter" | "return_clarification" | "missing_returns" | "desk_audit" | "field_audit" | "electronic_audit" | "supplier_69b" | "presumption_69b" | "csd_restriction" | "tax_discrepancy" | "refund" | "other";
+	/** Su nombre como lo muestra la app («Revisión de gabinete»). */
+	type_name: string;
+	/** open (por atender), answered, concluded (sin observaciones), assessed (con crédito fiscal), in_defense o closed. */
+	status: "open" | "answered" | "concluded" | "assessed" | "in_defense" | "closed";
+	/** Su estado como lo muestra la app («Por atender»). */
+	status_name: string;
+	/** El número del oficio, o null. */
+	reference: string | null;
+	/** El número de orden o de trámite que va en las pólizas de la contabilidad electrónica, o null. */
+	order_number: string | null;
+	/** La autoridad que lo firma, o null. */
+	authority: string | null;
+	/** Primer día del periodo revisado, o null. */
+	period_start: string | null;
+	/** Último día del periodo revisado, o null. */
+	period_end: string | null;
+	/** El monto que señala el SAT, en pesos, o null. */
+	amount: number | null;
+	/** El último día para responder el oficio pendiente (el más reciente sin responder), o null si la ley no da plazo o ya respondió todos. */
+	due_on: string | null;
+	/** Días hábiles que le quedan: 0 es hoy, negativo ya pasó. null sin plazo. */
+	business_days_left: number | null;
+	/** El día en que el SAT debe terminar la revisión (12 meses en gabinete y visita, 6 en electrónica), o null. */
+	sat_must_conclude_by: string | null;
+	/** Sus oficios, del primero al último, cada uno con su plazo. */
+	notices: {
+		/** Qué oficio es, de los de su tipo. */
+		step: string;
+		/** Su nombre («Solicitud de información»). */
+		name: string;
+		/** El día en que se lo notificaron. */
+		notified_on: string;
+		/** El día en que surte efectos (el hábil siguiente). */
+		effective_on: string;
+		/** Los días hábiles que da, con la prórroga si la pidió; null si la ley no da plazo. */
+		business_days: number | null;
+		/** Si pidió la prórroga o presentó el aviso. */
+		extension: boolean;
+		/** Su último día para responder, o null. */
+		due_on: string | null;
+		/** Días hábiles que le quedan (0 es hoy, negativo ya pasó), o null. */
+		business_days_left: number | null;
+		/** El día en que lo respondió, o null. */
+		answered_on: string | null;
+		/** El artículo que da el plazo («art. 53 inciso c) CFF»). */
+		law: string;
+		/** Hasta cuándo puede pedir un acuerdo conclusivo en Prodecon (art. 69-C CFF), cuando aplica. */
+		conclusive_agreement_until: string | null;
+	}[];
+	/** Lo que el oficio pide entregar y qué tan listo está. */
+	requests: {
+		/** Qué pide. */
+		key: "working_paper" | "tax_discrepancy" | "issued_invoices" | "received_invoices" | "retentions" | "tax_returns" | "electronic_accounting" | "materiality" | "bank_statements" | "contracts" | "inventory" | "assets_and_staff" | "articles_and_power" | "written_answer" | "other";
+		/** Cómo se llama (o como lo dice el oficio). */
+		name: string;
+		/** fiscalisto: lo arma la respuesta con sus datos; you: se sube (contratos, escrito…). */
+		made_by: "fiscalisto" | "you";
+		/** Si lo marcó como listo. */
+		done: boolean;
+		/** Su nota, o null. */
+		note: string | null;
+		/** Lo que Fiscalisto tiene para eso en el periodo («412 CFDI»), o null. */
+		have: string | null;
+		/** Cuántos documentos subió para eso en la app. */
+		documents: number;
+		/** Listo: lo marcó, Fiscalisto lo arma con lo que tiene, o subió al menos un documento. */
+		ready: boolean;
+	}[];
+	/** Cuántas de requests están listas («Ya tiene N de M»). */
+	ready: number;
+	/** Cuántas pide. */
+	total: number;
+	/** La última respuesta armada (POST /v1/sat_reviews/{id}/answer), o null. Se descarga con GET /v1/sat_reviews/{id}/answer. */
+	answer: {
+		/** processing, completed (se descarga), failed o expired. */
+		status: "processing" | "completed" | "failed" | "expired";
+		/** El tamaño del ZIP, ya completo. */
+		size_bytes: number | null;
+		/** Por qué falló, o null. */
+		error: string | null;
+		/** Cuándo se pidió. */
+		created_at: string;
+		/** Cuándo quedó lista, o null. */
+		completed_at: string | null;
+		/** Hasta cuándo se descarga, o null. */
+		expires_at: string | null;
+	} | null;
+	/** Sus notas, o null. */
+	notes: string | null;
+	/** Cuándo se registró. */
+	created_at: string;
+	/** Su último cambio. */
+	updated_at: string;
+}
+
+/** Revise como el SAT: lo que los sistemas del SAT cruzan para mandar cartas invitación y escoger a quién revisar, con lo que Fiscalisto ya leyó del emisor. No consulta al SAT. */
+export interface SatRiskCheck {
+	/** Siempre sat_risk_check. */
+	object: "sat_risk_check";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Su RFC. */
+	tax_id: string;
+	/** Cuántas revisiones salen para atender ya. */
+	critical: number;
+	/** Cuántas salen para revisar. */
+	warning: number;
+	/** Cada cruce, los que hay que atender primero. */
+	checks: {
+		/** Qué revisa: revisiones, buzon, cruces, omisiones, opinion, listas, efos, materialidad, depositos, discrepancia o efirma. */
+		key: string;
+		/** ok, warning (revisar), critical (atender ya) o unknown (Fiscalisto aún no lo lee). */
+		result: "ok" | "warning" | "critical" | "unknown";
+		/** Lo que encontró, en una línea. */
+		title: string;
+		/** El detalle, con cifras. */
+		detail: string;
+		/** Por qué le importa al SAT. */
+		why: string;
+	}[];
+}
+
+/** La discrepancia fiscal de una persona física en un año (art. 91 LISR): lo que gastó y recibió en sus cuentas contra lo que declaró. */
+export interface TaxDiscrepancy {
+	/** Siempre tax_discrepancy. */
+	object: "tax_discrepancy";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…), una persona física. */
+	issuer: string;
+	/** Su RFC (13 caracteres). */
+	tax_id: string;
+	/** El ejercicio. */
+	year: number;
+	/** Gastos con CFDI a su nombre (recibidos, sin cancelados, menos notas de crédito). */
+	spending: number;
+	/** Depósitos en sus cuentas (de los estados de cuenta en Conciliación). */
+	deposits: number;
+	/** Traspasos entre sus cuentas, que la ley deja fuera (art. 91 LISR). */
+	own_transfers: number;
+	/** Préstamos que clasificó. */
+	loans: number;
+	/** Devoluciones que clasificó. */
+	refunds: number;
+	/** Erogaciones: gastos más depósitos, menos traspasos. */
+	outflows: number;
+	/** Los ingresos declarados que se restan. */
+	declared_income: number;
+	/** De dónde salen: tax_returns (sus declaraciones), payroll (sus recibos de nómina), declared_income (el que mandó) o none. */
+	declared_income_source: "tax_returns" | "payroll" | "declared_income" | "none";
+	/** Erogaciones menos préstamos, devoluciones e ingresos declarados, si es positivo: lo que el SAT presumiría ingreso. */
+	discrepancy: number;
+	/** Depósitos sin clasificar en Conciliación («Por aclarar»): cada uno que explique baja la discrepancia. */
+	unclassified_deposits: number;
+	/** Si sus préstamos pasan de $600,000 en el año: solo cuentan si los informó en su declaración anual (art. 90 LISR). */
+	loans_to_report: boolean;
+	/** Si hay estados de cuenta del año; sin ellos solo cuentan los gastos con CFDI. */
+	bank_statements: boolean;
+	/** El cálculo mes por mes. */
+	months: {
+		/** El mes (AAAA-MM). */
+		month: string;
+		/** Sus gastos con CFDI a su nombre. */
+		spending: number;
+		/** Los depósitos en sus cuentas. */
+		deposits: number;
+		/** Los traspasos entre sus cuentas. */
+		own_transfers: number;
+		/** Los préstamos que clasificó. */
+		loans: number;
+		/** Los ingresos declarados del mes. */
+		declared_income: number;
+	}[];
+}
+
 /** Una venta que su comprador puede facturar él mismo en el portal del emisor (autofactura). */
 export interface Ticket {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
@@ -7367,6 +7556,17 @@ export interface MaterialityInvoiceList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: MaterialityInvoice[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface SatReviewList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: SatReview[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -11154,6 +11354,122 @@ export interface ListMaterialityInvoicesParams {
 	supplier_tax_id?: string;
 	/** Solo las de este estado: complete, partial o none. Sin él, las que no están completas. */
 	state?: "complete" | "partial" | "none";
+}
+
+export interface CreateSatReviewParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** Qué le llegó: invitation_letter, return_clarification, missing_returns, desk_audit (revisión de gabinete), field_audit (visita domiciliaria), electronic_audit, supplier_69b, presumption_69b, csd_restriction, tax_discrepancy, refund u other. */
+	type: "invitation_letter" | "return_clarification" | "missing_returns" | "desk_audit" | "field_audit" | "electronic_audit" | "supplier_69b" | "presumption_69b" | "csd_restriction" | "tax_discrepancy" | "refund" | "other";
+	/** Sus oficios con su fecha de notificación: el que la abrió y los que siguieron (prórroga, segundo requerimiento, observaciones…). */
+	notices: {
+		/** Qué oficio es, de los de su tipo (en desk_audit: solicitud, observaciones o resolucion); por omisión, el primero, el que abre la revisión. Otro contesta con los de su tipo. */
+		step?: string;
+		/** El día en que se lo notificaron (en el Buzón, el día en que lo abrió o el quinto día hábil después del aviso, lo que pase primero). No puede ser futuro. */
+		notified_on: string;
+		/** Los días hábiles que da el oficio, solo cuando no son los de la ley (una carta invitación con fecha, «otro» oficio). */
+		business_days?: number | null;
+		/** true si pidió la prórroga (o presentó el aviso) que la ley permite en ese oficio: suma sus días al plazo. */
+		extension?: boolean;
+		/** El día en que lo respondió; null mientras no. */
+		answered_on?: string | null;
+	}[];
+	/** Lo que el oficio pide entregar. Sin esto, lo que el SAT suele pedir en ese tipo. */
+	requests?: {
+		/** Qué pide (vea requests en la guía). */
+		key: "working_paper" | "tax_discrepancy" | "issued_invoices" | "received_invoices" | "retentions" | "tax_returns" | "electronic_accounting" | "materiality" | "bank_statements" | "contracts" | "inventory" | "assets_and_staff" | "articles_and_power" | "written_answer" | "other";
+		/** Cómo lo dice el oficio, si quiere sus palabras; con other, obligatorio. */
+		name?: string;
+		/** true cuando ya lo tiene listo. */
+		done?: boolean;
+		/** Una nota suya. */
+		note?: string;
+	}[];
+	/** open (por atender, por omisión), answered, concluded (sin observaciones), assessed (con crédito fiscal), in_defense o closed. Mientras está open, answered, assessed o in_defense, Fiscalisto cuenta sus plazos y avisa. */
+	status?: "open" | "answered" | "concluded" | "assessed" | "in_defense" | "closed";
+	/** El número del oficio, como viene en él (por ejemplo 500-05-2026-1234). */
+	reference?: string | null;
+	/** El número de orden (ABC1234567/26) o de trámite (AB123456789012) si pide la contabilidad electrónica: va en sus pólizas. */
+	order_number?: string | null;
+	/** La autoridad que lo firma (por ejemplo «ADAF de Occidente»). */
+	authority?: string | null;
+	/** Primer día del periodo que revisa. Con period_end, Fiscalisto arma lo suyo. */
+	period_start?: string | null;
+	/** Último día del periodo que revisa (a lo más 7 ejercicios). */
+	period_end?: string | null;
+	/** El monto que señala el SAT, en pesos, si señala uno. */
+	amount?: number | null;
+	/** Sus notas. */
+	notes?: string | null;
+}
+
+/** Los parámetros de GET /v1/sat_reviews. */
+export interface ListSatReviewsParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Solo las de este estado: open, answered, concluded, assessed, in_defense o closed. */
+	status?: "open" | "answered" | "concluded" | "assessed" | "in_defense" | "closed";
+}
+
+export interface UpdateSatReviewParams {
+	/** Qué le llegó (vea type al crearla). */
+	type?: "invitation_letter" | "return_clarification" | "missing_returns" | "desk_audit" | "field_audit" | "electronic_audit" | "supplier_69b" | "presumption_69b" | "csd_restriction" | "tax_discrepancy" | "refund" | "other";
+	/** Todos sus oficios: reemplaza los que tenía. */
+	notices?: {
+		/** Qué oficio es, de los de su tipo (en desk_audit: solicitud, observaciones o resolucion); por omisión, el primero, el que abre la revisión. Otro contesta con los de su tipo. */
+		step?: string;
+		/** El día en que se lo notificaron (en el Buzón, el día en que lo abrió o el quinto día hábil después del aviso, lo que pase primero). No puede ser futuro. */
+		notified_on: string;
+		/** Los días hábiles que da el oficio, solo cuando no son los de la ley (una carta invitación con fecha, «otro» oficio). */
+		business_days?: number | null;
+		/** true si pidió la prórroga (o presentó el aviso) que la ley permite en ese oficio: suma sus días al plazo. */
+		extension?: boolean;
+		/** El día en que lo respondió; null mientras no. */
+		answered_on?: string | null;
+	}[];
+	/** Todo lo que pide, con done para marcar lo que ya tiene: reemplaza la lista. */
+	requests?: {
+		/** Qué pide (vea requests en la guía). */
+		key: "working_paper" | "tax_discrepancy" | "issued_invoices" | "received_invoices" | "retentions" | "tax_returns" | "electronic_accounting" | "materiality" | "bank_statements" | "contracts" | "inventory" | "assets_and_staff" | "articles_and_power" | "written_answer" | "other";
+		/** Cómo lo dice el oficio, si quiere sus palabras; con other, obligatorio. */
+		name?: string;
+		/** true cuando ya lo tiene listo. */
+		done?: boolean;
+		/** Una nota suya. */
+		note?: string;
+	}[];
+	/** open (por atender, por omisión), answered, concluded (sin observaciones), assessed (con crédito fiscal), in_defense o closed. Mientras está open, answered, assessed o in_defense, Fiscalisto cuenta sus plazos y avisa. */
+	status?: "open" | "answered" | "concluded" | "assessed" | "in_defense" | "closed";
+	/** El número del oficio, como viene en él (por ejemplo 500-05-2026-1234). */
+	reference?: string | null;
+	/** El número de orden (ABC1234567/26) o de trámite (AB123456789012) si pide la contabilidad electrónica: va en sus pólizas. */
+	order_number?: string | null;
+	/** La autoridad que lo firma (por ejemplo «ADAF de Occidente»). */
+	authority?: string | null;
+	/** Primer día del periodo que revisa. Con period_end, Fiscalisto arma lo suyo. */
+	period_start?: string | null;
+	/** Último día del periodo que revisa (a lo más 7 ejercicios). */
+	period_end?: string | null;
+	/** El monto que señala el SAT, en pesos, si señala uno. */
+	amount?: number | null;
+	/** Sus notas. */
+	notes?: string | null;
+}
+
+/** Los parámetros de GET /v1/sat_risk_check. */
+export interface GetSatRiskCheckParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+/** Los parámetros de GET /v1/tax_discrepancy. */
+export interface GetTaxDiscrepancyParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** El ejercicio (por omisión, el año pasado). */
+	year?: number;
+	/** Los ingresos de su declaración anual, si tiene ingresos que Fiscalisto no ve (rentas, intereses, otro patrón): reemplazan los que calcula. */
+	declared_income?: number;
 }
 
 /** Los parámetros de GET /v1/warehouses. */
@@ -16037,6 +16353,138 @@ export class MaterialityInvoicesResource {
 	}
 }
 
+/** Cumplimiento SAT: fiscalisto.satReviews. */
+export class SatReviewsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Registrar una revisión del SAT
+	 *
+	 * Como «Registrar oficio» en Revisiones del SAT: una carta invitación, requerimiento u oficio que el SAT mandó al RFC del emisor, con la fecha en que se lo notificaron. Fiscalisto calcula el plazo en días hábiles desde que surte efectos la notificación (sin sábados, domingos ni los inhábiles del SAT) y avisa por correo 5, 3 y 1 día hábil antes. Sin requests, lleva lo que el SAT suele pedir en ese tipo. No responde nada al SAT. No usa timbres.
+	 *
+	 * POST /v1/sat_reviews
+	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/create-sat-review
+	 */
+	create(params: CreateSatReviewParams, options?: RequestOptions): Promise<SatReview> {
+		return this.#client.request({ method: "POST", path: "/v1/sat_reviews", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar revisiones del SAT
+	 *
+	 * Las revisiones del RFC del emisor, primero las que siguen abiertas, después las más recientes, cada una con su plazo y lo que pide. Una página, hasta 500.
+	 *
+	 * GET /v1/sat_reviews
+	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/list-sat-reviews
+	 */
+	list(params?: ListSatReviewsParams, options?: RequestOptions): Promise<SatReviewList> {
+		return this.#client.request({ method: "GET", path: "/v1/sat_reviews", query: params }, options);
+	}
+
+	/**
+	 * Ver una revisión del SAT
+	 *
+	 * Una revisión con cada oficio y su plazo, lo que pide con cuánto de eso tiene Fiscalisto (ready de total) y su última respuesta armada.
+	 *
+	 * GET /v1/sat_reviews/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/get-sat-review
+	 */
+	get(id: string, options?: RequestOptions): Promise<SatReview> {
+		return this.#client.request({ method: "GET", path: `/v1/sat_reviews/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Actualizar una revisión del SAT
+	 *
+	 * Cambia solo lo que manda. notices y requests reemplazan la lista: mande todos sus oficios (con answered_on en el que ya respondió) y todo lo que pide (con done en lo que ya tiene).
+	 *
+	 * POST /v1/sat_reviews/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/update-sat-review
+	 */
+	update(id: string, params?: UpdateSatReviewParams, options?: RequestOptions): Promise<SatReview> {
+		return this.#client.request({ method: "POST", path: `/v1/sat_reviews/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Borrar una revisión del SAT
+	 *
+	 * Borra de Fiscalisto el seguimiento, sus avisos y los enlaces de sus asesores; su trámite en el SAT sigue igual. No se puede deshacer.
+	 *
+	 * DELETE /v1/sat_reviews/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/delete-sat-review
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/sat_reviews/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Armar la respuesta
+	 *
+	 * Como «Armar respuesta»: arma en segundo plano un ZIP con lo que la revisión pide: los XML y la relación de CFDI del periodo, el papel de trabajo, la contabilidad electrónica con el número de orden, las declaraciones, los documentos subidos en la app y un índice de qué archivo responde a cada cosa. Contesta la revisión con answer.status processing; consulte GET /v1/sat_reviews/{id} hasta que sea completed y descárguelo con GET /v1/sat_reviews/{id}/answer. Una a la vez (answer_running). No usa timbres.
+	 *
+	 * POST /v1/sat_reviews/{id}/answer
+	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/arm-sat-review-answer
+	 */
+	armAnswer(id: string, options?: RequestOptions): Promise<SatReview> {
+		return this.#client.request({ method: "POST", path: `/v1/sat_reviews/${encodeURIComponent(id)}/answer`, idempotent: true }, options);
+	}
+
+	/**
+	 * Descargar la respuesta
+	 *
+	 * El ZIP de la última respuesta armada, cuando answer.status es completed (si no, answer_not_ready). Se guarda 30 días.
+	 *
+	 * GET /v1/sat_reviews/{id}/answer
+	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/download-sat-review-answer
+	 */
+	downloadAnswer(id: string, options?: RequestOptions): Promise<string> {
+		return this.#client.request({ method: "GET", path: `/v1/sat_reviews/${encodeURIComponent(id)}/answer`, as: "text" }, options);
+	}
+}
+
+/** Cumplimiento SAT: fiscalisto.satRiskCheck. */
+export class SatRiskCheckResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Revisar como el SAT
+	 *
+	 * Como «Revise como el SAT»: lo que los sistemas del SAT cruzan para mandar cartas invitación y escoger a quién revisar (plazos de revisiones abiertas, Buzón Tributario, CFDI contra declaraciones, declaraciones omitidas, opinión de cumplimiento, listas del SAT, proveedores en 69-B, materialidad, depósitos sin aclarar, discrepancia fiscal y vigencia de la e.firma), con lo que Fiscalisto ya leyó. No consulta al SAT y no usa timbres.
+	 *
+	 * GET /v1/sat_risk_check
+	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/get-sat-risk-check
+	 */
+	get(params?: GetSatRiskCheckParams, options?: RequestOptions): Promise<SatRiskCheck> {
+		return this.#client.request({ method: "GET", path: "/v1/sat_risk_check", query: params }, options);
+	}
+}
+
+/** Cumplimiento SAT: fiscalisto.taxDiscrepancy. */
+export class TaxDiscrepancyResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Calcular la discrepancia fiscal
+	 *
+	 * Como «Discrepancia fiscal» (personas físicas, art. 91 LISR): gastos con CFDI a su nombre y depósitos en sus cuentas del año, menos traspasos entre sus cuentas, préstamos y devoluciones, contra los ingresos declarados; lo que queda es lo que el SAT presumiría ingreso. Un emisor persona moral contesta parameter_invalid. No usa timbres.
+	 *
+	 * GET /v1/tax_discrepancy
+	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/get-tax-discrepancy
+	 */
+	get(params?: GetTaxDiscrepancyParams, options?: RequestOptions): Promise<TaxDiscrepancy> {
+		return this.#client.request({ method: "GET", path: "/v1/tax_discrepancy", query: params }, options);
+	}
+}
+
 /** Inventario: fiscalisto.warehouses. */
 export class WarehousesResource {
 	readonly #client: Client;
@@ -18460,6 +18908,9 @@ export class FiscalistoApi extends Core {
 	readonly companyReport = new CompanyReportResource(this);
 	readonly materialitySuppliers = new MaterialitySuppliersResource(this);
 	readonly materialityInvoices = new MaterialityInvoicesResource(this);
+	readonly satReviews = new SatReviewsResource(this);
+	readonly satRiskCheck = new SatRiskCheckResource(this);
+	readonly taxDiscrepancy = new TaxDiscrepancyResource(this);
 	readonly warehouses = new WarehousesResource(this);
 	readonly stockMovements = new StockMovementsResource(this);
 	readonly stockAdjustments = new StockAdjustmentsResource(this);
