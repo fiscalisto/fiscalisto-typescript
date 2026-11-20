@@ -4755,8 +4755,12 @@ export interface FixedAsset {
 	in_use_since: string;
 	/** Su monto original sin IVA. */
 	cost: number;
-	/** Su tasa anual de depreciación (0.3 es 30%). */
+	/** Su tasa anual de depreciación contable (0.3 es 30%): la del artículo 34 de la LISR o la que fijó con POST /v1/accounting/book_depreciation_rates. */
 	annual_rate: number;
+	/** Su valor residual como fracción del monto original; 0 por omisión. */
+	residual_rate: number;
+	/** La tasa del artículo 34 de la LISR, la de su deducción fiscal. */
+	tax_annual_rate: number;
 	/** Lo que se deprecia cada mes mientras dura. */
 	monthly_depreciation: number;
 	/** El mes (AAAA-MM) a cuyo cierre van las cifras. */
@@ -5188,6 +5192,65 @@ export interface InflationAccounts {
 		/** true si difiere del de su código agrupador. */
 		changed: boolean;
 	}[];
+}
+
+/** La tasa anual y el valor residual con que los libros deprecian un activo o un tipo de activo desde un mes (NIF C-6), aparte de la deducción fiscal. */
+export interface BookDepreciationRate {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "book_depreciation_rate";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El activo fijo que lleva la tasa, o null si es de un tipo. */
+	fixed_asset: string | null;
+	/** El tipo de activo (uso CFDI) que la lleva, o null si es de un activo. */
+	cfdi_use: string | null;
+	/** El mes (AAAA-MM) desde el que aplica. */
+	from_month: string;
+	/** La tasa anual contable, o null si se quitó. */
+	annual_rate: number | null;
+	/** El valor residual como fracción del monto original, o null si se quitó. */
+	residual_rate: number | null;
+	/** true si quitó la tasa de ese mes. */
+	removed: boolean;
+}
+
+/** La depreciación contable del año contra la deducción de inversiones (artículos 31 y 34 de la Ley del ISR) de cada activo, para la conciliación contable-fiscal. */
+export interface DepreciationReconciliation {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "depreciation_reconciliation";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El año. */
+	year: number;
+	/** Cada activo con depreciación contable o deducción fiscal en el año. */
+	items: {
+		/** El activo fijo (fxa_… o fxc_…), o null si no tiene registro contable. */
+		fixed_asset: string | null;
+		/** Qué es. */
+		description: string;
+		/** Su tipo por uso CFDI (I01 a I08). */
+		cfdi_use: string | null;
+		/** Su depreciación contable del año. */
+		book_depreciation: number;
+		/** Su deducción fiscal del año, actualizada con el INPC. */
+		tax_deduction: number;
+		/** El factor de actualización de la deducción fiscal (1 sin actualizar). */
+		inflation_factor: number;
+		/** tax_deduction menos book_depreciation. */
+		difference: number;
+	}[];
+	/** La depreciación contable del año de todos los activos. */
+	book_depreciation: number;
+	/** La deducción de inversiones del año, actualizada. */
+	tax_deduction: number;
+	/** tax_deduction menos book_depreciation: la partida de la conciliación contable-fiscal. */
+	difference: number;
+	/** Los meses cuyo INPC no se ha publicado, estimados con el último (AAAA-MM). */
+	inpc_estimated_months: string[];
 }
 
 /** El estado de flujos de efectivo (NIF B-2, método indirecto) del mes o de enero al mes, leído de la balanza: cada cuenta va a operación, inversión o financiamiento por su código agrupador. */
@@ -10169,6 +10232,13 @@ export interface CreatePayrollReceiptParams {
 		holidays_worked?: number;
 		/** Días de vacaciones que disfrutó en el periodo (se pagan como sueldo dentro de days): su prima vacacional con el porcentaje del empleado, exenta hasta 15 UMA en el año. */
 		vacation_days?: number;
+		/** Si la empresa paga los disability_days del recibo: percepción 014 con su nodo Incapacidad. Exenta como previsión social con el límite de 7 UMA al año (art. 93 de la LISR); la de un riesgo de trabajo, toda. */
+		disability_pay?: {
+			/** Tipo de incapacidad (c_TipoIncapacidad): 01 riesgo de trabajo, 02 enfermedad general, 03 maternidad, 04 licencia por cuidados médicos de hijos con cáncer. */
+			type: "01" | "02" | "03" | "04";
+			/** Lo que paga la empresa de cada día de incapacidad, como fracción del salario diario: 1 todo; 0.4 lo que completa el 60% que paga el IMSS. */
+			rate: number;
+		};
 		/** Premios, comisiones y bonos del periodo, gravados. */
 		bonuses?: {
 			/** 010 premio de puntualidad, 049 premio de asistencia, 028 comisiones, 038 otro bono (c_TipoPercepcion). */
@@ -10223,6 +10293,13 @@ export interface PreviewPayrollReceiptParams {
 		holidays_worked?: number;
 		/** Días de vacaciones que disfrutó en el periodo (se pagan como sueldo dentro de days): su prima vacacional con el porcentaje del empleado, exenta hasta 15 UMA en el año. */
 		vacation_days?: number;
+		/** Si la empresa paga los disability_days del recibo: percepción 014 con su nodo Incapacidad. Exenta como previsión social con el límite de 7 UMA al año (art. 93 de la LISR); la de un riesgo de trabajo, toda. */
+		disability_pay?: {
+			/** Tipo de incapacidad (c_TipoIncapacidad): 01 riesgo de trabajo, 02 enfermedad general, 03 maternidad, 04 licencia por cuidados médicos de hijos con cáncer. */
+			type: "01" | "02" | "03" | "04";
+			/** Lo que paga la empresa de cada día de incapacidad, como fracción del salario diario: 1 todo; 0.4 lo que completa el 60% que paga el IMSS. */
+			rate: number;
+		};
 		/** Premios, comisiones y bonos del periodo, gravados. */
 		bonuses?: {
 			/** 010 premio de puntualidad, 049 premio de asistencia, 028 comisiones, 038 otro bono (c_TipoPercepcion). */
@@ -12723,6 +12800,27 @@ export interface SaveInflationAccountsParams {
 		/** credit (crédito, art. 45), debt (deuda, art. 46) o none. null regresa al de su código agrupador. */
 		treatment: "credit" | "debt" | "none" | null;
 	}[];
+}
+
+/** Los parámetros de GET /v1/accounting/depreciation_reconciliations/{year}. */
+export interface GetDepreciationReconciliationParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface SaveBookDepreciationRateParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** El activo fijo (fxa_… o fxc_…) que lleva su propia tasa. Mande este o cfdi_use. */
+	fixed_asset?: string;
+	/** El tipo de activo (uso CFDI I01–I08) cuyos activos toman la tasa. Mande este o fixed_asset. */
+	cfdi_use?: "I01" | "I02" | "I03" | "I04" | "I05" | "I06" | "I07" | "I08";
+	/** El mes, AAAA-MM y abierto, desde el que aplica. */
+	from_month: string;
+	/** La tasa anual de los libros (0.2 son 5 años de vida útil). null quita la de ese mes y regresa a la anterior. */
+	annual_rate: number | null;
+	/** El valor residual como fracción del monto original (NIF C-6); 0 si no se manda. */
+	residual_rate?: number;
 }
 
 /** Los parámetros de GET /v1/accounting/cost_center_results/{month}. */
@@ -18187,6 +18285,46 @@ export class InflationAccountsResource {
 	}
 }
 
+/** Contabilidad: fiscalisto.depreciationReconciliations. */
+export class DepreciationReconciliationsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Comparar la depreciación contable con la fiscal
+	 *
+	 * La depreciación contable del año de cada activo fijo contra su deducción fiscal (artículo 34 de la Ley del ISR, actualizada con el INPC del artículo 31) y la diferencia, que es partida de la conciliación contable-fiscal de la declaración anual. Las notas de crédito sobre un activo van en su propio renglón. Como Activos fijos › Contable contra fiscal en la app.
+	 *
+	 * GET /v1/accounting/depreciation_reconciliations/{year}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-depreciation-reconciliation
+	 */
+	get(year: string, params?: GetDepreciationReconciliationParams, options?: RequestOptions): Promise<DepreciationReconciliation> {
+		return this.#client.request({ method: "GET", path: `/v1/accounting/depreciation_reconciliations/${encodeURIComponent(year)}`, query: params }, options);
+	}
+}
+
+/** Contabilidad: fiscalisto.bookDepreciationRates. */
+export class BookDepreciationRatesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Fijar la tasa de depreciación contable
+	 *
+	 * Fija la tasa anual y el valor residual con que los libros deprecian un activo (fixed_asset) o todos los de un tipo (cfdi_use) desde from_month en adelante (NIF C-6); la del activo gana sobre la de su tipo. Los meses anteriores no cambian, y la deducción fiscal sigue con la tasa del artículo 34. annual_rate null quita la de ese mes. Un mes cerrado contesta parameter_invalid en from_month.
+	 *
+	 * POST /v1/accounting/book_depreciation_rates
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/save-book-depreciation-rate
+	 */
+	save(params: SaveBookDepreciationRateParams, options?: RequestOptions): Promise<BookDepreciationRate> {
+		return this.#client.request({ method: "POST", path: "/v1/accounting/book_depreciation_rates", body: params, idempotent: true }, options);
+	}
+}
+
 /** Contabilidad: fiscalisto.costCenterResults. */
 export class CostCenterResultsResource {
 	readonly #client: Client;
@@ -19111,6 +19249,8 @@ export class FiscalistoApi extends Core {
 	readonly budgets = new BudgetsResource(this);
 	readonly inflationAdjustments = new InflationAdjustmentsResource(this);
 	readonly inflationAccounts = new InflationAccountsResource(this);
+	readonly depreciationReconciliations = new DepreciationReconciliationsResource(this);
+	readonly bookDepreciationRates = new BookDepreciationRatesResource(this);
 	readonly costCenterResults = new CostCenterResultsResource(this);
 	readonly payrollProvisions = new PayrollProvisionsResource(this);
 	readonly taxDeterminations = new TaxDeterminationsResource(this);
