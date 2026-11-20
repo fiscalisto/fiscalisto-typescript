@@ -2367,6 +2367,41 @@ export interface PayrollAccumulated {
 	}[];
 }
 
+/** Un aumento de sueldo para varios empleados, con la modificación de salario de cada uno para el IMSS. */
+export interface EmployeeRaise {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "employee_raise";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** iss_… */
+	issuer: string;
+	/** false con dry_run: no se guardó nada. */
+	applied: boolean;
+	/** Desde cuándo rige: la fecha de la modificación de salario. */
+	effective_date: string;
+	/** El último día para presentar las modificaciones al IMSS (5 días hábiles). */
+	imss_deadline: string;
+	/** Cada empleado del aumento. */
+	employees: {
+		/** emp_… */
+		employee: string;
+		/** Su número de empleado. */
+		number: string;
+		/** Su nombre. */
+		name: string;
+		/** Su salario diario antes. */
+		daily_salary_before: number;
+		/** Su salario diario nuevo. */
+		daily_salary: number;
+		/** Su SDI antes (la parte fija). */
+		integrated_daily_salary_before: number;
+		/** Su SDI nuevo, con el mismo factor de integración. */
+		integrated_daily_salary: number;
+		/** Por qué no puede recibir el aumento, o null. */
+		error: string | null;
+	}[];
+}
+
 /** Lo que cuesta la nómina del año mes por mes: lo pagado más las cuotas del patrón y el impuesto sobre nómina. */
 export interface PayrollCost {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -10786,6 +10821,23 @@ export interface ListEmployeesParams {
 	issuer?: string;
 }
 
+export interface CreateEmployeeRaiseParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Los empleados (emp_…). Sin employees, todos los que trabajan en effective_date. */
+	employees?: string[];
+	/** Aumento en porcentaje: 5 es 5%. */
+	percent?: number;
+	/** Aumento en pesos por día. */
+	amount?: number;
+	/** Un salario diario nuevo, igual para todos. */
+	daily_salary?: number;
+	/** Desde cuándo rige, hoy o antes (por omisión, hoy). Es la fecha de la modificación de salario. */
+	effective_date?: string;
+	/** true: dice cómo quedaría cada empleado, sin guardar nada. */
+	dry_run?: boolean;
+}
+
 export interface UpdateEmployeeParams {
 	/** Número de empleado (NumEmpleado). */
 	number?: string;
@@ -16080,6 +16132,18 @@ export class EmployeesResource {
 	 */
 	list(params?: ListEmployeesParams, options?: RequestOptions): List<Employee> {
 		return this.#client.list({ path: "/v1/employees", query: params }, options);
+	}
+
+	/**
+	 * Aumento de sueldo
+	 *
+	 * Un aumento para varios empleados a la vez, como «Aumento de sueldo» en Nómina › Empleados de la app: percent (porcentaje), amount (pesos más por día) o daily_salary (un salario nuevo). Cada empleado conserva su factor de integración (SDI ÷ salario), y el SDI nuevo queda como modificación de salario con fecha effective_date en Movimientos del IMSS, para presentarla a más tardar en imss_deadline (5 días hábiles, artículo 34 de la Ley del Seguro Social). Rige desde hoy o antes; los periodos ya timbrados desde entonces se pagan con el retroactivo de las incidencias. Si un empleado no puede recibirlo (no es un aumento, queda bajo el salario mínimo, no trabajaba ese día), contesta 400 y no cambia a nadie; dry_run true dice cómo quedaría cada uno, con su error, sin guardar.
+	 *
+	 * POST /v1/employee_raises
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-employee-raise
+	 */
+	raise(params?: CreateEmployeeRaiseParams, options?: RequestOptions): Promise<EmployeeRaise> {
+		return this.#client.request({ method: "POST", path: "/v1/employee_raises", body: params, idempotent: true }, options);
 	}
 
 	/**
