@@ -5579,6 +5579,363 @@ export interface InflationAccounts {
 	}[];
 }
 
+/** La declaración anual de una persona moral del régimen general, desde su contabilidad: un papel de trabajo para su contador. */
+export interface AnnualReturn {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "annual_return";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El ejercicio. */
+	year: number;
+	/** El último mes calculado. */
+	through_month: number;
+	/** true si es una estimación: el año sigue o through_month es menor que 12. */
+	estimated: boolean;
+	/** La utilidad contable (negativa si es pérdida) antes de la conciliación. */
+	book_profit: number;
+	/** Las partidas de la conciliación contable-fiscal. */
+	items: {
+		/** Concepto del pago (ConceptoPago), c_TipoContribuyenteSujetoRetencion. */
+		concept: string;
+		/** taxable_income (ingreso fiscal no contable, suma), non_deductible_expense (gasto contable no deducible, suma), tax_deduction (deducción fiscal no contable, resta) o non_taxable_income (ingreso contable no acumulable, resta). */
+		type: "taxable_income" | "non_deductible_expense" | "tax_deduction" | "non_taxable_income";
+		/** Importe. */
+		amount: number;
+		/** El artículo de la ley. */
+		legal_basis: string;
+		/** De dónde sale: books (cuentas de los libros por su código agrupador), cfdi, payroll (nómina), calculation (ajuste por inflación, deducción de inversiones) o captured. */
+		source: "books" | "cfdi" | "payroll" | "calculation" | "captured";
+		/** true si resta de la utilidad fiscal neta (artículo 77). */
+		reduces_net_tax_profit: boolean;
+	}[];
+	/** Los ingresos acumulables. */
+	taxable_income: number;
+	/** Los ingresos nominales del artículo 14: los acumulables sin el ajuste anual por inflación acumulable. */
+	nominal_income: number;
+	/** Las deducciones autorizadas, después del límite del artículo 78-B. */
+	deductions: number;
+	/** true si le aplican los límites del Capítulo X (desde 2027: más de $50 millones de ingresos, con utilidad fiscal y sin excepción del artículo 78-E). */
+	subject_to_78a: boolean;
+	/** El límite del artículo 78-B; null si no aplica. */
+	limit_78b: {
+		/** Las deducciones del año más las pendientes de años anteriores. */
+		total: number;
+		/** El 96.67% de los ingresos acumulables. */
+		threshold: number;
+		/** I: total hasta threshold, se deduce el 99%. II: total mayor, se deduce threshold. */
+		fraction: "I" | "II";
+		/** Lo que se deduce. */
+		limit: number;
+		/** Las deducciones pendientes de años anteriores, aplicadas primero. */
+		pending_deductions: {
+			/** El ejercicio en que nació. */
+			year: number;
+			/** Lo que quedaba, actualizado hasta updated_to. */
+			amount: number;
+			/** AAAA-MM de su última actualización. */
+			updated_to: string;
+			/** El factor de actualización hasta junio del año (artículo 57, cuarto párrafo; CFF 17-A), al diezmilésimo y nunca menor que 1; 1 si el año no aplica nada. */
+			factor: number;
+			/** amount por factor. */
+			updated_amount: number;
+			/** Lo aplicado este año. */
+			applied: number;
+			/** Lo que queda para los años siguientes. */
+			remaining: number;
+			/** AAAA-MM hasta el que está remaining. */
+			remaining_updated_to: string;
+			/** El último ejercicio en que se puede aplicar. */
+			last_year: number;
+			/** true si pasó su plazo: se perdió. */
+			expired: boolean;
+			/** true si algún INPC aún no se publica. */
+			estimated: boolean;
+		}[];
+		/** Lo de este año que pasa a los 20 ejercicios siguientes. */
+		not_deducted: number;
+	} | null;
+	/** La PTU pagada en el ejercicio (artículo 9). */
+	ptu_paid: number;
+	/** La utilidad fiscal (0 si hubo pérdida). */
+	tax_profit: number;
+	/** La pérdida fiscal (0 si hubo utilidad). */
+	tax_loss: number;
+	/** La pérdida de este año actualizada al último mes del ejercicio (artículo 57), lista para el siguiente. */
+	new_loss: {
+		/** El ejercicio en que nació. */
+		year: number;
+		/** Lo que queda por aplicar, actualizado hasta updated_to. */
+		amount: number;
+		/** AAAA-MM de su última actualización. */
+		updated_to: string;
+	} | null;
+	/** Las pérdidas de ejercicios anteriores, de la más vieja a la más nueva. */
+	losses: {
+		/** Lo aplicado de pérdidas anteriores. */
+		applied: number;
+		/** Lo más que se podía aplicar: la utilidad fiscal, o la mitad con el artículo 78-C. */
+		cap: number;
+		/** El plazo para aplicarlas: 10 años, o 20 con el Capítulo X. */
+		term_years: number;
+		/** Cada pérdida, con lo que se aplicó. */
+		rows: {
+			/** El ejercicio en que nació. */
+			year: number;
+			/** Lo que quedaba, actualizado hasta updated_to. */
+			amount: number;
+			/** AAAA-MM de su última actualización. */
+			updated_to: string;
+			/** El factor de actualización hasta junio del año (artículo 57, cuarto párrafo; CFF 17-A), al diezmilésimo y nunca menor que 1; 1 si el año no aplica nada. */
+			factor: number;
+			/** amount por factor. */
+			updated_amount: number;
+			/** Lo aplicado este año. */
+			applied: number;
+			/** Lo que queda para los años siguientes. */
+			remaining: number;
+			/** AAAA-MM hasta el que está remaining. */
+			remaining_updated_to: string;
+			/** El último ejercicio en que se puede aplicar. */
+			last_year: number;
+			/** true si pasó su plazo: se perdió. */
+			expired: boolean;
+			/** true si algún INPC aún no se publica. */
+			estimated: boolean;
+		}[];
+	};
+	/** El resultado fiscal. */
+	tax_result: number;
+	/** El ISR del ejercicio: 30% del resultado fiscal. */
+	income_tax: number;
+	/** Los pagos provisionales del ejercicio. */
+	provisional_payments: number;
+	/** Los meses sin pago provisional capturado ni leído del SAT. */
+	missing_provisional_months: number[];
+	/** El ISR que le retuvieron. */
+	withheld_tax: number;
+	/** Positivo: ISR a cargo. Negativo: saldo a favor. */
+	balance: number;
+	/** El coeficiente de utilidad para los pagos provisionales del año siguiente (artículo 14), al diezmilésimo. null sin utilidad fiscal: se usa el del último ejercicio que la tuvo, de hasta cinco años atrás. */
+	profit_ratio: number | null;
+	/** La base de la PTU. */
+	ptu: {
+		/** La renta gravable (artículo 9, cuarto párrafo). */
+		taxable_base: number;
+		/** El 10% para los trabajadores. */
+		amount: number;
+	};
+	/** El ISR del artículo 10 (dividendos que no salieron de la CUFIN, de este año y los dos anteriores) acreditado contra el ISR del ejercicio; ya restado en balance. */
+	dividend_tax_credited: number;
+	/** La utilidad fiscal neta. */
+	net_tax_profit: {
+		/** Las partidas no deducibles que restan. */
+		non_deductibles: number;
+		/** dividend_tax_credited entre 0.4286, que resta de la utilidad fiscal neta (artículo 10, fracción II). */
+		dividend_tax_reduction: number;
+		/** La utilidad fiscal neta del ejercicio (artículo 77); negativa, disminuye la CUFIN. */
+		amount: number;
+	};
+	/** La CUFIN (artículo 77) y la CUCA (artículo 78) del año, con sus dividendos y movimientos de capital. */
+	tax_accounts: {
+		/** true si no se han capturado los saldos al cierre del año anterior: se calcula desde cero. */
+		opening_missing: boolean;
+		/** Los saldos al inicio del año. */
+		opening: {
+			/** La CUFIN de 2014 en adelante. */
+			cufin: number;
+			/** La CUFIN hasta 2013. */
+			cufin_2013: number;
+			/** La cuenta de capital de aportación. */
+			cuca: number;
+			/** AAAA-MM de la última actualización de la CUFIN. */
+			cufin_updated_to: string;
+			/** AAAA-MM de la última actualización de la CUCA. */
+			cuca_updated_to: string;
+		};
+		/** Cada movimiento del año, en orden de fecha. */
+		movements: {
+			/** El día del movimiento. */
+			date: string;
+			/** El tipo de movimiento. */
+			type: "dividend_paid" | "dividend_received" | "capital_contribution" | "capital_reduction";
+			/** Lo pagado, recibido o aportado. */
+			amount: number;
+			/** De qué CUFIN sale primero. */
+			account: "cufin" | "cufin_2013";
+			/** true si es a una persona física o del extranjero. */
+			individual: boolean;
+			/** El factor con que se actualizó la cuenta al mes del movimiento (artículos 77 y 78). */
+			factor: number;
+			/** true si algún INPC aún no se publica. */
+			estimated: boolean;
+			/** La utilidad distribuida: el dividendo, o la del artículo 78 en un reembolso. */
+			distributed_profit: number;
+			/** Lo que sale de la CUFIN de 2014 en adelante. */
+			from_cufin: number;
+			/** Lo que sale de la CUFIN hasta 2013. */
+			from_cufin_2013: number;
+			/** Lo que no sale de la CUFIN: paga el ISR del artículo 10. */
+			not_from_cufin: number;
+			/** El ISR del artículo 10: not_from_cufin × 1.4286 × 30%. */
+			dividend_tax: number;
+			/** El día 17 del mes siguiente, cuando se entera (artículo 10). */
+			dividend_tax_due: string | null;
+			/** El 10% a retener a una persona física (artículo 140), sobre lo de 2014 en adelante. */
+			withholding: number;
+			/** capital_reduction: la CUCA por acción a esa fecha. */
+			cuca_per_share: number | null;
+			/** capital_reduction: lo que sale de la CUCA. */
+			from_cuca: number;
+			/** capital_reduction: la utilidad distribuida de la fracción I. */
+			distributed_profit_fraction_i: number;
+			/** capital_reduction: la de la fracción II, que después cuenta como aportación. */
+			distributed_profit_fraction_ii: number;
+			/** Los saldos después del movimiento. */
+			balances: {
+				/** La CUFIN de 2014 en adelante. */
+				cufin: number;
+				/** La CUFIN hasta 2013. */
+				cufin_2013: number;
+				/** La cuenta de capital de aportación. */
+				cuca: number;
+				/** AAAA-MM de la última actualización de la CUFIN. */
+				cufin_updated_to: string;
+				/** AAAA-MM de la última actualización de la CUCA. */
+				cuca_updated_to: string;
+			};
+		}[];
+		/** El ISR del artículo 10 de los movimientos del año. */
+		dividend_tax: number;
+		/** Los saldos al 31 de diciembre, actualizados y con la utilidad fiscal neta del año. */
+		year_end: {
+			/** La CUFIN de 2014 en adelante. */
+			cufin: number;
+			/** La CUFIN hasta 2013. */
+			cufin_2013: number;
+			/** La cuenta de capital de aportación. */
+			cuca: number;
+			/** AAAA-MM de la última actualización de la CUFIN. */
+			cufin_updated_to: string;
+			/** AAAA-MM de la última actualización de la CUCA. */
+			cuca_updated_to: string;
+		};
+		/** Lo que una utilidad fiscal neta negativa de años anteriores restó a la de este año. */
+		negative_net_tax_profit_applied: number;
+		/** Lo que pasa al año siguiente además de los saldos. */
+		next_year: {
+			/** El ISR del artículo 10 que se acredita en los años siguientes (fracción I). */
+			pending_dividend_tax: {
+				/** El año en que se pagó. */
+				year: number;
+				/** Lo que falta acreditar. */
+				amount: number;
+			}[];
+			/** Una utilidad fiscal neta negativa que la CUFIN no alcanzó (artículo 77, quinto párrafo). */
+			negative_net_tax_profit: {
+				/** Lo que falta disminuir. */
+				amount: number;
+				/** AAAA-MM de su última actualización. */
+				updated_to: string;
+			} | null;
+		};
+	};
+	/** Lo que pasa al año siguiente: las pérdidas que quedan (con la de este año) y desde 2027 las deducciones pendientes del artículo 78-B. */
+	next_year: {
+		/** Las pérdidas que quedan. */
+		losses: {
+			/** El ejercicio en que nació. */
+			year: number;
+			/** Lo que queda por aplicar, actualizado hasta updated_to. */
+			amount: number;
+			/** AAAA-MM de su última actualización. */
+			updated_to: string;
+		}[];
+		/** Las deducciones pendientes del artículo 78-B. */
+		pending_deductions: {
+			/** El ejercicio en que nació. */
+			year: number;
+			/** Lo que queda por aplicar, actualizado hasta updated_to. */
+			amount: number;
+			/** AAAA-MM de su última actualización. */
+			updated_to: string;
+		}[];
+	};
+	/** Lo capturado con POST /v1/accounting/annual_returns/{year}. */
+	captured: {
+		/** Las pérdidas capturadas. */
+		losses: {
+			/** El ejercicio en que nació. */
+			year: number;
+			/** Lo que queda por aplicar, actualizado hasta updated_to. */
+			amount: number;
+			/** AAAA-MM de su última actualización. */
+			updated_to: string;
+		}[];
+		/** Las deducciones pendientes capturadas. */
+		pending_deductions: {
+			/** El ejercicio en que nació. */
+			year: number;
+			/** Lo que queda por aplicar, actualizado hasta updated_to. */
+			amount: number;
+			/** AAAA-MM de su última actualización. */
+			updated_to: string;
+		}[];
+		/** Conceptos (Conceptos), al menos uno. */
+		items: {
+			/** Concepto del pago (ConceptoPago), c_TipoContribuyenteSujetoRetencion. */
+			concept: string;
+			/** taxable_income (ingreso fiscal no contable, suma), non_deductible_expense (gasto contable no deducible, suma), tax_deduction (deducción fiscal no contable, resta) o non_taxable_income (ingreso contable no acumulable, resta). */
+			type: "taxable_income" | "non_deductible_expense" | "tax_deduction" | "non_taxable_income";
+			/** Importe. */
+			amount: number;
+			/** true si resta de la utilidad fiscal neta. */
+			reduces_net_tax_profit: boolean;
+		}[];
+		/** true si está en una excepción del artículo 78-E. */
+		exception_78e: boolean;
+		/** Mes inicial (MesIni), 1 a 12. */
+		from_month: number;
+	};
+}
+
+/** Lo que pasó al año siguiente de la declaración anual. */
+export interface AnnualReturnCarryForward {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "annual_return_carry_forward";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El ejercicio del que salen. */
+	year: number;
+	/** El ejercicio al que pasan. */
+	to_year: number;
+	/** Las pérdidas que pasaron. */
+	losses: {
+		/** El ejercicio en que nació. */
+		year: number;
+		/** Lo que queda por aplicar, actualizado hasta updated_to. */
+		amount: number;
+		/** AAAA-MM de su última actualización. */
+		updated_to: string;
+	}[];
+	/** Las deducciones pendientes del artículo 78-B que pasaron. */
+	pending_deductions: {
+		/** El ejercicio en que nació. */
+		year: number;
+		/** Lo que queda por aplicar, actualizado hasta updated_to. */
+		amount: number;
+		/** AAAA-MM de su última actualización. */
+		updated_to: string;
+	}[];
+	/** La suma de las pérdidas que pasaron. */
+	total_losses: number;
+	/** true si se pusieron en los pagos provisionales del año siguiente (no tenían pérdidas en Impuestos). */
+	provisional_payments_updated: boolean;
+}
+
 /** Un catálogo por giro: las cuentas que usa un negocio de ese tipo además de las que la app ya lleva. */
 export interface ChartTemplate {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
@@ -13910,6 +14267,99 @@ export interface SaveInflationAccountsParams {
 	}[];
 }
 
+/** Los parámetros de GET /v1/accounting/annual_returns/{year}. */
+export interface GetAnnualReturnParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** El último mes, de 1 a 12, para estimar el año en curso. Por omisión 12 en un año pasado y el mes actual en el año en curso. */
+	through_month?: number;
+}
+
+export interface SaveAnnualReturnParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** Las pérdidas fiscales de ejercicios anteriores pendientes de aplicar (artículo 57), una por ejercicio. Reemplaza las capturadas. */
+	losses: {
+		/** El ejercicio en que nació. */
+		year: number;
+		/** Lo que queda por aplicar, actualizado hasta updated_to. */
+		amount: number;
+		/** AAAA-MM de su última actualización: diciembre de su ejercicio si aún no se aplica nada. */
+		updated_to: string;
+	}[];
+	/** Desde 2027: las deducciones que el límite del artículo 78-B dejó para los 20 ejercicios siguientes. */
+	pending_deductions?: {
+		/** El ejercicio en que nació. */
+		year: number;
+		/** Lo que queda por aplicar, actualizado hasta updated_to. */
+		amount: number;
+		/** AAAA-MM de su última actualización: diciembre de su ejercicio si aún no se aplica nada. */
+		updated_to: string;
+	}[];
+	/** Las partidas de la conciliación que los libros, los CFDI y la nómina no dicen. */
+	items?: {
+		/** Concepto del pago (ConceptoPago), c_TipoContribuyenteSujetoRetencion. */
+		concept: string;
+		/** taxable_income (ingreso fiscal no contable), non_deductible_expense (gasto contable no deducible), tax_deduction (deducción fiscal no contable) o non_taxable_income (ingreso contable no acumulable, como dividendos de personas morales mexicanas). */
+		type: "taxable_income" | "non_deductible_expense" | "tax_deduction" | "non_taxable_income";
+		/** Importe. */
+		amount: number;
+		/** true en un gasto no deducible que resta de la utilidad fiscal neta (artículo 77). */
+		reduces_net_tax_profit?: boolean;
+	}[];
+	/** true si está en una de las excepciones del artículo 78-E: no le aplican los límites de los artículos 78-A a 78-D. */
+	exception_78e?: boolean;
+	/** El primer mes del ejercicio: 1, o el mes en que empezó si fue en el año. */
+	from_month?: number;
+	/** La CUFIN y la CUCA (artículos 77 y 78): saldos iniciales y movimientos del año. Sin este campo se quedan los guardados. */
+	tax_accounts?: {
+		/** Los saldos al cierre del año anterior; null si no se conocen. carry_forward los pone en el año siguiente. */
+		opening: {
+			/** La CUFIN de utilidades de 2014 en adelante al cierre del año anterior. */
+			cufin: number;
+			/** La CUFIN de utilidades hasta 2013 (transitorio 2014, fr. XXX): sus dividendos no pagan el 10% de las personas físicas. */
+			cufin_2013?: number;
+			/** La cuenta de capital de aportación (artículo 78). */
+			cuca: number;
+			/** AAAA-MM de la última actualización de la CUFIN, antes de este año. */
+			cufin_updated_to: string;
+			/** AAAA-MM de la última actualización de la CUCA, antes de este año. */
+			cuca_updated_to: string;
+		} | null;
+		/** Los dividendos, aportaciones y reembolsos del año. */
+		movements?: {
+			/** El día en que se pagó o se recibió, en este año. */
+			date: string;
+			/** dividend_paid (dividendo pagado), dividend_received (de otra persona moral mexicana, suma a la CUFIN), capital_contribution (aportación, suma a la CUCA) o capital_reduction (reembolso o reducción de capital, artículo 78). */
+			type: "dividend_paid" | "dividend_received" | "capital_contribution" | "capital_reduction";
+			/** Importe. */
+			amount: number;
+			/** Un dividendo o reembolso: de qué CUFIN sale primero (por omisión cufin, la de 2014 en adelante). */
+			account?: "cufin" | "cufin_2013";
+			/** true si se paga a una persona física o a un residente en el extranjero: se le retiene el 10% (artículo 140). */
+			individual?: boolean;
+			/** capital_reduction: las acciones que se reembolsan. */
+			shares?: number;
+			/** capital_reduction: el total de acciones a esa fecha. */
+			total_shares?: number;
+			/** capital_reduction: el capital contable del estado de posición financiera aprobado, actualizado (artículo 78, fracción II). */
+			equity?: number;
+		}[];
+		/** El ISR del artículo 10 pagado en los dos años anteriores que falta acreditar. */
+		pending_dividend_tax?: {
+			/** Año (Ejercicio). */
+			year: number;
+			/** Importe. */
+			amount: number;
+		}[];
+	};
+}
+
+export interface CarryForwardAnnualReturnParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+}
+
 /** Los parámetros de GET /v1/accounting/depreciation_reconciliations/{year}. */
 export interface GetDepreciationReconciliationParams {
 	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
@@ -19827,6 +20277,50 @@ export class InflationAccountsResource {
 	}
 }
 
+/** Contabilidad: fiscalisto.annualReturns. */
+export class AnnualReturnsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Calcular la declaración anual de una persona moral
+	 *
+	 * La declaración anual de una persona moral del régimen general (Título II de la Ley del ISR) desde su contabilidad: la conciliación contable-fiscal (items: partidas de los libros, de los CFDI, de la nómina, el ajuste anual por inflación, la deducción de inversiones y las capturadas), ingresos acumulables y deducciones autorizadas, utilidad o pérdida fiscal después de la PTU pagada (artículo 9), las pérdidas de ejercicios anteriores actualizadas y aplicadas (artículo 57), desde 2027 los límites de los artículos 78-A a 78-D, el resultado fiscal, el ISR del ejercicio menos pagos provisionales y retenciones (balance: positivo a cargo, negativo a favor), el coeficiente de utilidad para el año siguiente (artículo 14), la renta gravable de la PTU, la utilidad fiscal neta (artículo 77) y en tax_accounts la CUFIN y la CUCA con lo que cada dividendo o reembolso saca de ellas, el ISR del artículo 10 y el 10% a retener (artículo 140). Es un papel de trabajo para su contador, no la declaración presentada. Un emisor persona física, RESICO o no lucrativo contesta regime_not_applicable. Como Estados financieros › Declaración anual en la app.
+	 *
+	 * GET /v1/accounting/annual_returns/{year}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-annual-return
+	 */
+	get(year: string, params?: GetAnnualReturnParams, options?: RequestOptions): Promise<AnnualReturn> {
+		return this.#client.request({ method: "GET", path: `/v1/accounting/annual_returns/${encodeURIComponent(year)}`, query: params }, options);
+	}
+
+	/**
+	 * Capturar lo que los libros no dicen de la declaración anual
+	 *
+	 * Reemplaza lo capturado para la declaración anual del año: las pérdidas pendientes por ejercicio (con el mes hasta el que están actualizadas), desde 2027 las deducciones pendientes del artículo 78-B, las partidas de la conciliación (como dividendos de personas morales mexicanas, ingreso no acumulable), si está en una excepción del artículo 78-E, el primer mes del ejercicio y, en tax_accounts, la CUFIN y la CUCA (saldos iniciales, dividendos pagados o recibidos, aportaciones y reembolsos; sin tax_accounts se quedan los guardados). Mande la lista completa: lo que no mande se quita. Una pérdida de este año o posterior, un mes de actualización anterior a su ejercicio o dos del mismo ejercicio contestan parameter_invalid. Contesta la declaración recalculada.
+	 *
+	 * POST /v1/accounting/annual_returns/{year}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/save-annual-return
+	 */
+	save(year: string, params: SaveAnnualReturnParams, options?: RequestOptions): Promise<AnnualReturn> {
+		return this.#client.request({ method: "POST", path: `/v1/accounting/annual_returns/${encodeURIComponent(year)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Llevar las pérdidas que quedan al año siguiente
+	 *
+	 * Pasa a lo capturado del año siguiente las pérdidas que quedan después de este año (con la de este año, si la hubo, actualizada al último mes del ejercicio) desde 2027 las deducciones pendientes del artículo 78-B, y los saldos de la CUFIN y la CUCA al 31 de diciembre con el ISR de dividendos por acreditar; reemplaza los que tuviera. Si los pagos provisionales del año siguiente no tienen pérdidas en Impuestos, les pone su total (artículo 14, fracción II). Las demás capturas del año siguiente se quedan.
+	 *
+	 * POST /v1/accounting/annual_returns/{year}/carry_forward
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/carry-forward-annual-return
+	 */
+	carryForward(year: string, params?: CarryForwardAnnualReturnParams, options?: RequestOptions): Promise<AnnualReturnCarryForward> {
+		return this.#client.request({ method: "POST", path: `/v1/accounting/annual_returns/${encodeURIComponent(year)}/carry_forward`, body: params, idempotent: true }, options);
+	}
+}
+
 /** Contabilidad: fiscalisto.depreciationReconciliations. */
 export class DepreciationReconciliationsResource {
 	readonly #client: Client;
@@ -20991,6 +21485,7 @@ export class FiscalistoApi extends Core {
 	readonly budgets = new BudgetsResource(this);
 	readonly inflationAdjustments = new InflationAdjustmentsResource(this);
 	readonly inflationAccounts = new InflationAccountsResource(this);
+	readonly annualReturns = new AnnualReturnsResource(this);
 	readonly depreciationReconciliations = new DepreciationReconciliationsResource(this);
 	readonly bookDepreciationRates = new BookDepreciationRatesResource(this);
 	readonly chartTemplates = new ChartTemplatesResource(this);
