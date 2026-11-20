@@ -4724,6 +4724,16 @@ export interface ManualJournalEntry {
 		credit: number;
 		/** Su centro de costo (ccn_…), o null. */
 		cost_center: string | null;
+		/** Su moneda (ISO 4217) si es en otra, o null si es en pesos. */
+		currency: string | null;
+		/** Su importe en esa moneda, o null. */
+		foreign_amount: number | null;
+		/** Su tipo de cambio, o null. */
+		exchange_rate: number | null;
+		/** El UUID del CFDI de este renglón, o null. */
+		cfdi_uuid: string | null;
+		/** El RFC de la otra parte de ese CFDI, o null. */
+		cfdi_tax_id: string | null;
 	}[];
 	/** Cuándo se capturó. */
 	created_at: string | null;
@@ -5191,6 +5201,72 @@ export interface InflationAccounts {
 		treatment: "credit" | "debt" | "none";
 		/** true si difiere del de su código agrupador. */
 		changed: boolean;
+	}[];
+}
+
+/** Una póliza modelo: las cuentas de una póliza que se captura seguido (una compra, una renta) con el porcentaje del total o el importe fijo de cada renglón, para hacerla otra vez con otro total. */
+export interface EntryTemplate {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "entry_template";
+	/** El emisor. */
+	issuer: string;
+	/** El nombre del modelo. */
+	name: string;
+	/** El concepto de las pólizas que se hacen con él. */
+	description: string;
+	/** La clase de las pólizas que se hacen con él: adjustment, accrual, reclassification u other. */
+	kind: "adjustment" | "accrual" | "reclassification" | "other";
+	/** Su tipo de póliza: journal, income o expense. */
+	journal_type: "journal" | "income" | "expense";
+	/** Sus renglones: la cuenta, el lado y el porcentaje o el importe fijo. */
+	lines: {
+		/** El número de cuenta. */
+		account: string;
+		/** El nombre de la cuenta. */
+		account_name: string;
+		/** Si el renglón es cargo (debit) o abono (credit). */
+		side: "debit" | "credit";
+		/** El porcentaje del total que lleva, o null. */
+		percentage: number | null;
+		/** Su importe fijo, o null. */
+		amount: number | null;
+		/** Su centro de costo (ccn_…), o null. */
+		cost_center: string | null;
+	}[];
+	/** Cuándo cambió por última vez. */
+	updated_at: string | null;
+}
+
+/** Los renglones de una póliza modelo para un total, listos para POST /v1/accounting/manual_entries. No se guarda nada. */
+export interface EntryTemplateLines {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "entry_template_lines";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** La póliza modelo (mjt_…). */
+	entry_template: string;
+	/** El total con que se calcularon. */
+	total: number;
+	/** El concepto del modelo. */
+	description: string;
+	/** La clase de la póliza, la del modelo. */
+	kind: "adjustment" | "accrual" | "reclassification" | "other";
+	/** El tipo de póliza, el del modelo. */
+	journal_type: "journal" | "income" | "expense";
+	/** Los renglones, como los recibe POST /v1/accounting/manual_entries. */
+	lines: {
+		/** El número de cuenta. */
+		account: string;
+		/** El cargo, en pesos. */
+		debit: number;
+		/** El abono, en pesos. */
+		credit: number;
+		/** Su centro de costo (ccn_…): la obra, proyecto, sucursal o área a la que pertenece, para ver ingresos y gastos por centro en Reportes. No cambia el CFDI. Sus notas de crédito lo toman solas. */
+		cost_center: string | null;
 	}[];
 }
 
@@ -7986,6 +8062,17 @@ export interface FixedAssetList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: FixedAsset[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface EntryTemplateList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: EntryTemplate[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -12577,6 +12664,16 @@ export interface CreateManualEntryParams {
 		credit?: number;
 		/** Su centro de costo (ccn_…, GET /v1/cost_centers), opcional: los resultados por centro de costo y los presupuestos lo leen. */
 		cost_center?: string | null;
+		/** Un renglón en otra moneda: su clave ISO 4217 (USD, EUR…). Con ella van foreign_amount y exchange_rate, y debit o credit es su producto en pesos. */
+		currency?: string | null;
+		/** El importe del renglón en su moneda. */
+		foreign_amount?: number | null;
+		/** El tipo de cambio del renglón: pesos por una unidad de su moneda. */
+		exchange_rate?: number | null;
+		/** El CFDI que documenta este renglón, aparte del de la póliza: así una póliza lleva varios. */
+		cfdi_uuid?: string | null;
+		/** El RFC de quien emitió o recibió el CFDI del renglón. */
+		cfdi_tax_id?: string | null;
 	}[];
 }
 
@@ -12621,6 +12718,16 @@ export interface UpdateManualEntryParams {
 		credit?: number;
 		/** Su centro de costo (ccn_…, GET /v1/cost_centers), opcional: los resultados por centro de costo y los presupuestos lo leen. */
 		cost_center?: string | null;
+		/** Un renglón en otra moneda: su clave ISO 4217 (USD, EUR…). Con ella van foreign_amount y exchange_rate, y debit o credit es su producto en pesos. */
+		currency?: string | null;
+		/** El importe del renglón en su moneda. */
+		foreign_amount?: number | null;
+		/** El tipo de cambio del renglón: pesos por una unidad de su moneda. */
+		exchange_rate?: number | null;
+		/** El CFDI que documenta este renglón, aparte del de la póliza: así una póliza lleva varios. */
+		cfdi_uuid?: string | null;
+		/** El RFC de quien emitió o recibió el CFDI del renglón. */
+		cfdi_tax_id?: string | null;
 	}[];
 }
 
@@ -12647,6 +12754,16 @@ export interface ImportManualEntriesParams {
 			credit?: number;
 			/** Su centro de costo (ccn_…, GET /v1/cost_centers), opcional: los resultados por centro de costo y los presupuestos lo leen. */
 			cost_center?: string | null;
+			/** Un renglón en otra moneda: su clave ISO 4217 (USD, EUR…). Con ella van foreign_amount y exchange_rate, y debit o credit es su producto en pesos. */
+			currency?: string | null;
+			/** El importe del renglón en su moneda. */
+			foreign_amount?: number | null;
+			/** El tipo de cambio del renglón: pesos por una unidad de su moneda. */
+			exchange_rate?: number | null;
+			/** El CFDI que documenta este renglón, aparte del de la póliza: así una póliza lleva varios. */
+			cfdi_uuid?: string | null;
+			/** El RFC de quien emitió o recibió el CFDI del renglón. */
+			cfdi_tax_id?: string | null;
 		}[];
 	}[];
 }
@@ -12821,6 +12938,67 @@ export interface SaveBookDepreciationRateParams {
 	annual_rate: number | null;
 	/** El valor residual como fracción del monto original (NIF C-6); 0 si no se manda. */
 	residual_rate?: number;
+}
+
+/** Los parámetros de GET /v1/accounting/entry_templates. */
+export interface ListEntryTemplatesParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface CreateEntryTemplateParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** El nombre del modelo, único en el emisor: «Compra con IVA al 16%». */
+	name: string;
+	/** El concepto de las pólizas que se hacen con él. */
+	description: string;
+	/** adjustment (ajuste), accrual (provisión), reclassification (reclasificación) u other. */
+	kind?: "adjustment" | "accrual" | "reclassification" | "other";
+	/** El tipo de póliza: journal (diario), income (ingresos) o expense (egresos). */
+	journal_type?: "journal" | "income" | "expense";
+	/** Sus renglones: la cuenta, el lado y el porcentaje del total o el importe fijo. */
+	lines: {
+		/** El número de la cuenta en su catálogo (GET /v1/accounting/accounts). */
+		account: string;
+		/** Si el renglón es cargo (debit) o abono (credit). */
+		side: "debit" | "credit";
+		/** El porcentaje del total que lleva (86.2069 es 86.2069%). Los de un lado suman hasta 100. */
+		percentage?: number | null;
+		/** Un importe fijo, cuando no depende del total. Sin percentage ni amount, el renglón sale en 0 para escribirlo cada vez. */
+		amount?: number | null;
+		/** Su centro de costo (ccn_…, GET /v1/cost_centers), opcional. */
+		cost_center?: string | null;
+	}[];
+}
+
+export interface UpdateEntryTemplateParams {
+	/** El nombre del modelo, único en el emisor: «Compra con IVA al 16%». */
+	name: string;
+	/** El concepto de las pólizas que se hacen con él. */
+	description: string;
+	/** adjustment (ajuste), accrual (provisión), reclassification (reclasificación) u other. */
+	kind?: "adjustment" | "accrual" | "reclassification" | "other";
+	/** El tipo de póliza: journal (diario), income (ingresos) o expense (egresos). */
+	journal_type?: "journal" | "income" | "expense";
+	/** Sus renglones: la cuenta, el lado y el porcentaje del total o el importe fijo. */
+	lines: {
+		/** El número de la cuenta en su catálogo (GET /v1/accounting/accounts). */
+		account: string;
+		/** Si el renglón es cargo (debit) o abono (credit). */
+		side: "debit" | "credit";
+		/** El porcentaje del total que lleva (86.2069 es 86.2069%). Los de un lado suman hasta 100. */
+		percentage?: number | null;
+		/** Un importe fijo, cuando no depende del total. Sin percentage ni amount, el renglón sale en 0 para escribirlo cada vez. */
+		amount?: number | null;
+		/** Su centro de costo (ccn_…, GET /v1/cost_centers), opcional. */
+		cost_center?: string | null;
+	}[];
+}
+
+export interface ApplyEntryTemplateParams {
+	/** El total de la póliza: cada porcentaje se calcula sobre él, al centavo. */
+	total: number;
 }
 
 /** Los parámetros de GET /v1/accounting/cost_center_results/{month}. */
@@ -18325,6 +18503,74 @@ export class BookDepreciationRatesResource {
 	}
 }
 
+/** Contabilidad: fiscalisto.entryTemplates. */
+export class EntryTemplatesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar las pólizas modelo
+	 *
+	 * Las pólizas modelo del emisor, por nombre: las cuentas de una póliza que captura seguido con el porcentaje del total de cada renglón. Como «Usar un modelo» en Nueva póliza.
+	 *
+	 * GET /v1/accounting/entry_templates
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/list-entry-templates
+	 */
+	list(params?: ListEntryTemplatesParams, options?: RequestOptions): Promise<EntryTemplateList> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/entry_templates", query: params }, options);
+	}
+
+	/**
+	 * Guardar una póliza modelo
+	 *
+	 * Guarda las cuentas de una póliza bajo un nombre, cada renglón en su lado con el porcentaje del total (percentage), un importe fijo (amount) o ninguno, para escribirlo cada vez. Los porcentajes de un lado suman hasta 100. El nombre es único en el emisor.
+	 *
+	 * POST /v1/accounting/entry_templates
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/create-entry-template
+	 */
+	create(params: CreateEntryTemplateParams, options?: RequestOptions): Promise<EntryTemplate> {
+		return this.#client.request({ method: "POST", path: "/v1/accounting/entry_templates", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Cambiar una póliza modelo
+	 *
+	 * La reemplaza con lo que manda. Las pólizas que ya se hicieron con ella no cambian.
+	 *
+	 * POST /v1/accounting/entry_templates/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/update-entry-template
+	 */
+	update(id: string, params: UpdateEntryTemplateParams, options?: RequestOptions): Promise<EntryTemplate> {
+		return this.#client.request({ method: "POST", path: `/v1/accounting/entry_templates/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Borrar una póliza modelo
+	 *
+	 * Las pólizas que ya se hicieron con ella no cambian.
+	 *
+	 * DELETE /v1/accounting/entry_templates/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/delete-entry-template
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/accounting/entry_templates/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Calcular los renglones de una póliza modelo
+	 *
+	 * Los renglones de la póliza modelo para un total: cada porcentaje al centavo, los importes fijos como están y 0 donde no hay ninguno. El centavo del redondeo va al renglón más grande de un lado que suma 100%, para que cuadre. Mándelos como lines en POST /v1/accounting/manual_entries; aquí no se guarda nada.
+	 *
+	 * POST /v1/accounting/entry_templates/{id}/apply
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/apply-entry-template
+	 */
+	apply(id: string, params: ApplyEntryTemplateParams, options?: RequestOptions): Promise<EntryTemplateLines> {
+		return this.#client.request({ method: "POST", path: `/v1/accounting/entry_templates/${encodeURIComponent(id)}/apply`, body: params, idempotent: true }, options);
+	}
+}
+
 /** Contabilidad: fiscalisto.costCenterResults. */
 export class CostCenterResultsResource {
 	readonly #client: Client;
@@ -19251,6 +19497,7 @@ export class FiscalistoApi extends Core {
 	readonly inflationAccounts = new InflationAccountsResource(this);
 	readonly depreciationReconciliations = new DepreciationReconciliationsResource(this);
 	readonly bookDepreciationRates = new BookDepreciationRatesResource(this);
+	readonly entryTemplates = new EntryTemplatesResource(this);
 	readonly costCenterResults = new CostCenterResultsResource(this);
 	readonly payrollProvisions = new PayrollProvisionsResource(this);
 	readonly taxDeterminations = new TaxDeterminationsResource(this);
