@@ -586,7 +586,7 @@ export interface Invoice {
 	cost_center: string | null;
 	/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
 	type: "I" | "E" | "P" | "T" | "N";
-	/** processing: el PAC no ha contestado (se resuelve sola; escuche invoice.stamped). valid: timbrada. pending: timbrada con una cancelación en espera del cliente. rejected: el SAT o el PAC no la aceptaron (ver error). canceled: cancelada. */
+	/** processing: el PAC no ha contestado (se resuelve sola; escuche invoice.stamped). valid: timbrada. pending: timbrada, sin el UUID aún (se resuelve sola, como processing). Una cancelación en espera del cliente no cambia status: sigue valid, con cancellation.status pending. rejected: el SAT o el PAC no la aceptaron (ver error). canceled: cancelada. */
 	status: "processing" | "pending" | "valid" | "rejected" | "canceled";
 	/** Folio fiscal que asigna el SAT (UUID del Timbre Fiscal Digital), en mayúsculas. */
 	uuid: string | null;
@@ -15428,6 +15428,16 @@ export interface GetElectronicAccountingParams {
 	issuer?: string;
 }
 
+/** Los parámetros de GET /v1/accounting/books_export. */
+export interface GetBooksExportParams {
+	/** El primer mes (AAAA-MM), de 2015-01 al mes actual. */
+	from_month: string;
+	/** El último mes (AAAA-MM), hasta 24 meses después y no después del mes actual; por omisión, from_month. */
+	to_month?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
 /** Los parámetros de GET /v1/accounting/diot. */
 export interface GetDiotParams {
 	/** El mes (AAAA-MM). */
@@ -19584,8 +19594,8 @@ export class SatReviewsResource {
 	 * GET /v1/sat_reviews/{id}/answer
 	 * @see https://fiscalisto.com/docs/api/referencia/cumplimiento-sat/download-sat-review-answer
 	 */
-	downloadAnswer(id: string, options?: RequestOptions): Promise<string> {
-		return this.#client.request({ method: "GET", path: `/v1/sat_reviews/${encodeURIComponent(id)}/answer`, as: "text" }, options);
+	downloadAnswer(id: string, options?: RequestOptions): Promise<Uint8Array> {
+		return this.#client.request({ method: "GET", path: `/v1/sat_reviews/${encodeURIComponent(id)}/answer`, as: "bytes" }, options);
 	}
 }
 
@@ -20128,8 +20138,8 @@ export class ExportsResource {
 	 * GET /v1/exports/{id}/download
 	 * @see https://fiscalisto.com/docs/api/referencia/exportaciones/download-export
 	 */
-	download(id: string, options?: RequestOptions): Promise<string> {
-		return this.#client.request({ method: "GET", path: `/v1/exports/${encodeURIComponent(id)}/download`, as: "text" }, options);
+	download(id: string, options?: RequestOptions): Promise<Uint8Array> {
+		return this.#client.request({ method: "GET", path: `/v1/exports/${encodeURIComponent(id)}/download`, as: "bytes" }, options);
 	}
 }
 
@@ -20928,8 +20938,20 @@ export class AccountingResource {
 	 * GET /v1/accounting/electronic_accounting
 	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-electronic-accounting
 	 */
-	electronicAccounting(params: GetElectronicAccountingParams, options?: RequestOptions): Promise<string> {
-		return this.#client.request({ method: "GET", path: "/v1/accounting/electronic_accounting", query: params, as: "text" }, options);
+	electronicAccounting(params: GetElectronicAccountingParams, options?: RequestOptions): Promise<Uint8Array> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/electronic_accounting", query: params, as: "bytes" }, options);
+	}
+
+	/**
+	 * Descargar toda la contabilidad de un periodo
+	 *
+	 * Un ZIP para llevar los libros a otro sistema, de from_month a to_month (hasta 24 meses): el catálogo (1-catalogo, Excel con número, nombre, nivel, código agrupador y naturaleza), los saldos iniciales al primer día de from_month en deudor y acreedor (2-saldos-iniciales), las pólizas de todo el periodo para CONTPAQi Contabilidad (un TXT) y para Aspel COI (un Excel por mes), la balanza de comprobación de cada mes (una hoja por mes) y, en contabilidad-electronica, el catálogo (CT) y la balanza de cada mes (BN) en XML 1.3 del Anexo 24. LEEME.txt dice el orden en que se importa. Son los mismos libros de financial_statements y electronic_accounting.
+	 *
+	 * GET /v1/accounting/books_export
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-books-export
+	 */
+	booksExport(params: GetBooksExportParams, options?: RequestOptions): Promise<Uint8Array> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/books_export", query: params, as: "bytes" }, options);
 	}
 
 	/**
