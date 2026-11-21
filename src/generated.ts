@@ -3850,6 +3850,17 @@ export interface Rule {
 		message?: string;
 		/** email_supplier en los disparadores de pagos: payout, un correo por pago y proveedor; invoice, uno por factura. */
 		per?: "payout" | "invoice";
+		/** email_supplier: las columnas de cada tabla del mensaje; null: las de siempre. */
+		columns?: {
+			/** Columnas de {tabla_facturas}, en su orden. */
+			tabla_facturas?: string[];
+			/** Columnas de {tabla_conceptos}, en su orden. */
+			tabla_conceptos?: string[];
+			/** Columnas de {tabla_productos}, en su orden. */
+			tabla_productos?: string[];
+		} | null;
+		/** email_supplier: personas del equipo con copia (mem_…). */
+		cc?: string[];
 		/** review_findings: los hallazgos que da por revisados (sus códigos). */
 		findings?: string[];
 		/** extra_signature: cuántas firmas más pide (1 a 3). */
@@ -5407,6 +5418,8 @@ export interface SelfInvoicing {
 	invoice_series: string | null;
 	/** true: el portal le pide al comprador una nota para el PDF de su factura (hasta 500 caracteres). Solo sale en el PDF, nunca en el XML. */
 	customer_notes: boolean;
+	/** true: cuando un comprador no puede facturar por algo del emisor, se avisa por correo; false: solo queda en Alertas. */
+	failure_email: boolean;
 	/** ticket: la factura global lleva un concepto «Venta» por ticket, con su folio. summary: solo el monto total del periodo, uno por combinación de impuestos (NoIdentificacion «Resumen»), para una persona física en RESICO (regla 2.7.1.21 de la RMF 2026). */
 	global_concepts: "ticket" | "summary";
 }
@@ -13457,19 +13470,30 @@ export interface CreateRuleParams {
 		stage?: number;
 		/** notify: a quién (mem_…, GET /v1/members). */
 		members?: string[];
-		/** notify: lo que dice el aviso. hold_payment: por qué se retiene (hasta 200). */
+		/** notify: lo que dice el aviso. hold_payment: por qué se retiene (hasta 200). Puede llevar las variables de `message`, menos las tablas. */
 		note?: string | null;
 		/** email_supplier: el tema de los correos del proveedor a los que va (ordenes, pagos, facturas, complementos, documentos, precios; Ajustes › Correos a proveedores). Sin correos de ese tema, va a sus correos generales. Por omisión, facturas. */
 		topic?: "ordenes" | "pagos" | "facturas" | "complementos" | "documentos" | "precios";
-		/** email_supplier: el asunto. Puede llevar {folio}, {total}, {fecha} y {empresa}. En los momentos de pagos también {facturas}, {pagado}, {fecha_pago}, {pago}, {cuenta}, {banco} y {referencia}; en payout.paid, {rastreo} y {cep}; en payout.failed, {motivo}. */
+		/** email_supplier: el asunto. Lleva las variables de `message`, menos las tablas. */
 		subject?: string;
-		/** email_supplier: el mensaje. Puede llevar {folio}, {total}, {fecha} y {empresa}. En los momentos de pagos también {facturas}, {pagado}, {fecha_pago}, {pago}, {cuenta}, {banco} y {referencia}; en payout.paid, {rastreo} y {cep}; en payout.failed, {motivo}. */
+		/** email_supplier: el mensaje. Variables: {folio}, {total}, {fecha}, {empresa}, {rfc_empresa}, {proveedor}, {rfc_proveedor}, {subtotal}, {iva}, {retenciones} y {moneda}; de una factura también {uuid}, {metodo_pago}, {forma_pago}, {uso_cfdi}, {conceptos}, {categoria}, {saldo}, {orden}, {contrarecibo}, {fecha_promesa}, {hallazgos} y la tabla {tabla_conceptos}; de una orden {entrega}, {almacen}, {credito}, {comprador}, {nota}, {enlace} y la tabla {tabla_productos}; en invoice.rejected y purchase_order.rejected, {motivo_rechazo}; en los momentos de pagos {facturas}, la tabla {tabla_facturas}, {pagado}, {fecha_pago}, {pago}, {cuenta}, {banco} y {referencia}, en payout.paid {rastreo} y {cep}, en payout.failed {motivo}. Un correo por pago (per payout) no lleva las de una sola factura. Cada {tabla_…} se dibuja como tabla, con las columnas de `columns`; un dato que el registro no tiene queda en blanco. */
 		message?: string;
 		/** email_supplier en payout.submitted, payout.paid y payout.failed: payout manda un correo por pago y proveedor con todas sus facturas ({folio} es la lista de folios, {total} lo que se le paga y {fecha} la fecha del pago); invoice, uno por factura. Por omisión, payout. */
 		per?: "payout" | "invoice";
+		/** email_supplier: las columnas de cada tabla del mensaje, en su orden. tabla_facturas: folio, uuid, fecha, total, retenido, pagado; tabla_conceptos: clave, descripcion, cantidad, unidad, precio, importe; tabla_productos: producto, codigo, cantidad, recibido, pendiente, precio, importe. Sin columnas, las de siempre. */
+		columns?: {
+			/** Columnas de {tabla_facturas}, en su orden. */
+			tabla_facturas?: ("folio" | "uuid" | "fecha" | "total" | "retenido" | "pagado")[];
+			/** Columnas de {tabla_conceptos}, en su orden. */
+			tabla_conceptos?: ("clave" | "descripcion" | "cantidad" | "unidad" | "precio" | "importe")[];
+			/** Columnas de {tabla_productos}, en su orden. */
+			tabla_productos?: ("producto" | "codigo" | "cantidad" | "recibido" | "pendiente" | "precio" | "importe")[];
+		} | null;
+		/** email_supplier: personas del equipo que reciben copia (mem_…, GET /v1/members). */
+		cc?: string[] | null;
 		/** extra_signature: cuántas firmas más pide (1 a 3). Por omisión, 1. */
 		signatures?: number;
-		/** extra_signature: por qué, para quien firma («Proveedor nuevo»). */
+		/** extra_signature: por qué, para quien firma («Proveedor nuevo»). Puede llevar las variables de `message`, menos las tablas. */
 		reason?: string | null;
 		/** review_findings: los hallazgos que da por revisados (sus códigos, `code` en GET /v1/sat_findings). No los que cambian impuestos o la lista negra: cancelado, efos_definitivo, efos_presunto, lista_69b_bis, lista_69. */
 		findings?: string[];
@@ -13568,19 +13592,30 @@ export interface UpdateRuleParams {
 		stage?: number;
 		/** notify: a quién (mem_…, GET /v1/members). */
 		members?: string[];
-		/** notify: lo que dice el aviso. hold_payment: por qué se retiene (hasta 200). */
+		/** notify: lo que dice el aviso. hold_payment: por qué se retiene (hasta 200). Puede llevar las variables de `message`, menos las tablas. */
 		note?: string | null;
 		/** email_supplier: el tema de los correos del proveedor a los que va (ordenes, pagos, facturas, complementos, documentos, precios; Ajustes › Correos a proveedores). Sin correos de ese tema, va a sus correos generales. Por omisión, facturas. */
 		topic?: "ordenes" | "pagos" | "facturas" | "complementos" | "documentos" | "precios";
-		/** email_supplier: el asunto. Puede llevar {folio}, {total}, {fecha} y {empresa}. En los momentos de pagos también {facturas}, {pagado}, {fecha_pago}, {pago}, {cuenta}, {banco} y {referencia}; en payout.paid, {rastreo} y {cep}; en payout.failed, {motivo}. */
+		/** email_supplier: el asunto. Lleva las variables de `message`, menos las tablas. */
 		subject?: string;
-		/** email_supplier: el mensaje. Puede llevar {folio}, {total}, {fecha} y {empresa}. En los momentos de pagos también {facturas}, {pagado}, {fecha_pago}, {pago}, {cuenta}, {banco} y {referencia}; en payout.paid, {rastreo} y {cep}; en payout.failed, {motivo}. */
+		/** email_supplier: el mensaje. Variables: {folio}, {total}, {fecha}, {empresa}, {rfc_empresa}, {proveedor}, {rfc_proveedor}, {subtotal}, {iva}, {retenciones} y {moneda}; de una factura también {uuid}, {metodo_pago}, {forma_pago}, {uso_cfdi}, {conceptos}, {categoria}, {saldo}, {orden}, {contrarecibo}, {fecha_promesa}, {hallazgos} y la tabla {tabla_conceptos}; de una orden {entrega}, {almacen}, {credito}, {comprador}, {nota}, {enlace} y la tabla {tabla_productos}; en invoice.rejected y purchase_order.rejected, {motivo_rechazo}; en los momentos de pagos {facturas}, la tabla {tabla_facturas}, {pagado}, {fecha_pago}, {pago}, {cuenta}, {banco} y {referencia}, en payout.paid {rastreo} y {cep}, en payout.failed {motivo}. Un correo por pago (per payout) no lleva las de una sola factura. Cada {tabla_…} se dibuja como tabla, con las columnas de `columns`; un dato que el registro no tiene queda en blanco. */
 		message?: string;
 		/** email_supplier en payout.submitted, payout.paid y payout.failed: payout manda un correo por pago y proveedor con todas sus facturas ({folio} es la lista de folios, {total} lo que se le paga y {fecha} la fecha del pago); invoice, uno por factura. Por omisión, payout. */
 		per?: "payout" | "invoice";
+		/** email_supplier: las columnas de cada tabla del mensaje, en su orden. tabla_facturas: folio, uuid, fecha, total, retenido, pagado; tabla_conceptos: clave, descripcion, cantidad, unidad, precio, importe; tabla_productos: producto, codigo, cantidad, recibido, pendiente, precio, importe. Sin columnas, las de siempre. */
+		columns?: {
+			/** Columnas de {tabla_facturas}, en su orden. */
+			tabla_facturas?: ("folio" | "uuid" | "fecha" | "total" | "retenido" | "pagado")[];
+			/** Columnas de {tabla_conceptos}, en su orden. */
+			tabla_conceptos?: ("clave" | "descripcion" | "cantidad" | "unidad" | "precio" | "importe")[];
+			/** Columnas de {tabla_productos}, en su orden. */
+			tabla_productos?: ("producto" | "codigo" | "cantidad" | "recibido" | "pendiente" | "precio" | "importe")[];
+		} | null;
+		/** email_supplier: personas del equipo que reciben copia (mem_…, GET /v1/members). */
+		cc?: string[] | null;
 		/** extra_signature: cuántas firmas más pide (1 a 3). Por omisión, 1. */
 		signatures?: number;
-		/** extra_signature: por qué, para quien firma («Proveedor nuevo»). */
+		/** extra_signature: por qué, para quien firma («Proveedor nuevo»). Puede llevar las variables de `message`, menos las tablas. */
 		reason?: string | null;
 		/** review_findings: los hallazgos que da por revisados (sus códigos, `code` en GET /v1/sat_findings). No los que cambian impuestos o la lista negra: cancelado, efos_definitivo, efos_presunto, lista_69b_bis, lista_69. */
 		findings?: string[];
@@ -15318,6 +15353,13 @@ export interface UpdateSelfInvoicingParams {
 				/** El mensaje al terminar en inglés. */
 				en?: string;
 			} | null;
+			/** Lo que dice el portal antes de su correo y teléfono cuando no se pudo facturar («¿Sigue con problemas?»); `null` vuelve al de Fiscalisto. */
+			error_help?: {
+				/** Lo que dice el portal antes de su correo y teléfono cuando no se pudo facturar («¿Sigue con problemas?») en español. */
+				es?: string;
+				/** Lo que dice el portal antes de su correo y teléfono cuando no se pudo facturar («¿Sigue con problemas?») en inglés. */
+				en?: string;
+			} | null;
 			/** El título de la elección de conceptos («Conceptos en su factura»; ver `invoice_concepts`); `null` vuelve al de Fiscalisto. */
 			concepts_title?: {
 				/** El título de la elección de conceptos («Conceptos en su factura»; ver `invoice_concepts`) en español. */
@@ -15389,6 +15431,8 @@ export interface UpdateSelfInvoicingParams {
 	invoice_series?: string | null;
 	/** `true`: el portal le pide al comprador una nota para el PDF de su factura (hasta 500 caracteres; Autofactura › Nota del cliente). Solo sale en el PDF, nunca en el XML. Por omisión `false`. */
 	customer_notes?: boolean;
+	/** `true` (por omisión): cuando un comprador no puede facturar por algo del emisor (su CSD, sus datos, el PAC), se avisa por correo a los dueños y administradores. `false`: solo queda en Alertas, sin correo. Un error en los datos del comprador nunca avisa: el portal le dice cómo corregirlo. */
+	failure_email?: boolean;
 	/** Los conceptos de la factura que se hace el comprador (Autofactura › Conceptos de la factura): desglosados o en uno solo, y si el comprador puede elegir. Mande solo lo que cambia; `null` regresa a desglosados sin elección. */
 	invoice_concepts?: {
 		/** `itemized` (por omisión): un concepto por renglón del ticket (Hospedaje, Restaurante, Bar…). `single`: uno solo, con `description`. `grouped`: los conceptos de `groups`. Un concepto lleva un solo juego de impuestos, así que los renglones con otros (una noche con ISH, IVA 0 %, retenciones) van aparte. El total y los impuestos no cambian. */
