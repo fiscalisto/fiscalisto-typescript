@@ -3122,6 +3122,8 @@ export interface SatInvoice {
 		/** true cuando la marcó una regla de Ajustes › Pagos sin complemento. */
 		by_rule: boolean;
 	} | null;
+	/** Solo en una PUE recibida pagada en efectivo cuando la empresa pide confirmar estos pagos (Ajustes › Pagos sin complemento): pending hasta que alguien anote de dónde salió el dinero (mark_paid con money_source), confirmed después. Null en las demás. Sus impuestos no cambian. */
+	cash_confirmation: "pending" | "confirmed" | null;
 	/** Su centro de costo (ccn_…), o null. Póngalo o cámbielo con POST /v1/sat_invoices/{id}. */
 	cost_center: string | null;
 	/** Sus etiquetas, por nombre. automatic: true en las que puso una regla (la orden de compra a la que se vinculó o una regla de Ajustes › Reglas). Cámbielas con POST /v1/sat_invoices/{id}. */
@@ -14324,6 +14326,8 @@ export interface ListSatInvoicesParams {
 	cost_center?: string;
 	/** Solo las que llevan esta etiqueta (tag_…). */
 	tag?: string;
+	/** Solo las PUE recibidas en efectivo que la empresa pide confirmar: pending (nadie ha anotado de dónde salió el dinero) o confirmed. */
+	cash_confirmation?: "pending" | "confirmed";
 }
 
 export interface UpdateSatInvoiceParams {
