@@ -2676,6 +2676,39 @@ export interface PayrollOrgChart {
 		branch: string | null;
 		/** Desde cuándo está abierta (YYYY-MM-DD). */
 		opened_on: string;
+		/** pending_approval espera el visto bueno de alguien con el permiso «Aprobar la prenómina» (las que abre una llave de API, y las que abre o cambia quien no lo tiene); approved ya se puede cubrir. En el organigrama salen solo estas dos. */
+		status: "pending_approval" | "approved" | "rejected" | "filled";
+		/** Sueldo mensual bruto que ofrece, desde. */
+		salary_min: number | null;
+		/** Sueldo mensual bruto que ofrece, hasta. */
+		salary_max: number | null;
+		/** Estado donde trabajará (c_Estado), si se dijo. */
+		state: string | null;
+		/** Lo que costaría a la empresa al mes: el sueldo, las cuotas patronales (primer año, prestaciones de ley, la prima de riesgo del emisor) y el impuesto sobre nómina de su estado. null sin sueldo. */
+		monthly_cost: {
+			/** Con salary_min. */
+			min: {
+				/** El sueldo del mes. */
+				salary: number;
+				/** Lo que paga el patrón al IMSS, SAR e Infonavit al mes (cuotas obrero-patronales). */
+				employer_contributions: number;
+				/** El impuesto sobre nómina del estado al mes. */
+				payroll_tax: number;
+				/** Lo que cuesta a la empresa al mes. */
+				total: number;
+			} | null;
+			/** Con salary_max. */
+			max: {
+				/** El sueldo del mes. */
+				salary: number;
+				/** Lo que paga el patrón al IMSS, SAR e Infonavit al mes (cuotas obrero-patronales). */
+				employer_contributions: number;
+				/** El impuesto sobre nómina del estado al mes. */
+				payroll_tax: number;
+				/** Lo que cuesta a la empresa al mes. */
+				total: number;
+			} | null;
+		};
 	}[];
 }
 
@@ -12621,6 +12654,8 @@ export interface MarkPayrollCalendarEventParams {
 export interface GetPayrollOrgChartParams {
 	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
 	issuer?: string;
+	/** Un día pasado (YYYY-MM-DD): el organigrama como estaba al cierre de ese día, con los jefes, departamentos y sucursales que tenían (se guardan desde el 21 de noviembre de 2026). */
+	as_of?: string;
 }
 
 export interface AssignPayrollOrgChartParams {
@@ -12669,6 +12704,12 @@ export interface CreatePayrollVacancyParams {
 	branch?: string | null;
 	/** Desde cuándo está abierta (YYYY-MM-DD); por omisión hoy. */
 	opened_on?: string;
+	/** Sueldo mensual bruto que ofrece, desde (pesos); null si no lo dice. */
+	salary_min?: number | null;
+	/** Sueldo mensual bruto que ofrece, hasta (pesos); null si no lo dice. */
+	salary_max?: number | null;
+	/** Estado donde trabajará, como c_Estado (NLE, CMX…), para su impuesto sobre nómina; null para el de su jefe o el de la mayoría. */
+	state?: string | null;
 }
 
 export interface UpdatePayrollVacancyParams {
@@ -12684,6 +12725,17 @@ export interface UpdatePayrollVacancyParams {
 	branch?: string | null;
 	/** Desde cuándo está abierta (YYYY-MM-DD); por omisión hoy. */
 	opened_on?: string;
+	/** Sueldo mensual bruto que ofrece, desde (pesos); null si no lo dice. */
+	salary_min?: number | null;
+	/** Sueldo mensual bruto que ofrece, hasta (pesos); null si no lo dice. */
+	salary_max?: number | null;
+	/** Estado donde trabajará, como c_Estado (NLE, CMX…), para su impuesto sobre nómina; null para el de su jefe o el de la mayoría. */
+	state?: string | null;
+}
+
+export interface FillPayrollVacancyParams {
+	/** Quien la ocupa (emp_…), ya dado de alta con POST /v1/employees: queda con el jefe, el departamento y la sucursal de la vacante. */
+	employee: string;
 }
 
 export interface UpdatePayrollTaxSettingsParams {
@@ -18556,7 +18608,7 @@ export class PayrollOrgChartResource {
 	/**
 	 * Abrir una vacante
 	 *
-	 * Un puesto sin persona todavía, bajo un jefe, en un departamento y una sucursal: sale en el organigrama, pero no cuenta como empleado. Contesta el organigrama.
+	 * Un puesto sin persona todavía, bajo un jefe, en un departamento y una sucursal, con el sueldo mensual que ofrece: sale en el organigrama, pero no cuenta como empleado. Queda en pending_approval hasta que alguien con el permiso «Aprobar la prenómina» la aprueba en la app (le llega un aviso); entonces se cubre con POST /v1/payroll_org_chart/vacancies/{id}/fill. Contesta el organigrama, con lo que costaría al mes (monthly_cost).
 	 *
 	 * POST /v1/payroll_org_chart/vacancies
 	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-payroll-vacancy
@@ -18568,7 +18620,7 @@ export class PayrollOrgChartResource {
 	/**
 	 * Cambiar una vacante
 	 *
-	 * Cambia el puesto, departamento, jefe o sucursal de una vacante (vac_…).
+	 * Cambia el puesto, departamento, jefe, sucursal o sueldo de una vacante (vac_…); lo que no manda queda vacío. Cambiada, vuelve a pending_approval. Una ya cubierta contesta parameter_invalid.
 	 *
 	 * POST /v1/payroll_org_chart/vacancies/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-payroll-vacancy
@@ -18587,6 +18639,18 @@ export class PayrollOrgChartResource {
 	 */
 	deleteVacancy(id: string, options?: RequestOptions): Promise<PayrollOrgChart> {
 		return this.#client.request({ method: "DELETE", path: `/v1/payroll_org_chart/vacancies/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Cubrir una vacante
+	 *
+	 * La cubre con un empleado ya dado de alta (POST /v1/employees): queda con el jefe, el departamento y la sucursal de la vacante, y la vacante sale del organigrama (status filled). Una que espera aprobación o se rechazó contesta parameter_invalid. Falta su alta en el IMSS (GET /v1/imss_movements la propone).
+	 *
+	 * POST /v1/payroll_org_chart/vacancies/{id}/fill
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/fill-payroll-vacancy
+	 */
+	fillVacancy(id: string, params: FillPayrollVacancyParams, options?: RequestOptions): Promise<PayrollOrgChart> {
+		return this.#client.request({ method: "POST", path: `/v1/payroll_org_chart/vacancies/${encodeURIComponent(id)}/fill`, body: params, idempotent: true }, options);
 	}
 }
 
