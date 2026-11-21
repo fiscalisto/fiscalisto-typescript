@@ -5528,6 +5528,8 @@ export interface JournalEntry {
 	currency: string;
 	/** El tipo de cambio, si no es en pesos; null si es en pesos. */
 	exchange_rate: number | null;
+	/** Sus renglones se editaron a mano (POST /v1/accounting/automatic_entries/{uuid}). */
+	edited: boolean;
 	/** Los movimientos, en pesos: el cargo (debit) o abono (credit) a cada cuenta. */
 	lines: {
 		/** El número de cuenta. */
@@ -5616,6 +5618,60 @@ export interface ManualJournalEntry {
 	created_at: string | null;
 	/** Cuándo cambió por última vez. */
 	updated_at: string | null;
+}
+
+/** La póliza que Fiscalisto arma para un CFDI (factura, nota de crédito o recibo de nómina), con la edición a mano si la tiene: se queda aunque el CFDI se vuelva a descargar, hasta volver a la original. */
+export interface AutomaticJournalEntry {
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "automatic_journal_entry";
+	/** El emisor. */
+	issuer: string;
+	/** El UUID del CFDI de la póliza. */
+	uuid: string;
+	/** invoice: una factura o nota de crédito; payroll: un recibo de nómina. */
+	type: "invoice" | "payroll";
+	/** La fecha de la póliza: la del CFDI, o la del pago de la nómina. */
+	date: string;
+	/** Su concepto. */
+	description: string;
+	/** Los renglones que usan los libros. */
+	lines: {
+		/** El número de cuenta. */
+		account: string;
+		/** El nombre de la cuenta. */
+		account_name: string;
+		/** Su código agrupador del SAT. */
+		grouping_code: string;
+		/** El cargo, en pesos. */
+		debit: number;
+		/** El abono, en pesos. */
+		credit: number;
+		/** Su centro de costo (ccn_…), o null. */
+		cost_center: string | null;
+	}[];
+	/** true si se editó a mano. */
+	edited: boolean;
+	/** Cuándo se editó por última vez, o null. */
+	edited_at: string | null;
+	/** Editada: los renglones que arma Fiscalisto hoy para su CFDI. */
+	original_lines: {
+		/** El número de cuenta. */
+		account: string;
+		/** El nombre de la cuenta. */
+		account_name: string;
+		/** Su código agrupador del SAT. */
+		grouping_code: string;
+		/** El cargo, en pesos. */
+		debit: number;
+		/** El abono, en pesos. */
+		credit: number;
+		/** Su centro de costo (ccn_…), o null. */
+		cost_center: string | null;
+	}[] | null;
+	/** Editada: true si la póliza que arma su CFDI cambió desde que se editó (su cuenta o su categoría), para revisar que la edición siga bien. */
+	original_changed: boolean | null;
 }
 
 /** Un activo fijo del emisor en su contabilidad al cierre de un mes: su monto original, su depreciación en línea recta (tasas del artículo 34 de la LISR) y su valor en libros. */
@@ -6749,7 +6805,7 @@ export interface BooksLogEntry {
 	/** Cuándo se hizo el cambio. */
 	created_at: string;
 	/** Qué cambió: una póliza a mano (manual_journal_entry), los saldos iniciales, una cuenta, el catálogo completo (una importación o una renumeración), el cierre del mes (period_close), una eliminación de consolidación, una póliza modelo o la baja de un activo fijo. */
-	subject: "manual_journal_entry" | "opening_balances" | "account" | "chart_of_accounts" | "period_close" | "consolidation_elimination" | "entry_template" | "fixed_asset" | "invoice_account";
+	subject: "manual_journal_entry" | "opening_balances" | "account" | "chart_of_accounts" | "period_close" | "consolidation_elimination" | "entry_template" | "fixed_asset" | "invoice_account" | "automatic_journal_entry";
 	/** El id de lo que cambió cuando tiene uno en la API (mje_, cel_, mjt_); null en los demás. */
 	subject_id: string | null;
 	/** created, updated, deleted, restored (deshecho), imported, closed (se cerró el mes) o reopened (se reabrió). */
@@ -15696,6 +15752,46 @@ export interface UpdateManualEntryParams {
 	}[];
 }
 
+/** Los parámetros de GET /v1/accounting/automatic_entries/{uuid}. */
+export interface GetAutomaticEntryParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface UpdateAutomaticEntryParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** Su concepto. Sin él, queda el que tiene. */
+	description?: string;
+	/** Sus cargos y abonos en lugar de los que arma Fiscalisto: cada renglón uno u otro; los cargos suman lo mismo que los abonos. */
+	lines: {
+		/** El número de la cuenta en su catálogo (GET /v1/accounting/accounts), por ejemplo 205-06. */
+		account: string;
+		/** El cargo. */
+		debit?: number;
+		/** El abono. */
+		credit?: number;
+		/** Su centro de costo (ccn_…, GET /v1/cost_centers), opcional: los resultados por centro de costo y los presupuestos lo leen. */
+		cost_center?: string | null;
+		/** Un renglón en otra moneda: su clave ISO 4217 (USD, EUR…). Con ella van foreign_amount y exchange_rate, y debit o credit es su producto en pesos. */
+		currency?: string | null;
+		/** El importe del renglón en su moneda. */
+		foreign_amount?: number | null;
+		/** El tipo de cambio del renglón: pesos por una unidad de su moneda. */
+		exchange_rate?: number | null;
+		/** El CFDI que documenta este renglón, aparte del de la póliza: así una póliza lleva varios. */
+		cfdi_uuid?: string | null;
+		/** El RFC de quien emitió o recibió el CFDI del renglón. */
+		cfdi_tax_id?: string | null;
+	}[];
+}
+
+/** Los parámetros de DELETE /v1/accounting/automatic_entries/{uuid}. */
+export interface RevertAutomaticEntryParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
 export interface ImportManualEntriesParams {
 	/** El emisor (iss_…). Por omisión, su único emisor. */
 	issuer?: string;
@@ -16029,8 +16125,8 @@ export interface RenumberAccountsParams {
 
 /** Los parámetros de GET /v1/accounting/books_log. */
 export interface ListBooksLogParams {
-	/** Solo los cambios de una cosa: manual_journal_entry, opening_balances, account, chart_of_accounts, period_close, consolidation_elimination, entry_template, fixed_asset o invoice_account (la cuenta de una factura). */
-	subject?: "manual_journal_entry" | "opening_balances" | "account" | "chart_of_accounts" | "period_close" | "consolidation_elimination" | "entry_template" | "fixed_asset" | "invoice_account";
+	/** Solo los cambios de una cosa: manual_journal_entry, opening_balances, account, chart_of_accounts, period_close, consolidation_elimination, entry_template, fixed_asset, invoice_account (la cuenta de una factura) o automatic_journal_entry (una póliza automática editada). */
+	subject?: "manual_journal_entry" | "opening_balances" | "account" | "chart_of_accounts" | "period_close" | "consolidation_elimination" | "entry_template" | "fixed_asset" | "invoice_account" | "automatic_journal_entry";
 	/** Desde este día (AAAA-MM-DD, hora de la Ciudad de México). */
 	from?: string;
 	/** Hasta este día, incluido. */
@@ -22225,6 +22321,50 @@ export class ManualEntriesResource {
 	}
 }
 
+/** Contabilidad: fiscalisto.automaticEntries. */
+export class AutomaticEntriesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ver la póliza de un CFDI
+	 *
+	 * La póliza que arma Fiscalisto para una factura, nota de crédito o recibo de nómina del emisor (por el UUID del CFDI), con su edición a mano si la tiene. Un pago no tiene una propia que se edite: se corrige con una póliza capturada.
+	 *
+	 * GET /v1/accounting/automatic_entries/{uuid}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-automatic-entry
+	 */
+	get(uuid: string, params?: GetAutomaticEntryParams, options?: RequestOptions): Promise<AutomaticJournalEntry> {
+		return this.#client.request({ method: "GET", path: `/v1/accounting/automatic_entries/${encodeURIComponent(uuid)}`, query: params }, options);
+	}
+
+	/**
+	 * Editar la póliza de un CFDI
+	 *
+	 * Sus renglones (y su concepto) en lugar de los que arma Fiscalisto, con las reglas de una póliza capturada: cuentas del catálogo y cargos que suman lo mismo que los abonos (entry_unbalanced). Se queda aunque el CFDI se vuelva a descargar, en su mes y en los saldos de los siguientes, y va a la bitácora. Un mes cerrado contesta period_closed. Los mismos renglones que la original quitan la edición.
+	 *
+	 * POST /v1/accounting/automatic_entries/{uuid}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/update-automatic-entry
+	 */
+	update(uuid: string, params: UpdateAutomaticEntryParams, options?: RequestOptions): Promise<AutomaticJournalEntry> {
+		return this.#client.request({ method: "POST", path: `/v1/accounting/automatic_entries/${encodeURIComponent(uuid)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Volver a la póliza original de un CFDI
+	 *
+	 * Quita la edición a mano: los libros vuelven a usar los renglones que arma Fiscalisto. Un mes cerrado contesta period_closed.
+	 *
+	 * DELETE /v1/accounting/automatic_entries/{uuid}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/revert-automatic-entry
+	 */
+	revert(uuid: string, params?: RevertAutomaticEntryParams, options?: RequestOptions): Promise<AutomaticJournalEntry> {
+		return this.#client.request({ method: "DELETE", path: `/v1/accounting/automatic_entries/${encodeURIComponent(uuid)}`, query: params }, options);
+	}
+}
+
 /** Contabilidad: fiscalisto.openingBalances. */
 export class OpeningBalancesResource {
 	readonly #client: Client;
@@ -23751,6 +23891,7 @@ export class FiscalistoApi extends Core {
 	readonly tickets = new TicketsResource(this);
 	readonly accounting = new AccountingResource(this);
 	readonly manualEntries = new ManualEntriesResource(this);
+	readonly automaticEntries = new AutomaticEntriesResource(this);
 	readonly openingBalances = new OpeningBalancesResource(this);
 	readonly fixedAssets = new FixedAssetsResource(this);
 	readonly closedPeriod = new ClosedPeriodResource(this);
