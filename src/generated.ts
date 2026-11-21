@@ -8464,6 +8464,24 @@ export interface PayeeAccount {
 	created_at: string | null;
 }
 
+/** «Pausar todos los pagos» de la empresa: mientras está en pausa no sale ninguna transferencia (ni firmadas, ni reintentos, ni recurrentes). Se reanuda solo en la app, con las firmas de Quién firma. */
+export interface PayoutsPause {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "payouts_pause";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** true mientras los pagos están en pausa. */
+	paused: boolean;
+	/** Desde cuándo están en pausa, o null. */
+	paused_at: string | null;
+	/** Por qué se pausaron, o null. */
+	reason: string | null;
+	/** true si los pausó una llave de la API (no una persona en la app). */
+	paused_by_api: boolean;
+}
+
 /** Un pago recurrente (Pagos › Recurrentes): firmado una vez, sale cada mes a la misma cuenta por hasta ese monto. Solo lectura. */
 export interface PayoutMandate {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
@@ -14848,6 +14866,19 @@ export interface ListPayoutsParams {
 	pay_on_from?: string;
 	/** Solo los que salen hasta este día (AAAA-MM-DD). */
 	pay_on_to?: string;
+}
+
+/** Los parámetros de GET /v1/payouts/pause. */
+export interface GetPayoutsPauseParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface PausePayoutsParams {
+	/** La empresa (iss_…); sin él, la de la llave. */
+	issuer?: string;
+	/** Por qué se pausan los pagos; lo ve el equipo y llega en el aviso. */
+	reason: string;
 }
 
 export interface CancelPayoutParams {
@@ -21325,7 +21356,7 @@ export class PayoutsResource {
 	/**
 	 * Preparar un pago a proveedores
 	 *
-	 * Un pago en borrador con estas facturas, revisado como en la app: las reglas antes de pagar, los límites y las cuentas aprobadas de cada proveedor. Las de un proveedor van en una transferencia. Nunca sale solo: alguien del equipo lo abre en app_url y lo firma con su llave de acceso. Solo si la empresa lo permite en Pagos › Configurar pagos (si no, 403 payouts_api_disabled); lo que no se puede pagar contesta 400 payout_invalid con el motivo. Pide Idempotency-Key: si la respuesta se pierde, repítala con el mismo valor y contesta el mismo pago, nunca uno nuevo.
+	 * Un pago en borrador con estas facturas, revisado como en la app: las reglas antes de pagar, los límites y las cuentas aprobadas de cada proveedor. Las de un proveedor van en una transferencia. Nunca sale solo: alguien del equipo lo abre en app_url y lo firma con su llave de acceso. Solo si la empresa lo permite en Pagos › Configurar pagos (si no, 403 payouts_api_disabled); lo que no se puede pagar contesta 400 payout_invalid con el motivo. Pide Idempotency-Key: si la respuesta se pierde, repítala con el mismo valor y contesta el mismo pago, nunca uno nuevo. La misma llave con otra solicitud (otras facturas, montos o día) contesta 409 idempotency_key_reused, aunque hayan pasado más de 24 horas.
 	 *
 	 * POST /v1/payouts
 	 * @see https://fiscalisto.com/docs/api/referencia/pagos-a-proveedores/create-payout
@@ -21344,6 +21375,30 @@ export class PayoutsResource {
 	 */
 	list(params?: ListPayoutsParams, options?: RequestOptions): List<Payout> {
 		return this.#client.list({ path: "/v1/payouts", query: params }, options);
+	}
+
+	/**
+	 * Ver si los pagos están en pausa
+	 *
+	 * Si la empresa pausó todos sus pagos («Pausar todos los pagos»), desde cuándo y por qué.
+	 *
+	 * GET /v1/payouts/pause
+	 * @see https://fiscalisto.com/docs/api/referencia/pagos-a-proveedores/get-payouts-pause
+	 */
+	getPause(params?: GetPayoutsPauseParams, options?: RequestOptions): Promise<PayoutsPause> {
+		return this.#client.request({ method: "GET", path: "/v1/payouts/pause", query: params }, options);
+	}
+
+	/**
+	 * Pausar todos los pagos
+	 *
+	 * El freno de emergencia de la empresa, para una herramienta de seguridad o el botón de su ERP: al instante no sale ninguna transferencia (pagos firmados, reintentos ni recurrentes) y les llega el aviso a los administradores con el motivo. La API nunca reanuda: lo firman en la app las personas de Quién firma, cada una con su llave de acceso. Solo si la empresa deja que la API trabaje con sus pagos en Pagos › Configurar pagos (si no, 403 payouts_api_disabled). Pausar lo que ya está en pausa no cambia nada.
+	 *
+	 * POST /v1/payouts/pause
+	 * @see https://fiscalisto.com/docs/api/referencia/pagos-a-proveedores/pause-payouts
+	 */
+	pause(params: PausePayoutsParams, options?: RequestOptions): Promise<PayoutsPause> {
+		return this.#client.request({ method: "POST", path: "/v1/payouts/pause", body: params, idempotent: true }, options);
 	}
 
 	/**
