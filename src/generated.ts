@@ -3818,7 +3818,7 @@ export interface Rule {
 	/** Entonces: lo que hace, en este orden. */
 	actions: {
 		/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
-		type: "tag" | "cost_center" | "category" | "stage" | "close" | "ask_approval" | "notify";
+		type: "tag" | "cost_center" | "category" | "stage" | "close" | "ask_approval" | "notify" | "lote";
 		/** tag: la etiqueta (tag_…, GET /v1/tags). */
 		tag?: string;
 		/** category: la categoría de gasto (facturas recibidas). */
@@ -3833,6 +3833,12 @@ export interface Rule {
 		members?: string[];
 		/** notify: lo que dice el aviso. */
 		note?: string | null;
+		/** lote: el nombre del lote; null: «Lote del jueves 27 nov». */
+		lote_name?: string | null;
+		/** lote: el día que paga (siguiente día de la semana, a los días, o el del contrarecibo). */
+		pay_on?: "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "in_days" | "due";
+		/** lote con pay_on in_days: cuántos días. */
+		days?: number;
 	}[];
 	/** true: corre una sola vez por factura u orden. */
 	once_per_record: boolean;
@@ -8442,6 +8448,10 @@ export interface PayeeAccount {
 	verification: "bank" | "by_hand" | "third_party" | null;
 	/** Cómo la verificó a mano quien la aprobó, o null. */
 	verified_by_hand_reason: string | null;
+	/** Su número de cuenta, si se anotó junto a la CLABE (solo de referencia: la transferencia usa la CLABE), o null. */
+	account_number: string | null;
+	/** true si es la cuenta predeterminada del proveedor: la que usa un pago cuando no se elige otra. */
+	is_default: boolean;
 	/** verifying (verificando con el banco), pending_approval (verificada, por aprobar), holder_mismatch (es de otra persona), failed (no existe o no recibe), approved, rejected o replaced (la sustituyó otra). */
 	status: "verifying" | "pending_approval" | "holder_mismatch" | "failed" | "approved" | "rejected" | "replaced";
 	/** true si ya se le puede pagar (aprobada y pasó la espera de la empresa). */
@@ -13301,14 +13311,20 @@ export interface CreateRuleParams {
 	};
 	/** Entonces: de 1 a 8, en este orden. */
 	actions: {
-		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…). */
-		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category";
+		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…); lote (invoice.received e invoice.approved): agregar la factura al lote de pagos abierto `lote_name` que paga `pay_on`, o crear uno, preparado como quien hizo la regla. */
+		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category" | "lote";
 		/** tag: la etiqueta (tag_…, GET /v1/tags). Un número, el id de antes, también se acepta. */
 		tag?: string | number;
 		/** category: la categoría de gasto, como la app la nombra («Combustible»). */
 		category?: "Renta y arrendamiento" | "Servicios profesionales" | "Nómina y personal" | "Transporte y fletes" | "Combustible" | "Viáticos y viajes" | "Alimentos y representación" | "Telecomunicaciones e internet" | "Energía y agua" | "Software y suscripciones" | "Equipo de cómputo" | "Papelería y oficina" | "Mantenimiento y reparaciones" | "Publicidad y marketing" | "Seguros y fianzas" | "Comisiones bancarias y financieras" | "Impuestos y derechos" | "Compras de mercancía e inventario" | "Materias primas y producción" | "Activo fijo y mobiliario" | "Vehículos" | "Capacitación" | "Donativos" | "Otros gastos";
 		/** tag: quitarla si la orden deja de cumplir. */
 		remove_when_unmet?: boolean;
+		/** lote: el nombre del lote («Fletes»); vacío o null: «Lote del jueves 27 nov». */
+		lote_name?: string | null;
+		/** lote: el día que paga: el siguiente lunes … viernes (hoy incluido), a los `days` días, o `due`, la fecha de pago del contrarecibo del portal. Un día inhábil pasa al siguiente hábil. Por omisión, friday. */
+		pay_on?: "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "in_days" | "due";
+		/** lote con pay_on in_days: cuántos días después. */
+		days?: number;
 		/** Su centro de costo (ccn_…): la obra, proyecto, sucursal o área a la que pertenece, para ver ingresos y gastos por centro en Reportes. No cambia el CFDI. Sus notas de crédito lo toman solas. */
 		cost_center?: string;
 		/** stage: la etapa. */
@@ -13392,14 +13408,20 @@ export interface UpdateRuleParams {
 	};
 	/** Entonces: de 1 a 8, en este orden. */
 	actions?: {
-		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…). */
-		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category";
+		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…); lote (invoice.received e invoice.approved): agregar la factura al lote de pagos abierto `lote_name` que paga `pay_on`, o crear uno, preparado como quien hizo la regla. */
+		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category" | "lote";
 		/** tag: la etiqueta (tag_…, GET /v1/tags). Un número, el id de antes, también se acepta. */
 		tag?: string | number;
 		/** category: la categoría de gasto, como la app la nombra («Combustible»). */
 		category?: "Renta y arrendamiento" | "Servicios profesionales" | "Nómina y personal" | "Transporte y fletes" | "Combustible" | "Viáticos y viajes" | "Alimentos y representación" | "Telecomunicaciones e internet" | "Energía y agua" | "Software y suscripciones" | "Equipo de cómputo" | "Papelería y oficina" | "Mantenimiento y reparaciones" | "Publicidad y marketing" | "Seguros y fianzas" | "Comisiones bancarias y financieras" | "Impuestos y derechos" | "Compras de mercancía e inventario" | "Materias primas y producción" | "Activo fijo y mobiliario" | "Vehículos" | "Capacitación" | "Donativos" | "Otros gastos";
 		/** tag: quitarla si la orden deja de cumplir. */
 		remove_when_unmet?: boolean;
+		/** lote: el nombre del lote («Fletes»); vacío o null: «Lote del jueves 27 nov». */
+		lote_name?: string | null;
+		/** lote: el día que paga: el siguiente lunes … viernes (hoy incluido), a los `days` días, o `due`, la fecha de pago del contrarecibo del portal. Un día inhábil pasa al siguiente hábil. Por omisión, friday. */
+		pay_on?: "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "in_days" | "due";
+		/** lote con pay_on in_days: cuántos días después. */
+		days?: number;
 		/** Su centro de costo (ccn_…): la obra, proyecto, sucursal o área a la que pertenece, para ver ingresos y gastos por centro en Reportes. No cambia el CFDI. Sus notas de crédito lo toman solas. */
 		cost_center?: string;
 		/** stage: la etapa. */
