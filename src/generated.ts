@@ -2846,7 +2846,7 @@ export interface Candidate {
 		label: string;
 		/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
 		type: string;
-		/** Valor de la mercancía (ValorMercancia); obligatorio en transporte aéreo. */
+		/** Lo que respondió: un texto, o una lista en una pregunta de varias opciones; null si no respondió. */
 		value: string | string[] | null;
 		/** El archivo que subió, en una pregunta de tipo file. */
 		file: {
@@ -4429,7 +4429,7 @@ export interface ProductionOrder {
 		quantity_used: number | null;
 		/** true si lleva existencias; false es un servicio, que solo suma su costo. */
 		tracks_stock: boolean;
-		/** Valor de la mercancía (ValorMercancia); obligatorio en transporte aéreo. */
+		/** Lo que vale el componente usado (cantidad por costo), o null si no tiene costo. */
 		value: number | null;
 	}[];
 	/** Mano de obra, gas, empaque…: se suman al costo de lo producido. */
@@ -8173,7 +8173,7 @@ export interface PortalSupplier {
 	} | null;
 	/** Su calificación de 0 a 100 de los últimos 12 meses (value, null sin datos; level excellent, good, fair o poor) y cada parte: invoices (facturas a la primera), deliveries (entregas a tiempo), prices (precio y cantidad de la orden), documents (documentos al día) y complements (complementos de pago), con good de total casos. */
 	score: {
-		/** Valor de la mercancía (ValorMercancia); obligatorio en transporte aéreo. */
+		/** La calificación del proveedor, de 0 a 100, o null si aún no hay con qué calcularla. */
 		value: number | null;
 		/** Nivel educativo (nivelEducativo). */
 		level: "excellent" | "good" | "fair" | "poor" | null;
@@ -8280,6 +8280,8 @@ export interface Payout {
 	status: "draft" | "pending_approval" | "approved" | "sending" | "paid" | "partially_paid" | "failed" | "canceled";
 	/** El día en que sale (AAAA-MM-DD, hora de la Ciudad de México). */
 	pay_on: string;
+	/** En un pago programado con facturas en otra moneda, cómo toma el tipo de cambio: official (el oficial; si al salir se movió más de la tolerancia de Configurar pagos, se detiene hasta firmarlo de nuevo) o fixed (sale al tipo de cambio con que se firmó). null en pesos o si sale hoy. */
+	exchange_rate: "official" | "fixed" | null;
 	/** La suma de sus transferencias, en pesos. */
 	total: number;
 	/** Siempre MXN: las transferencias SPEI son en pesos. */
@@ -8434,6 +8436,10 @@ export interface PayeeAccount {
 	holder_name: string | null;
 	/** true si es de un tercero que la empresa autorizó. */
 	third_party: boolean;
+	/** Cómo se confió en la cuenta: bank (el banco confirmó el RFC del proveedor), by_hand (alguien la verificó a mano porque el RFC del banco solo cambiaba la homoclave o no venía), third_party (se autorizó como de un tercero), o null si aún no está aprobada. */
+	verification: "bank" | "by_hand" | "third_party" | null;
+	/** Cómo la verificó a mano quien la aprobó, o null. */
+	verified_by_hand_reason: string | null;
 	/** verifying (verificando con el banco), pending_approval (verificada, por aprobar), holder_mismatch (es de otra persona), failed (no existe o no recibe), approved, rejected o replaced (la sustituyó otra). */
 	status: "verifying" | "pending_approval" | "holder_mismatch" | "failed" | "approved" | "rejected" | "replaced";
 	/** true si ya se le puede pagar (aprobada y pasó la espera de la empresa). */
@@ -14789,6 +14795,8 @@ export interface CreatePayoutParams {
 	pay_on?: string;
 	/** Una nota para quien lo revisa y lo firma. */
 	note?: string | null;
+	/** En un pago programado con facturas en otra moneda: official (el tipo de cambio oficial; si al salir se movió más de la tolerancia de Configurar pagos, se detiene hasta firmarlo de nuevo) o fixed (sale al tipo de cambio de hoy, se mueva o no). Por omisión, lo que diga Configurar pagos. */
+	exchange_rate?: "official" | "fixed";
 	/** Las facturas recibidas a pagar (de 1 a 500). Las de un mismo proveedor van en una sola transferencia a su cuenta aprobada. */
 	invoices: {
 		/** El folio fiscal de la factura recibida. */

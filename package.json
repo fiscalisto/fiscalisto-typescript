@@ -1,6 +1,6 @@
 {
 	"name": "fiscalisto",
-	"version": "0.1.150",
+	"version": "0.1.151",
 	"description": "SDK y CLI de la API de facturación electrónica (CFDI 4.0) de Fiscalisto, para TypeScript y JavaScript.",
 	"keywords": [
 		"cfdi",
@@ -52,7 +52,7 @@
 		"fiscalisto": "dist/cli.js"
 	},
 	"devDependencies": {
-		"@types/node": "^20.19.37",
-		"typescript": "^6.0.2"
+		"@types/node": "20.19.37",
+		"typescript": "6.0.3"
 	}
 }
