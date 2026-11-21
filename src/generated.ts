@@ -3774,7 +3774,7 @@ export interface Rule {
 	/** Nombre. */
 	name: string;
 	/** Cuándo corre. */
-	trigger: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
+	trigger: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "invoice.approved" | "invoice.rejected" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.rejected" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
 	/** Si: lo que tiene que cumplir la factura u orden. Sin condiciones, corre siempre. */
 	conditions: {
 		/** all: se cumplen todas; any: basta con una. */
@@ -3818,7 +3818,7 @@ export interface Rule {
 	/** Entonces: lo que hace, en este orden. */
 	actions: {
 		/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
-		type: "tag" | "cost_center" | "category" | "stage" | "close" | "notify";
+		type: "tag" | "cost_center" | "category" | "stage" | "close" | "ask_approval" | "notify";
 		/** tag: la etiqueta (tag_…, GET /v1/tags). */
 		tag?: string;
 		/** category: la categoría de gasto (facturas recibidas). */
@@ -3884,7 +3884,7 @@ export interface RuleRun {
 	/** La regla (rul_…). */
 	rule: string;
 	/** Cuándo corre. */
-	trigger: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
+	trigger: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "invoice.approved" | "invoice.rejected" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.rejected" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
 	/** La factura u orden, en palabras. */
 	record: string;
 	/** Qué es el registro. */
@@ -13257,8 +13257,8 @@ export interface CreateRuleParams {
 	issuer?: string;
 	/** Cómo se llama en Ajustes › Reglas. Sin él, se nombra por lo que hace. */
 	name?: string;
-	/** Cuándo corre: invoice.received (llega una factura de un proveedor), invoice.issued (se emite una factura), invoice.paid (una factura PPD queda pagada), invoice.cancelled (el SAT la cancela), purchase_order.saved, .approved, .sent, .confirmed, .received_part, .received_all, .invoiced_all, .price_variance, .registered. */
-	trigger: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
+	/** Cuándo corre: invoice.received (llega una factura de un proveedor), invoice.issued (se emite una factura), invoice.paid (una factura PPD queda pagada), invoice.cancelled (el SAT la cancela), invoice.approved (se aprueba en el Portal de proveedores), invoice.rejected (se rechaza en el portal), purchase_order.saved, .approved, .rejected, .sent, .confirmed, .received_part, .received_all, .invoiced_all, .price_variance, .registered. */
+	trigger: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "invoice.approved" | "invoice.rejected" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.rejected" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
 	/** Si: lo que tiene que cumplir. Sin condiciones, corre siempre. */
 	conditions?: {
 		/** all: se cumplen todas (las condiciones y los grupos); any: basta con una. */
@@ -13301,8 +13301,8 @@ export interface CreateRuleParams {
 	};
 	/** Entonces: de 1 a 8, en este orden. */
 	actions: {
-		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; notify: avisar a `members` (mem_…). */
-		type: "tag" | "cost_center" | "stage" | "close" | "notify" | "category";
+		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…). */
+		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category";
 		/** tag: la etiqueta (tag_…, GET /v1/tags). Un número, el id de antes, también se acepta. */
 		tag?: string | number;
 		/** category: la categoría de gasto, como la app la nombra («Combustible»). */
@@ -13348,8 +13348,8 @@ export interface OrderRulesParams {
 export interface UpdateRuleParams {
 	/** Cómo se llama en Ajustes › Reglas. Sin él, se nombra por lo que hace. */
 	name?: string;
-	/** Cuándo corre: invoice.received (llega una factura de un proveedor), invoice.issued (se emite una factura), invoice.paid (una factura PPD queda pagada), invoice.cancelled (el SAT la cancela), purchase_order.saved, .approved, .sent, .confirmed, .received_part, .received_all, .invoiced_all, .price_variance, .registered. */
-	trigger?: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
+	/** Cuándo corre: invoice.received (llega una factura de un proveedor), invoice.issued (se emite una factura), invoice.paid (una factura PPD queda pagada), invoice.cancelled (el SAT la cancela), invoice.approved (se aprueba en el Portal de proveedores), invoice.rejected (se rechaza en el portal), purchase_order.saved, .approved, .rejected, .sent, .confirmed, .received_part, .received_all, .invoiced_all, .price_variance, .registered. */
+	trigger?: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "invoice.approved" | "invoice.rejected" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.rejected" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
 	/** Si: lo que tiene que cumplir. Sin condiciones, corre siempre. */
 	conditions?: {
 		/** all: se cumplen todas (las condiciones y los grupos); any: basta con una. */
@@ -13392,8 +13392,8 @@ export interface UpdateRuleParams {
 	};
 	/** Entonces: de 1 a 8, en este orden. */
 	actions?: {
-		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; notify: avisar a `members` (mem_…). */
-		type: "tag" | "cost_center" | "stage" | "close" | "notify" | "category";
+		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…). */
+		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category";
 		/** tag: la etiqueta (tag_…, GET /v1/tags). Un número, el id de antes, también se acepta. */
 		tag?: string | number;
 		/** category: la categoría de gasto, como la app la nombra («Combustible»). */
