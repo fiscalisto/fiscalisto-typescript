@@ -12436,8 +12436,8 @@ export interface CreateExtraordinaryPayrollReceiptParams {
 	ptu_amount?: number;
 	/** aguinaldo y ptu: cómo retener el ISR de la parte gravada. lower (por omisión) el que retenga menos; art96 sumada al sueldo del mes; art174 el procedimiento opcional del Reglamento de la LISR. */
 	isr_method?: "lower" | "art96" | "art174";
-	/** finiquito: resignation (renuncia o común acuerdo, por omisión) o dismissal (despido sin causa: suma 3 meses de salario integrado y la prima de antigüedad). */
-	exit_reason?: "resignation" | "dismissal";
+	/** finiquito: resignation (renuncia, común acuerdo o fin de contrato, por omisión; prima de antigüedad solo con 15 años o más), dismissal (despido sin causa: suma 3 meses de salario integrado y la prima de antigüedad), justified_dismissal (despido por una causa del art. 47 de la LFT: sin indemnización, con prima de antigüedad), worker_rescission (el trabajador rescinde por una causa del art. 51: 3 meses, 20 días por año y prima de antigüedad) o death (fallecimiento: prima de antigüedad a sus beneficiarios, sin importar los años). */
+	exit_reason?: "resignation" | "dismissal" | "justified_dismissal" | "worker_rescission" | "death";
 	/** finiquito con dismissal: incluye 20 días por año de servicio (LFT art. 50), cuando el patrón no lo reinstala. */
 	twenty_days_per_year?: boolean;
 	/** finiquito: los días de vacaciones del año de servicio en curso que ya tomó. Por omisión, los de sus recibos timbrados (GET /v1/employees/{id}/vacations). */
@@ -12467,8 +12467,8 @@ export interface PreviewExtraordinaryPayrollReceiptParams {
 	ptu_amount?: number;
 	/** aguinaldo y ptu: cómo retener el ISR de la parte gravada. lower (por omisión) el que retenga menos; art96 sumada al sueldo del mes; art174 el procedimiento opcional del Reglamento de la LISR. */
 	isr_method?: "lower" | "art96" | "art174";
-	/** finiquito: resignation (renuncia o común acuerdo, por omisión) o dismissal (despido sin causa: suma 3 meses de salario integrado y la prima de antigüedad). */
-	exit_reason?: "resignation" | "dismissal";
+	/** finiquito: resignation (renuncia, común acuerdo o fin de contrato, por omisión; prima de antigüedad solo con 15 años o más), dismissal (despido sin causa: suma 3 meses de salario integrado y la prima de antigüedad), justified_dismissal (despido por una causa del art. 47 de la LFT: sin indemnización, con prima de antigüedad), worker_rescission (el trabajador rescinde por una causa del art. 51: 3 meses, 20 días por año y prima de antigüedad) o death (fallecimiento: prima de antigüedad a sus beneficiarios, sin importar los años). */
+	exit_reason?: "resignation" | "dismissal" | "justified_dismissal" | "worker_rescission" | "death";
 	/** finiquito con dismissal: incluye 20 días por año de servicio (LFT art. 50), cuando el patrón no lo reinstala. */
 	twenty_days_per_year?: boolean;
 	/** finiquito: los días de vacaciones del año de servicio en curso que ya tomó. Por omisión, los de sus recibos timbrados (GET /v1/employees/{id}/vacations). */
