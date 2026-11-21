@@ -8509,6 +8509,35 @@ export interface PayeeAccount {
 	created_at: string | null;
 }
 
+/** El pago de una nómina en Pagos: el neto de cada empleado a su CLABE aprobada, en un pago en borrador que alguien del equipo firma en la app. */
+export interface PayrollPayout {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "payroll_payout";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…) que paga. */
+	issuer: string;
+	/** La fecha de pago de los recibos que paga. */
+	payment_date: string;
+	/** El pago en borrador (pyo_…), con una línea por empleado: se firma en la app, en su app_url. */
+	payout: Payout;
+	/** Quién no va en este pago y por qué: su CLABE no está registrada o aún no se puede pagar, no tiene CLABE, su neto es cero o ya va en otro pago de esta nómina. */
+	excluded: {
+		/** El empleado (emp_…); null si el recibo lo timbró otro sistema y no hay empleado con ese RFC. */
+		employee: string | null;
+		/** Nombre. */
+		name: string;
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string;
+		/** Su neto: la suma de sus recibos con esa fecha de pago, menos vales. */
+		amount: number;
+		/** add: su CLABE aún no está registrada en Pagos (se registra en la app); waiting: su cuenta está en verificación o en su espera; blocked: su cuenta tiene un problema; no_clabe: no tiene CLABE en su ficha; zero: su neto es cero; in_payout: ya va en otro pago de esta nómina; ready: no cupo (un pago lleva hasta 500). */
+		status: "ready" | "add" | "waiting" | "blocked" | "no_clabe" | "zero" | "in_payout";
+		/** Por qué no va en este pago. */
+		reason: string;
+	}[];
+}
+
 /** «Pausar todos los pagos» de la empresa: mientras está en pausa no sale ninguna transferencia (ni firmadas, ni reintentos, ni recurrentes). Se reanuda solo en la app, con las firmas de Quién firma. */
 export interface PayoutsPause {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -12721,6 +12750,15 @@ export interface CreatePayrollBankFileParams {
 	client_number?: string;
 	/** Banorte: su número de emisora (5 dígitos). */
 	issuer_number?: string;
+}
+
+export interface CreatePayrollPayoutParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** La fecha de pago (FechaPago) de los recibos de nómina timbrados que paga (AAAA-MM-DD). */
+	payment_date: string;
+	/** El día en que sale (AAAA-MM-DD, hoy o después). Por omisión, hoy: sale en cuanto lo firmen. */
+	pay_on?: string;
 }
 
 export interface CreateImssMovementParams {
@@ -18760,6 +18798,26 @@ export class PayrollBankFilesResource {
 	}
 }
 
+/** Nómina: fiscalisto.payrollPayouts. */
+export class PayrollPayoutsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Pagar la nómina por transferencia
+	 *
+	 * Como «Pagar por transferencia» en la app: el neto de cada recibo de nómina timbrado (y no cancelado) con esa fecha de pago, menos los vales de despensa, a la CLABE de cada empleado, en un pago a proveedores en borrador (Pagos). Nunca sale solo: alguien del equipo lo abre en app_url y lo firma con su llave de acceso. Solo se le paga a una CLABE ya registrada en Pagos, aprobada y pasada su espera: la API no registra CLABEs, así que cambiar la clabe de un empleado no desvía su nómina (se registra en la app y espera como cualquier cuenta). Quien no se puede pagar va en excluded con su razón; quien ya va en otro pago de esta nómina no se paga dos veces. Solo si la empresa paga con Fintoc y deja que la API prepare pagos en Pagos › Configurar pagos (si no, 403 payouts_api_disabled); si nadie se puede pagar contesta 400 parameter_invalid con el motivo. Pide Idempotency-Key: si la respuesta se pierde, repítala con el mismo valor y contesta el mismo pago; la misma llave con otra fecha contesta 409 idempotency_key_reused.
+	 *
+	 * POST /v1/payroll_payouts
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-payroll-payout
+	 */
+	create(params: CreatePayrollPayoutParams, options?: RequestOptions): Promise<PayrollPayout> {
+		return this.#client.request({ method: "POST", path: "/v1/payroll_payouts", body: params, idempotent: true }, options);
+	}
+}
+
 /** Nómina: fiscalisto.imssMovements. */
 export class ImssMovementsResource {
 	readonly #client: Client;
@@ -23568,6 +23626,7 @@ export class FiscalistoApi extends Core {
 	readonly payrollBatches = new PayrollBatchesResource(this);
 	readonly payrollApprovals = new PayrollApprovalsResource(this);
 	readonly payrollBankFiles = new PayrollBankFilesResource(this);
+	readonly payrollPayouts = new PayrollPayoutsResource(this);
 	readonly imssMovements = new ImssMovementsResource(this);
 	readonly imssFiles = new ImssFilesResource(this);
 	readonly employeeDeductions = new EmployeeDeductionsResource(this);
