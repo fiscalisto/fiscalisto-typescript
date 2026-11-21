@@ -3274,7 +3274,7 @@ export interface SatInvoice {
 		/** true cuando la marcó una regla de Ajustes › Pagos sin complemento. */
 		by_rule: boolean;
 	} | null;
-	/** Solo en una PUE recibida pagada en efectivo cuando la empresa pide confirmar estos pagos (Ajustes › Pagos sin complemento): pending hasta que alguien anote de dónde salió el dinero (mark_paid con money_source), confirmed después. Null en las demás. Sus impuestos no cambian. */
+	/** Solo en una PUE recibida pagada en efectivo cuando la empresa pide confirmar estos pagos (Ajustes › Pagos en efectivo): pending hasta que alguien anote de dónde salió el dinero (mark_paid con money_source), confirmed después. Null en las demás. Sus impuestos no cambian. */
 	cash_confirmation: "pending" | "confirmed" | null;
 	/** Su centro de costo (ccn_…), o null. Póngalo o cámbielo con POST /v1/sat_invoices/{id}. */
 	cost_center: string | null;
@@ -5214,6 +5214,8 @@ export interface Ticket {
 			/** Tasa en por ciento (TasadeTraslado o TasadeRetencion). */
 			rate: number;
 		}[];
+		/** El detalle que mandó (noches, fechas, reservación): va después de la descripción en la factura según `invoice_concepts.line_detail` de la autofactura. */
+		detail: string | null;
 		/** Cantidad (Cantidad). Por omisión 1. */
 		quantity: number;
 		/** Total en la moneda del comprobante (Total). */
@@ -5348,6 +5350,8 @@ export interface InvoiceConcepts {
 	ungrouped: "itemized" | "group";
 	/** El nombre del concepto para lo que ningún grupo toma. */
 	ungrouped_name: string;
+	/** Qué pasa con el detail de cada línea del ticket: customer, el comprador ve la casilla sin marcar y la marca si lo quiere; always, va siempre después de la descripción; never, no va nunca. */
+	line_detail: "customer" | "always" | "never";
 }
 
 /** El portal de autofactura de un emisor y sus reglas. */
@@ -8424,6 +8428,24 @@ export interface PayableInvoice {
 	amount_due: number;
 	/** PUE o PPD, o null. */
 	payment_method: string | null;
+	/** Las retenciones de la factura. total y amount_due ya vienen sin ellas: el pago manda el neto y la empresa las entera al SAT a más tardar el 17 del mes siguiente. null: no retiene. */
+	withheld: {
+		/** ISR retenido en toda la factura. */
+		isr: number;
+		/** IVA retenido en toda la factura. */
+		vat: number;
+	} | null;
+	/** Pronto pago del portal de proveedores. Aceptado, amount_due ya es el total menos el descuento hasta que llega la nota de crédito del proveedor. null: no tiene. */
+	early_payment: {
+		/** requested: el proveedor lo pidió en el portal y nadie lo ha decidido; accepted: se aceptó. */
+		status: "requested" | "accepted";
+		/** El día en que se paga (AAAA-MM-DD). */
+		pay_on: string;
+		/** El descuento por pagar antes. */
+		discount: number;
+		/** Lo del descuento que su nota de crédito aún no cubre. Ya está fuera de amount_due. */
+		discount_pending: number;
+	} | null;
 	/** El pago abierto (pyo_…) en el que ya está, o null. */
 	in_payout: string | null;
 	/** Si una regla de Ajustes › Reglas retuvo su pago: no se paga hasta que alguien con permiso lo suelte en la app («Soltar el pago»). null: no está retenido. */
@@ -14886,14 +14908,27 @@ export interface CreatePayoutParams {
 	note?: string | null;
 	/** En un pago programado con facturas en otra moneda: official (el tipo de cambio oficial; si al salir se movió más de la tolerancia de Configurar pagos, se detiene hasta firmarlo de nuevo) o fixed (sale al tipo de cambio de hoy, se mueva o no). Por omisión, lo que diga Configurar pagos. */
 	exchange_rate?: "official" | "fixed";
-	/** Las facturas recibidas a pagar (de 1 a 500). Las de un mismo proveedor van en una sola transferencia a su cuenta aprobada. */
-	invoices: {
+	/** Las facturas recibidas a pagar (hasta 500). Las de un mismo proveedor van en una sola transferencia a su cuenta aprobada. Mande invoices, payments o las dos. */
+	invoices?: {
 		/** El folio fiscal de la factura recibida. */
 		uuid: string;
 		/** Cuánto pagar, en la moneda de la factura. Por omisión, todo lo que falta (amount_due). */
 		amount?: number;
 		/** Por qué paga menos de lo que falta («Parcial», «Anticipo»…). */
 		reason?: string | null;
+	}[];
+	/** Pagos sin factura (hasta 500 entre los dos arreglos): una nómina, un anticipo, un reembolso. Los de un mismo RFC van en una sola transferencia. */
+	payments?: {
+		/** El RFC de quien recibe (un proveedor o una persona), con una cuenta aprobada en Cuentas de proveedores. */
+		tax_id: string;
+		/** Su nombre, como se ve en el pago. */
+		name?: string | null;
+		/** Cuánto mandarle, en pesos. */
+		amount: number;
+		/** Qué se paga («Nómina 1.ª quincena de noviembre», «Anticipo»). Si Configurar pagos lo pide, es obligatorio. */
+		description?: string | null;
+		/** Si nunca llevará factura (una nómina, cuyo CFDI es el recibo; un reembolso), por qué: no se le pide factura ni aparece en Pagos sin factura. Sin él, se le pide como a cualquier pago sin factura. */
+		no_invoice_reason?: string | null;
 	}[];
 }
 
@@ -15058,6 +15093,8 @@ export interface CreateTicketParams {
 			/** La tasa en porcentaje: 3.5 es 3.5%. */
 			rate: number;
 		}[];
+		/** Lo que solo dice esta venta, como las noches, fechas y número de reservación de una estancia. Con él, la factura dice «Hospedaje · 6 noches, del 14 al 20 de noviembre»; cuándo va lo decide `invoice_concepts.line_detail` de la autofactura (por omisión, el cliente lo elige en el portal). */
+		detail?: string;
 		/** Unidades (noches, piezas). Por omisión 1. */
 		quantity?: number;
 		/** Lo que se cobró por este concepto, impuestos incluidos. */
@@ -15240,6 +15277,13 @@ export interface UpdateSelfInvoicingParams {
 				/** La opción de conceptos por categoría («Por categoría») en inglés. */
 				en?: string;
 			} | null;
+			/** La casilla del detalle de los conceptos («Incluir el detalle en la descripción…»; ver `invoice_concepts.line_detail`); `null` vuelve al de Fiscalisto. */
+			detail_label?: {
+				/** La casilla del detalle de los conceptos («Incluir el detalle en la descripción…»; ver `invoice_concepts.line_detail`) en español. */
+				es?: string;
+				/** La casilla del detalle de los conceptos («Incluir el detalle en la descripción…»; ver `invoice_concepts.line_detail`) en inglés. */
+				en?: string;
+			} | null;
 		};
 		/** Las formas de dar sus datos además de escribirlos. Todas `true` por omisión menos `norfc`. */
 		ways?: {
@@ -15307,6 +15351,8 @@ export interface UpdateSelfInvoicingParams {
 		ungrouped?: "itemized" | "group";
 		/** El nombre de ese concepto, por omisión «Otros». */
 		ungrouped_name?: string;
+		/** Qué pasa con el `detail` de cada línea del ticket (las noches, fechas y reservación de una estancia): `customer` (por omisión), el comprador ve la casilla «Incluir el detalle en la descripción» sin marcar y la marca si lo quiere; `always`, va siempre después de la descripción, sin casilla; `never`, no va nunca, sin casilla. */
+		line_detail?: "customer" | "always" | "never";
 	} | null;
 	/** Los conceptos de la factura global: `ticket` (por omisión), uno «Venta» por ticket con su folio como `NoIdentificacion`; `summary`, solo el monto total del periodo, uno por combinación de impuestos con `NoIdentificacion` «Resumen» (regla 2.7.1.21 de la RMF 2026). `summary` es solo para un emisor persona física en RESICO (626); otro contesta `invalid_request`. */
 	global_concepts?: "ticket" | "summary";
@@ -21406,7 +21452,7 @@ export class PayoutsResource {
 	 * POST /v1/payouts
 	 * @see https://fiscalisto.com/docs/api/referencia/pagos-a-proveedores/create-payout
 	 */
-	create(params: CreatePayoutParams, options?: RequestOptions): Promise<Payout> {
+	create(params?: CreatePayoutParams, options?: RequestOptions): Promise<Payout> {
 		return this.#client.request({ method: "POST", path: "/v1/payouts", body: params, idempotent: true }, options);
 	}
 
