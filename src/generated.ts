@@ -3774,7 +3774,7 @@ export interface Rule {
 	/** Nombre. */
 	name: string;
 	/** Cuándo corre. */
-	trigger: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "invoice.approved" | "invoice.rejected" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.rejected" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
+	trigger: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "invoice.approved" | "invoice.rejected" | "finding.created" | "payout.submitted" | "payout.paid" | "payout.failed" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.rejected" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
 	/** Si: lo que tiene que cumplir la factura u orden. Sin condiciones, corre siempre. */
 	conditions: {
 		/** all: se cumplen todas; any: basta con una. */
@@ -3818,7 +3818,7 @@ export interface Rule {
 	/** Entonces: lo que hace, en este orden. */
 	actions: {
 		/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
-		type: "tag" | "cost_center" | "category" | "stage" | "close" | "ask_approval" | "notify" | "lote";
+		type: "tag" | "cost_center" | "category" | "stage" | "close" | "ask_approval" | "notify" | "lote" | "hold_payment" | "email_supplier" | "review_findings";
 		/** tag: la etiqueta (tag_…, GET /v1/tags). */
 		tag?: string;
 		/** category: la categoría de gasto (facturas recibidas). */
@@ -3831,8 +3831,16 @@ export interface Rule {
 		stage?: number;
 		/** notify: a quién (mem_…). */
 		members?: string[];
-		/** notify: lo que dice el aviso. */
+		/** notify: lo que dice el aviso. hold_payment: por qué se retiene. */
 		note?: string | null;
+		/** email_supplier: el tema de los correos del proveedor a los que va. */
+		topic?: "ordenes" | "pagos" | "facturas" | "complementos" | "documentos" | "precios";
+		/** email_supplier: el asunto. */
+		subject?: string;
+		/** email_supplier: el mensaje. */
+		message?: string;
+		/** review_findings: los hallazgos que da por revisados (sus códigos). */
+		findings?: string[];
 		/** lote: el nombre del lote; null: «Lote del jueves 27 nov». */
 		lote_name?: string | null;
 		/** lote: el día que paga (siguiente día de la semana, a los días, o el del contrarecibo). */
@@ -3890,7 +3898,7 @@ export interface RuleRun {
 	/** La regla (rul_…). */
 	rule: string;
 	/** Cuándo corre. */
-	trigger: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "invoice.approved" | "invoice.rejected" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.rejected" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
+	trigger: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "invoice.approved" | "invoice.rejected" | "finding.created" | "payout.submitted" | "payout.paid" | "payout.failed" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.rejected" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
 	/** La factura u orden, en palabras. */
 	record: string;
 	/** Qué es el registro. */
@@ -8414,6 +8422,14 @@ export interface PayableInvoice {
 	payment_method: string | null;
 	/** El pago abierto (pyo_…) en el que ya está, o null. */
 	in_payout: string | null;
+	/** Si una regla de Ajustes › Reglas retuvo su pago: no se paga hasta que alguien con permiso lo suelte en la app («Soltar el pago»). null: no está retenido. */
+	payment_hold: {
+		/** La regla que lo retuvo, por su nombre. */
+		rule: string;
+		/** Por qué, como lo dice la regla. */
+		note: string | null;
+		held_at: string;
+	} | null;
 	/** Lo que las Reglas antes de pagar encontraron (por ejemplo cancelada en el SAT, o proveedor en la lista 69-B). */
 	warnings: string[];
 	/** La factura en la app. */
@@ -13285,8 +13301,8 @@ export interface CreateRuleParams {
 	issuer?: string;
 	/** Cómo se llama en Ajustes › Reglas. Sin él, se nombra por lo que hace. */
 	name?: string;
-	/** Cuándo corre: invoice.received (llega una factura de un proveedor), invoice.issued (se emite una factura), invoice.paid (una factura PPD queda pagada), invoice.cancelled (el SAT la cancela), invoice.approved (se aprueba en el Portal de proveedores), invoice.rejected (se rechaza en el portal), purchase_order.saved, .approved, .rejected, .sent, .confirmed, .received_part, .received_all, .invoiced_all, .price_variance, .registered. */
-	trigger: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "invoice.approved" | "invoice.rejected" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.rejected" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
+	/** Cuándo corre: invoice.received (llega una factura de un proveedor), invoice.issued (se emite una factura), invoice.paid (una factura PPD queda pagada), invoice.cancelled (el SAT la cancela), invoice.approved (se aprueba en el Portal de proveedores), invoice.rejected (se rechaza en el portal), payout.submitted (se manda a firmar un pago que la incluye), payout.paid (se le paga una factura a un proveedor), payout.failed (falla o se devuelve su pago), finding.created (aparece un hallazgo en una factura de los últimos 45 días), purchase_order.saved, .approved, .rejected, .sent, .confirmed, .received_part, .received_all, .invoiced_all, .price_variance, .registered. */
+	trigger: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "invoice.approved" | "invoice.rejected" | "finding.created" | "payout.submitted" | "payout.paid" | "payout.failed" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.rejected" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
 	/** Si: lo que tiene que cumplir. Sin condiciones, corre siempre. */
 	conditions?: {
 		/** all: se cumplen todas (las condiciones y los grupos); any: basta con una. */
@@ -13329,8 +13345,8 @@ export interface CreateRuleParams {
 	};
 	/** Entonces: de 1 a 8, en este orden. */
 	actions: {
-		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…); lote (invoice.received e invoice.approved): agregar la factura al lote de pagos abierto `lote_name` que paga `pay_on`, o crear uno, preparado como quien hizo la regla. */
-		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category" | "lote";
+		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…); lote (invoice.received e invoice.approved): agregar la factura al lote de pagos abierto `lote_name` que paga `pay_on`, o crear uno, preparado como quien hizo la regla; hold_payment (facturas recibidas): retener su pago hasta que alguien lo suelte, con `note`; email_supplier (facturas recibidas): escribirle al proveedor a los correos de su tema `topic`, con `subject` y `message`; review_findings: dar por revisados los hallazgos `findings` de la factura. */
+		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category" | "lote" | "hold_payment" | "email_supplier" | "review_findings";
 		/** tag: la etiqueta (tag_…, GET /v1/tags). Un número, el id de antes, también se acepta. */
 		tag?: string | number;
 		/** category: la categoría de gasto, como la app la nombra («Combustible»). */
@@ -13349,8 +13365,16 @@ export interface CreateRuleParams {
 		stage?: number;
 		/** notify: a quién (mem_…, GET /v1/members). */
 		members?: string[];
-		/** notify: lo que dice el aviso. */
+		/** notify: lo que dice el aviso. hold_payment: por qué se retiene (hasta 200). */
 		note?: string | null;
+		/** email_supplier: el tema de los correos del proveedor a los que va (ordenes, pagos, facturas, complementos, documentos, precios; Ajustes › Correos a proveedores). Sin correos de ese tema, va a sus correos generales. Por omisión, facturas. */
+		topic?: "ordenes" | "pagos" | "facturas" | "complementos" | "documentos" | "precios";
+		/** email_supplier: el asunto. Puede llevar {folio}, {total}, {fecha} y {empresa}. */
+		subject?: string;
+		/** email_supplier: el mensaje. Puede llevar {folio}, {total}, {fecha} y {empresa}. */
+		message?: string;
+		/** review_findings: los hallazgos que da por revisados (sus códigos, `code` en GET /v1/sat_findings). No los que cambian impuestos o la lista negra: cancelado, efos_definitivo, efos_presunto, lista_69b_bis, lista_69. */
+		findings?: string[];
 	}[];
 	/** true: corre una sola vez por factura u orden. Por omisión true, salvo purchase_order.saved. */
 	once_per_record?: boolean;
@@ -13382,8 +13406,8 @@ export interface OrderRulesParams {
 export interface UpdateRuleParams {
 	/** Cómo se llama en Ajustes › Reglas. Sin él, se nombra por lo que hace. */
 	name?: string;
-	/** Cuándo corre: invoice.received (llega una factura de un proveedor), invoice.issued (se emite una factura), invoice.paid (una factura PPD queda pagada), invoice.cancelled (el SAT la cancela), invoice.approved (se aprueba en el Portal de proveedores), invoice.rejected (se rechaza en el portal), purchase_order.saved, .approved, .rejected, .sent, .confirmed, .received_part, .received_all, .invoiced_all, .price_variance, .registered. */
-	trigger?: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "invoice.approved" | "invoice.rejected" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.rejected" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
+	/** Cuándo corre: invoice.received (llega una factura de un proveedor), invoice.issued (se emite una factura), invoice.paid (una factura PPD queda pagada), invoice.cancelled (el SAT la cancela), invoice.approved (se aprueba en el Portal de proveedores), invoice.rejected (se rechaza en el portal), payout.submitted (se manda a firmar un pago que la incluye), payout.paid (se le paga una factura a un proveedor), payout.failed (falla o se devuelve su pago), finding.created (aparece un hallazgo en una factura de los últimos 45 días), purchase_order.saved, .approved, .rejected, .sent, .confirmed, .received_part, .received_all, .invoiced_all, .price_variance, .registered. */
+	trigger?: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "invoice.approved" | "invoice.rejected" | "finding.created" | "payout.submitted" | "payout.paid" | "payout.failed" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.rejected" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
 	/** Si: lo que tiene que cumplir. Sin condiciones, corre siempre. */
 	conditions?: {
 		/** all: se cumplen todas (las condiciones y los grupos); any: basta con una. */
@@ -13426,8 +13450,8 @@ export interface UpdateRuleParams {
 	};
 	/** Entonces: de 1 a 8, en este orden. */
 	actions?: {
-		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…); lote (invoice.received e invoice.approved): agregar la factura al lote de pagos abierto `lote_name` que paga `pay_on`, o crear uno, preparado como quien hizo la regla. */
-		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category" | "lote";
+		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…); lote (invoice.received e invoice.approved): agregar la factura al lote de pagos abierto `lote_name` que paga `pay_on`, o crear uno, preparado como quien hizo la regla; hold_payment (facturas recibidas): retener su pago hasta que alguien lo suelte, con `note`; email_supplier (facturas recibidas): escribirle al proveedor a los correos de su tema `topic`, con `subject` y `message`; review_findings: dar por revisados los hallazgos `findings` de la factura. */
+		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category" | "lote" | "hold_payment" | "email_supplier" | "review_findings";
 		/** tag: la etiqueta (tag_…, GET /v1/tags). Un número, el id de antes, también se acepta. */
 		tag?: string | number;
 		/** category: la categoría de gasto, como la app la nombra («Combustible»). */
@@ -13446,8 +13470,16 @@ export interface UpdateRuleParams {
 		stage?: number;
 		/** notify: a quién (mem_…, GET /v1/members). */
 		members?: string[];
-		/** notify: lo que dice el aviso. */
+		/** notify: lo que dice el aviso. hold_payment: por qué se retiene (hasta 200). */
 		note?: string | null;
+		/** email_supplier: el tema de los correos del proveedor a los que va (ordenes, pagos, facturas, complementos, documentos, precios; Ajustes › Correos a proveedores). Sin correos de ese tema, va a sus correos generales. Por omisión, facturas. */
+		topic?: "ordenes" | "pagos" | "facturas" | "complementos" | "documentos" | "precios";
+		/** email_supplier: el asunto. Puede llevar {folio}, {total}, {fecha} y {empresa}. */
+		subject?: string;
+		/** email_supplier: el mensaje. Puede llevar {folio}, {total}, {fecha} y {empresa}. */
+		message?: string;
+		/** review_findings: los hallazgos que da por revisados (sus códigos, `code` en GET /v1/sat_findings). No los que cambian impuestos o la lista negra: cancelado, efos_definitivo, efos_presunto, lista_69b_bis, lista_69. */
+		findings?: string[];
 	}[];
 	/** true: corre una sola vez por factura u orden. Por omisión true, salvo purchase_order.saved. */
 	once_per_record?: boolean;
