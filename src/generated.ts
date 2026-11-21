@@ -2712,6 +2712,158 @@ export interface PayrollOrgChart {
 	}[];
 }
 
+/** La página de empleos de un emisor: su configuración, sus formularios y sus vacantes. */
+export interface Hiring {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "hiring";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** La página de empleos del emisor. */
+	careers_url: string;
+	/** Si la página se ve. */
+	enabled: boolean;
+	/** El texto de arriba de la página. */
+	intro: string | null;
+	/** El correo para dudas y derechos ARCO de los candidatos; null usa el de Datos fiscales. */
+	contact_email: string | null;
+	/** Las etapas de sus candidatos, en orden. */
+	stages: string[];
+	/** Quien no cumple un requisito: flag, su solicitud llega marcada; warn, además se le dice antes de enviar. */
+	unmet_requirements: "flag" | "warn";
+	/** El formulario (jbf_…) de las vacantes que no eligen uno; null el básico. */
+	default_form: string | null;
+	/** Sus formularios de solicitud. */
+	forms: JobForm[];
+	/** Las vacantes abiertas, y las cubiertas que aún tienen candidatos. */
+	vacancies: {
+		/** La vacante (vac_…). */
+		id: string;
+		/** El puesto. */
+		title: string;
+		/** Departamento (Departamento). */
+		department: string | null;
+		/** Estado del objeto. */
+		status: "pending_approval" | "approved" | "rejected" | "filled";
+		/** Si está en la página de empleos. */
+		published: boolean;
+		/** Su página, si está publicada. */
+		url: string | null;
+		/** Descripción. */
+		description: string | null;
+		/** Lo que pide. */
+		requirements: string[];
+		/** El tipo de contrato. */
+		employment_type: "full_time" | "part_time" | "fixed_term" | "project" | "internship" | null;
+		/** Dónde se trabaja. */
+		workplace: "on_site" | "hybrid" | "remote" | null;
+		/** Si la página muestra el sueldo. */
+		show_salary: boolean;
+		/** Hasta cuándo recibe solicitudes (YYYY-MM-DD). */
+		closes_on: string | null;
+		/** Forma farmacéutica (FormaFarmaceutica), c_FormaFarmaceutica. */
+		form: string | null;
+		/** Cuántos candidatos hay en cada etapa. */
+		candidates: {
+			/** La etapa. */
+			stage: string;
+			/** Cuántos hay en ella. */
+			count: number;
+		}[];
+	}[];
+}
+
+/** Un formulario de solicitud: las preguntas que llena quien se postula. */
+export interface JobForm {
+	/** El formulario (jbf_…). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "job_form";
+	/** Nombre. */
+	name: string;
+	/** Sus preguntas, en orden. */
+	questions: {
+		/** Su clave: las respuestas van por ella. */
+		id: string;
+		/** La pregunta, como la lee quien se postula. */
+		label: string;
+		/** La ayuda bajo la caja. */
+		help: string | null;
+		/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
+		type: "text" | "longtext" | "number" | "date" | "select" | "multiselect" | "yesno" | "email" | "phone" | "url" | "file";
+		/** Si no se puede dejar en blanco. */
+		required: boolean;
+		/** Las de select y multiselect. */
+		options: string[];
+		/** Los archivos que toma una de tipo file. */
+		files: ("pdf" | "image" | "doc")[];
+		/** Lo que se revisa de la respuesta (min_length, max, dates…). */
+		rules: Record<string, unknown> | null;
+		/** Si es un requisito, las respuestas o el mínimo que lo cumplen. */
+		requirement: {
+			/** Las respuestas que lo cumplen. */
+			answers: string[];
+			/** En una number, el mínimo que lo cumple. */
+			min: number | null;
+		} | null;
+	}[];
+}
+
+/** Una solicitud que llegó por la página de empleos. */
+export interface Candidate {
+	/** La solicitud (cnd_…). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "candidate";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** La vacante a la que se postuló (vac_…). */
+	vacancy: string;
+	/** Nombre. */
+	name: string;
+	/** Correo a donde se envía (varios separados por comas). Solo se usa si se pide enviarlo. */
+	email: string;
+	/** Su teléfono, si lo dio. */
+	phone: string | null;
+	/** Su etapa, una de stages de hiring. */
+	stage: string;
+	/** De 1 a 5. */
+	rating: number | null;
+	/** La nota de su equipo. */
+	note: string | null;
+	/** Si cumple todas las preguntas que son requisito. */
+	meets_requirements: boolean;
+	/** Las preguntas requisito que no cumple. */
+	unmet_requirements: string[];
+	/** Sus respuestas, en el orden de las preguntas que contestó. */
+	answers: {
+		/** La clave de la pregunta. */
+		question: string;
+		/** La pregunta, como la leyó. */
+		label: string;
+		/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
+		type: string;
+		/** Valor de la mercancía (ValorMercancia); obligatorio en transporte aéreo. */
+		value: string | string[] | null;
+		/** El archivo que subió, en una pregunta de tipo file. */
+		file: {
+			/** Nombre. */
+			name: string;
+			/** Su tamaño en bytes. */
+			size: number;
+			/** Dónde descargarlo en la API. */
+			url: string;
+		} | null;
+	}[];
+	/** El empleado (emp_…) si se le contrató. */
+	employee: string | null;
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string;
+}
+
 /** Los archivos para presentar movimientos en IDSE o importarlos en SUA. */
 export interface ImssFiles {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -9249,6 +9401,17 @@ export interface EmployeeDeductionList {
 	url: string;
 }
 
+export interface CandidateList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: Candidate[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
 export interface InvoiceBatchList {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "list";
@@ -12739,6 +12902,188 @@ export interface UpdatePayrollVacancyParams {
 
 export interface FillPayrollVacancyParams {
 	/** Quien la ocupa (emp_…), ya dado de alta con POST /v1/employees: queda con el jefe, el departamento y la sucursal de la vacante. */
+	employee: string;
+}
+
+export interface PublishPayrollVacancyParams {
+	/** true la pone en la página; false la quita. */
+	published: boolean;
+	/** Qué hará la persona; los párrafos van separados por una línea en blanco. */
+	description?: string | null;
+	/** Lo que pide, uno por renglón (escolaridad, experiencia…). */
+	requirements?: string[];
+	/** full_time, part_time, fixed_term (por tiempo determinado), project (por obra determinada) o internship (prácticas). */
+	employment_type?: "full_time" | "part_time" | "fixed_term" | "project" | "internship" | null;
+	/** Dónde se trabaja: on_site (presencial), hybrid (híbrido) o remote. */
+	workplace?: "on_site" | "hybrid" | "remote" | null;
+	/** Si la página muestra el sueldo de la vacante (salary_min y salary_max). */
+	show_salary?: boolean;
+	/** Hasta cuándo recibe solicitudes (YYYY-MM-DD). */
+	closes_on?: string | null;
+	/** El formulario que llenan (jbf_…); null el predeterminado. */
+	form?: string | null;
+}
+
+/** Los parámetros de GET /v1/hiring. */
+export interface GetHiringParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface UpdateHiringSettingsParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Si la página de empleos se ve. */
+	enabled?: boolean;
+	/** El texto de arriba de la página: quiénes son y por qué trabajar ahí. */
+	intro?: string | null;
+	/** El correo para dudas de quien se postula y para sus derechos ARCO (aviso de privacidad). Sin él se usa el de Datos fiscales; sin ninguno, las vacantes no reciben solicitudes. */
+	contact_email?: string | null;
+	/** Las etapas de sus candidatos, en orden. La primera es donde llegan. */
+	stages?: string[];
+	/** Qué hacer con quien no cumple un requisito: flag la recibe marcada; warn le dice qué no cumple antes de enviar (puede enviarla igual) y también la marca. */
+	unmet_requirements?: "flag" | "warn";
+	/** El formulario (jbf_…) de las vacantes que no eligen uno; null el básico. */
+	default_form?: string | null;
+}
+
+export interface CreateJobFormParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Cómo lo llama su equipo. */
+	name: string;
+	/** Sus preguntas, en orden. nombre y correo van siempre (si no las manda, se agregan al principio). */
+	questions: {
+		/** Su clave en el formulario y en las respuestas; por omisión sale de label. Las de siempre: nombre, correo, telefono y cv. */
+		id?: string;
+		/** La pregunta, como la lee quien se postula. */
+		label: string;
+		/** Una ayuda bajo la caja. */
+		help?: string | null;
+		/** text, longtext (párrafo), number, date, select (una de la lista), multiselect (varias), yesno, email, phone, url o file (un archivo). */
+		type: "text" | "longtext" | "number" | "date" | "select" | "multiselect" | "yesno" | "email" | "phone" | "url" | "file";
+		/** Si no se puede dejar en blanco. */
+		required: boolean;
+		/** Las opciones de select y multiselect. */
+		options?: string[];
+		/** Qué archivos toma una de tipo file: pdf, image (JPG, PNG), doc (.docx). Hasta 10 MB. */
+		files?: ("pdf" | "image" | "doc")[];
+		/** Lo que se revisa de la respuesta (largo, formato, mínimo, máximo, fechas, ejemplo). */
+		rules?: {
+			/** Texto: cuántos caracteres como mínimo. */
+			min_length?: number | null;
+			/** Texto: cuántos caracteres como máximo. */
+			max_length?: number | null;
+			/** Texto: any (cualquiera), digits (solo números) o alnum (letras y números). */
+			format?: "any" | "digits" | "alnum" | null;
+			/** Número: el más chico. */
+			min?: number | null;
+			/** Número: el más grande. */
+			max?: number | null;
+			/** Número: sin decimales. */
+			integer?: boolean | null;
+			/** Fecha: any, past (pasada; con days, no más vieja que esos días), future (futura; con days, al menos a esos días) o between (entre from y to). */
+			dates?: "any" | "past" | "future" | "between" | null;
+			/** Fecha: los días de past o future. */
+			days?: number | null;
+			/** Fecha: desde (YYYY-MM-DD), con between. */
+			from?: string | null;
+			/** Fecha: hasta (YYYY-MM-DD), con between. */
+			to?: string | null;
+			/** El ejemplo que se ve dentro de la caja vacía. */
+			example?: string | null;
+		} | null;
+		/** Si es un requisito: quien no lo cumple queda marcado o se le avisa antes de enviar, como diga unmet_requirements. */
+		requirement?: {
+			/** Las respuestas que cumplen: ["si"] o ["no"] en una yesno, opciones en select y multiselect. */
+			answers?: string[];
+			/** En una number, el mínimo que cumple (años de experiencia…). */
+			min?: number | null;
+		} | null;
+	}[];
+}
+
+export interface UpdateJobFormParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Cómo lo llama su equipo. */
+	name: string;
+	/** Sus preguntas, en orden. nombre y correo van siempre (si no las manda, se agregan al principio). */
+	questions: {
+		/** Su clave en el formulario y en las respuestas; por omisión sale de label. Las de siempre: nombre, correo, telefono y cv. */
+		id?: string;
+		/** La pregunta, como la lee quien se postula. */
+		label: string;
+		/** Una ayuda bajo la caja. */
+		help?: string | null;
+		/** text, longtext (párrafo), number, date, select (una de la lista), multiselect (varias), yesno, email, phone, url o file (un archivo). */
+		type: "text" | "longtext" | "number" | "date" | "select" | "multiselect" | "yesno" | "email" | "phone" | "url" | "file";
+		/** Si no se puede dejar en blanco. */
+		required: boolean;
+		/** Las opciones de select y multiselect. */
+		options?: string[];
+		/** Qué archivos toma una de tipo file: pdf, image (JPG, PNG), doc (.docx). Hasta 10 MB. */
+		files?: ("pdf" | "image" | "doc")[];
+		/** Lo que se revisa de la respuesta (largo, formato, mínimo, máximo, fechas, ejemplo). */
+		rules?: {
+			/** Texto: cuántos caracteres como mínimo. */
+			min_length?: number | null;
+			/** Texto: cuántos caracteres como máximo. */
+			max_length?: number | null;
+			/** Texto: any (cualquiera), digits (solo números) o alnum (letras y números). */
+			format?: "any" | "digits" | "alnum" | null;
+			/** Número: el más chico. */
+			min?: number | null;
+			/** Número: el más grande. */
+			max?: number | null;
+			/** Número: sin decimales. */
+			integer?: boolean | null;
+			/** Fecha: any, past (pasada; con days, no más vieja que esos días), future (futura; con days, al menos a esos días) o between (entre from y to). */
+			dates?: "any" | "past" | "future" | "between" | null;
+			/** Fecha: los días de past o future. */
+			days?: number | null;
+			/** Fecha: desde (YYYY-MM-DD), con between. */
+			from?: string | null;
+			/** Fecha: hasta (YYYY-MM-DD), con between. */
+			to?: string | null;
+			/** El ejemplo que se ve dentro de la caja vacía. */
+			example?: string | null;
+		} | null;
+		/** Si es un requisito: quien no lo cumple queda marcado o se le avisa antes de enviar, como diga unmet_requirements. */
+		requirement?: {
+			/** Las respuestas que cumplen: ["si"] o ["no"] en una yesno, opciones en select y multiselect. */
+			answers?: string[];
+			/** En una number, el mínimo que cumple (años de experiencia…). */
+			min?: number | null;
+		} | null;
+	}[];
+}
+
+/** Los parámetros de GET /v1/candidates. */
+export interface ListCandidatesParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Solo las de una vacante (vac_…). */
+	vacancy?: string;
+	/** Solo las de una etapa, como en stages de hiring. */
+	stage?: string;
+}
+
+export interface UpdateCandidateParams {
+	/** Una de las etapas (stages). */
+	stage?: string;
+	/** Su calificación, de 1 a 5; null se la quita. */
+	rating?: number | null;
+	/** La nota de su equipo; no la ve el candidato. */
+	note?: string | null;
+}
+
+export interface HireCandidateParams {
+	/** El empleado (emp_…) que ya dio de alta con POST /v1/employees: cubre la vacante con él. */
 	employee: string;
 }
 
@@ -18662,6 +19007,166 @@ export class PayrollOrgChartResource {
 	fillVacancy(id: string, params: FillPayrollVacancyParams, options?: RequestOptions): Promise<PayrollOrgChart> {
 		return this.#client.request({ method: "POST", path: `/v1/payroll_org_chart/vacancies/${encodeURIComponent(id)}/fill`, body: params, idempotent: true }, options);
 	}
+
+	/**
+	 * Publicar una vacante
+	 *
+	 * La pone en la página de empleos del emisor (published true) o la quita (false), con su descripción, requisitos, tipo de contrato, lugar, sueldo visible, fecha de cierre y el formulario (jbf_…) que llenan quienes se postulan. Solo una approved se publica; publicarla enciende la página si estaba apagada. Google la puede mostrar en sus resultados de empleos (JobPosting). Contesta hiring.
+	 *
+	 * POST /v1/payroll_org_chart/vacancies/{id}/publish
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/publish-payroll-vacancy
+	 */
+	publishVacancy(id: string, params: PublishPayrollVacancyParams, options?: RequestOptions): Promise<Hiring> {
+		return this.#client.request({ method: "POST", path: `/v1/payroll_org_chart/vacancies/${encodeURIComponent(id)}/publish`, body: params, idempotent: true }, options);
+	}
+}
+
+/** Nómina: fiscalisto.hiring. */
+export class HiringResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Página de empleos
+	 *
+	 * Como «Nómina › Empleos» de la app: la página de empleos del emisor (careers_url, si se ve, su texto, el correo de contacto), las etapas de sus candidatos, qué hacer con quien no cumple un requisito, sus formularios (jbf_…) y sus vacantes con lo que publican y cuántos candidatos hay en cada etapa.
+	 *
+	 * GET /v1/hiring
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-hiring
+	 */
+	get(params?: GetHiringParams, options?: RequestOptions): Promise<Hiring> {
+		return this.#client.request({ method: "GET", path: "/v1/hiring", query: params }, options);
+	}
+
+	/**
+	 * Configurar la página de empleos
+	 *
+	 * Enciende o apaga la página, cambia su texto y correo de contacto, las etapas de los candidatos (al menos dos; la primera es donde llegan), unmet_requirements y el formulario predeterminado. Lo que no manda no cambia. Contesta hiring.
+	 *
+	 * POST /v1/hiring/settings
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-hiring-settings
+	 */
+	updateSettings(params?: UpdateHiringSettingsParams, options?: RequestOptions): Promise<Hiring> {
+		return this.#client.request({ method: "POST", path: "/v1/hiring/settings", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Crear un formulario de solicitud
+	 *
+	 * Las preguntas que llena quien se postula, del tipo que sea (texto, párrafo, número, fecha, lista, varias opciones, sí o no, correo, teléfono, enlace o archivo), obligatorias u opcionales, con sus reglas y las que son requisito. nombre y correo van siempre. Una pregunta que la Ley Federal del Trabajo no deja pedir (art. 133: edad, género, estado civil, embarazo…) se guarda, pero la app la señala.
+	 *
+	 * POST /v1/hiring/forms
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-job-form
+	 */
+	createForm(params: CreateJobFormParams, options?: RequestOptions): Promise<JobForm> {
+		return this.#client.request({ method: "POST", path: "/v1/hiring/forms", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Cambiar un formulario de solicitud
+	 *
+	 * Cambia su nombre y sus preguntas. Las solicitudes que ya llegaron conservan las preguntas que contestaron.
+	 *
+	 * POST /v1/hiring/forms/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-job-form
+	 */
+	updateForm(id: string, params: UpdateJobFormParams, options?: RequestOptions): Promise<JobForm> {
+		return this.#client.request({ method: "POST", path: `/v1/hiring/forms/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Archivar un formulario de solicitud
+	 *
+	 * Deja de usarse: sus vacantes piden el predeterminado desde ahora. Las solicitudes que ya llegaron no cambian.
+	 *
+	 * DELETE /v1/hiring/forms/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/delete-job-form
+	 */
+	deleteForm(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/hiring/forms/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Nómina: fiscalisto.candidates. */
+export class CandidatesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar candidatos
+	 *
+	 * Las solicitudes que llegaron por la página de empleos, las más recientes primero, con sus respuestas, su etapa y los requisitos que no cumple.
+	 *
+	 * GET /v1/candidates
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/list-candidates
+	 */
+	list(params?: ListCandidatesParams, options?: RequestOptions): List<Candidate> {
+		return this.#client.list({ path: "/v1/candidates", query: params }, options);
+	}
+
+	/**
+	 * Ver un candidato
+	 *
+	 * Una solicitud (cnd_…), con las preguntas que contestó y sus archivos.
+	 *
+	 * GET /v1/candidates/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-candidate
+	 */
+	get(id: string, options?: RequestOptions): Promise<Candidate> {
+		return this.#client.request({ method: "GET", path: `/v1/candidates/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Cambiar un candidato
+	 *
+	 * Lo pasa a otra etapa, lo califica (1 a 5) o le pone una nota de su equipo. Lo que no manda no cambia.
+	 *
+	 * POST /v1/candidates/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-candidate
+	 */
+	update(id: string, params?: UpdateCandidateParams, options?: RequestOptions): Promise<Candidate> {
+		return this.#client.request({ method: "POST", path: `/v1/candidates/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Borrar un candidato
+	 *
+	 * Borra la solicitud y sus archivos, por ejemplo cuando el candidato lo pide (derechos ARCO). No se puede deshacer.
+	 *
+	 * DELETE /v1/candidates/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/delete-candidate
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/candidates/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Contratar a un candidato
+	 *
+	 * Con el empleado ya dado de alta (POST /v1/employees), cubre la vacante de la solicitud (como POST /v1/payroll_org_chart/vacancies/{id}/fill), pasa al candidato a la etapa de contratados y quita la vacante de la página. Falta su alta en el IMSS.
+	 *
+	 * POST /v1/candidates/{id}/hire
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/hire-candidate
+	 */
+	hire(id: string, params: HireCandidateParams, options?: RequestOptions): Promise<Candidate> {
+		return this.#client.request({ method: "POST", path: `/v1/candidates/${encodeURIComponent(id)}/hire`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Descargar un archivo de un candidato
+	 *
+	 * El archivo que subió a una pregunta de tipo file (su CV, por ejemplo), tal como lo subió: PDF, JPG, PNG o Word. answers[].file.url de candidate lleva esta ruta.
+	 *
+	 * GET /v1/candidates/{id}/files/{question}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-candidate-file
+	 */
+	file(id: string, question: string, options?: RequestOptions): Promise<string> {
+		return this.#client.request({ method: "GET", path: `/v1/candidates/${encodeURIComponent(id)}/files/${encodeURIComponent(question)}`, as: "text" }, options);
+	}
 }
 
 /** Lotes: fiscalisto.invoiceBatches. */
@@ -22853,6 +23358,8 @@ export class FiscalistoApi extends Core {
 	readonly payrollReports = new PayrollReportsResource(this);
 	readonly payrollCalendar = new PayrollCalendarResource(this);
 	readonly payrollOrgChart = new PayrollOrgChartResource(this);
+	readonly hiring = new HiringResource(this);
+	readonly candidates = new CandidatesResource(this);
 	readonly invoiceBatches = new InvoiceBatchesResource(this);
 	readonly taxIds = new TaxIdsResource(this);
 	readonly branches = new BranchesResource(this);
