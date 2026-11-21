@@ -8278,6 +8278,8 @@ export interface Payout {
 	number: number;
 	/** draft (borrador: falta que alguien lo firme en la app), pending_approval (faltan firmas), approved (firmado: sale en su día), sending, paid (llegaron todas), partially_paid (llegaron algunas), failed (no llegó ninguna) o canceled. */
 	status: "draft" | "pending_approval" | "approved" | "sending" | "paid" | "partially_paid" | "failed" | "canceled";
+	/** El nombre del lote («Fletes»), o null: la app lo llama por su día. */
+	name: string | null;
 	/** El día en que sale (AAAA-MM-DD, hora de la Ciudad de México). */
 	pay_on: string;
 	/** En un pago programado con facturas en otra moneda, cómo toma el tipo de cambio: official (el oficial; si al salir se movió más de la tolerancia de Configurar pagos, se detiene hasta firmarlo de nuevo) o fixed (sale al tipo de cambio con que se firmó). null en pesos o si sale hoy. */
@@ -14793,6 +14795,8 @@ export interface CreatePayoutParams {
 	issuer?: string;
 	/** El día en que sale (AAAA-MM-DD, hoy o después). Por omisión, hoy: sale en cuanto lo firmen. */
 	pay_on?: string;
+	/** El nombre del lote («Fletes»), para encontrarlo en la app entre los lotes abiertos. Sin nombre, la app lo llama por su día («Lote del jueves 27 nov»). */
+	name?: string | null;
 	/** Una nota para quien lo revisa y lo firma. */
 	note?: string | null;
 	/** En un pago programado con facturas en otra moneda: official (el tipo de cambio oficial; si al salir se movió más de la tolerancia de Configurar pagos, se detiene hasta firmarlo de nuevo) o fixed (sale al tipo de cambio de hoy, se mueva o no). Por omisión, lo que diga Configurar pagos. */
