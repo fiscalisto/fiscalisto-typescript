@@ -2593,6 +2593,92 @@ export interface PayrollCalendar {
 	events: PayrollCalendarEvent[];
 }
 
+/** El organigrama de los empleados del emisor: jefes, departamentos, sucursales y vacantes. */
+export interface PayrollOrgChart {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "payroll_org_chart";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** El día del organigrama (YYYY-MM-DD): salen quienes trabajan ese día. */
+	as_of: string;
+	/** Las cuentas del organigrama y lo que conviene revisar. */
+	summary: {
+		/** Empleados de hoy. */
+		employees: number;
+		/** Cuántos tienen al menos una persona directamente a su cargo. */
+		managers: number;
+		/** Personas directas por jefe, en promedio (un decimal). */
+		average_span: number;
+		/** Departamentos, con los que solo llevan los recibos. */
+		departments: number;
+		/** En cuántas sucursales (con la matriz) hay personas. */
+		branches: number;
+		/** Puestos sin persona. */
+		vacancies: number;
+		/** Quienes quedan arriba sin ser la cabeza (todos los de arriba menos el del equipo más grande). */
+		without_manager: string[];
+		/** Jefes con más de 10 personas directas. */
+		wide_span: string[];
+		/** Sin departamento: sus recibos no llevan uno. */
+		without_department: string[];
+	};
+	/** Los empleados arriba de todo (sin jefe), el del equipo más grande primero. */
+	top: string[];
+	/** Los empleados de hoy, cada uno con su jefe y su equipo. */
+	employees: {
+		/** El empleado (emp_…). */
+		employee: string;
+		/** Su número de empleado. */
+		number: string;
+		/** Nombre. */
+		name: string;
+		/** Su puesto. */
+		position: string | null;
+		/** Departamento (Departamento). */
+		department: string | null;
+		/** Su sucursal (brn_…); null es la matriz. */
+		branch: string | null;
+		/** Su jefe directo (emp_…); null si está arriba. */
+		manager: string | null;
+		/** Personas directamente a su cargo. */
+		direct_reports: number;
+		/** Todas las personas que dependen de él, en toda su cadena. */
+		total_reports: number;
+	}[];
+	/** Los departamentos, cada uno después del de arriba. */
+	departments: {
+		/** Nombre. */
+		name: string;
+		/** El departamento dentro del que está. */
+		parent: string | null;
+		/** Su responsable (emp_…). */
+		lead: string | null;
+		/** Personas en él. */
+		employees: number;
+		/** Personas en él y en sus subdepartamentos. */
+		total_employees: number;
+		/** 0 arriba, 1 dentro de uno, y así. */
+		depth: number;
+	}[];
+	/** Los puestos sin persona todavía. */
+	vacancies: {
+		/** La vacante (vac_…). */
+		id: string;
+		/** El puesto. */
+		title: string;
+		/** Departamento (Departamento). */
+		department: string | null;
+		/** Bajo qué jefe (emp_…). */
+		manager: string | null;
+		/** Sucursal (brn_…) desde donde se factura: su código postal va en LugarExpedicion, su dirección en el PDF y, si las tiene, sus series. Sin ella, el domicilio fiscal del emisor (la Matriz). */
+		branch: string | null;
+		/** Desde cuándo está abierta (YYYY-MM-DD). */
+		opened_on: string;
+	}[];
+}
+
 /** Los archivos para presentar movimientos en IDSE o importarlos en SUA. */
 export interface ImssFiles {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -12531,6 +12617,75 @@ export interface MarkPayrollCalendarEventParams {
 	paid: boolean;
 }
 
+/** Los parámetros de GET /v1/payroll_org_chart. */
+export interface GetPayrollOrgChartParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface AssignPayrollOrgChartParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** A quiénes (emp_…). */
+	employees: string[];
+	/** Su jefe directo (emp_…), o null para ponerlos arriba. Se omite si no cambia. */
+	manager?: string | null;
+	/** Su departamento, como lo llevan sus recibos (Departamento), o null para ninguno. Se omite si no cambia. */
+	department?: string | null;
+	/** Una sucursal del emisor (brn_…), o null para la matriz. */
+	branch?: string | null;
+}
+
+export interface SavePayrollDepartmentParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** El departamento. Si no existe, se crea; si existe, se cambia. */
+	name: string;
+	/** Su nuevo nombre: se cambia también en sus empleados y vacantes. */
+	new_name?: string;
+	/** El departamento dentro del que está, o null para ponerlo arriba. */
+	parent?: string | null;
+	/** Su responsable (emp_…). */
+	lead?: string | null;
+}
+
+export interface RemovePayrollDepartmentParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Nombre. */
+	name: string;
+}
+
+export interface CreatePayrollVacancyParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** El puesto que falta cubrir. */
+	title: string;
+	/** Departamento (Departamento). */
+	department?: string | null;
+	/** Bajo qué jefe (emp_…). */
+	manager?: string | null;
+	/** Una sucursal del emisor (brn_…), o null para la matriz. */
+	branch?: string | null;
+	/** Desde cuándo está abierta (YYYY-MM-DD); por omisión hoy. */
+	opened_on?: string;
+}
+
+export interface UpdatePayrollVacancyParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** El puesto que falta cubrir. */
+	title: string;
+	/** Departamento (Departamento). */
+	department?: string | null;
+	/** Bajo qué jefe (emp_…). */
+	manager?: string | null;
+	/** Una sucursal del emisor (brn_…), o null para la matriz. */
+	branch?: string | null;
+	/** Desde cuándo está abierta (YYYY-MM-DD); por omisión hoy. */
+	opened_on?: string;
+}
+
 export interface UpdatePayrollTaxSettingsParams {
 	/** El emisor (iss_…); por omisión, el único de la cuenta. */
 	issuer?: string;
@@ -18343,6 +18498,98 @@ export class PayrollCalendarResource {
 	}
 }
 
+/** Nómina: fiscalisto.payrollOrgChart. */
+export class PayrollOrgChartResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Organigrama
+	 *
+	 * Como «Nómina › Organigrama» de la app: los empleados de hoy del emisor con su jefe directo, departamento y sucursal, cuántas personas dependen de cada uno (directas y en toda su cadena), los departamentos con sus subdepartamentos, las vacantes y un resumen (jefes, tramo promedio, quién queda sin jefe o sin departamento). Quien no tiene jefe, o cuyo jefe ya se fue, queda arriba; un círculo que dejó una importación se rompe en el de número más bajo.
+	 *
+	 * GET /v1/payroll_org_chart
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-payroll-org-chart
+	 */
+	get(params?: GetPayrollOrgChartParams, options?: RequestOptions): Promise<PayrollOrgChart> {
+		return this.#client.request({ method: "GET", path: "/v1/payroll_org_chart", query: params }, options);
+	}
+
+	/**
+	 * Cambiar jefe, departamento o sucursal
+	 *
+	 * Cambia el jefe directo, el departamento o la sucursal de uno o varios empleados (hasta 500); lo que no manda no cambia. Un jefe que, subiendo por su cadena, depende de alguno de ellos contesta parameter_invalid: quedarían en círculo. El departamento es el que llevan sus recibos (Departamento). Contesta el organigrama ya cambiado.
+	 *
+	 * POST /v1/payroll_org_chart/assign
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/assign-payroll-org-chart
+	 */
+	assign(params: AssignPayrollOrgChartParams, options?: RequestOptions): Promise<PayrollOrgChart> {
+		return this.#client.request({ method: "POST", path: "/v1/payroll_org_chart/assign", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Crear o cambiar un departamento
+	 *
+	 * Crea el departamento name o, si ya existe, lo cambia: new_name lo renombra (también en sus empleados y vacantes), parent lo pone dentro de otro y lead le pone responsable. Un parent que ya está dentro de él contesta parameter_invalid. Contesta el organigrama.
+	 *
+	 * POST /v1/payroll_org_chart/departments
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/save-payroll-department
+	 */
+	saveDepartment(params: SavePayrollDepartmentParams, options?: RequestOptions): Promise<PayrollOrgChart> {
+		return this.#client.request({ method: "POST", path: "/v1/payroll_org_chart/departments", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Quitar un departamento
+	 *
+	 * Quita un departamento sin personas; los que estaban dentro de él suben un nivel. Con personas contesta parameter_invalid: cámbielas antes con POST /v1/payroll_org_chart/assign. Contesta el organigrama.
+	 *
+	 * POST /v1/payroll_org_chart/departments/remove
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/remove-payroll-department
+	 */
+	removeDepartment(params: RemovePayrollDepartmentParams, options?: RequestOptions): Promise<PayrollOrgChart> {
+		return this.#client.request({ method: "POST", path: "/v1/payroll_org_chart/departments/remove", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Abrir una vacante
+	 *
+	 * Un puesto sin persona todavía, bajo un jefe, en un departamento y una sucursal: sale en el organigrama, pero no cuenta como empleado. Contesta el organigrama.
+	 *
+	 * POST /v1/payroll_org_chart/vacancies
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-payroll-vacancy
+	 */
+	createVacancy(params: CreatePayrollVacancyParams, options?: RequestOptions): Promise<PayrollOrgChart> {
+		return this.#client.request({ method: "POST", path: "/v1/payroll_org_chart/vacancies", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Cambiar una vacante
+	 *
+	 * Cambia el puesto, departamento, jefe o sucursal de una vacante (vac_…).
+	 *
+	 * POST /v1/payroll_org_chart/vacancies/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-payroll-vacancy
+	 */
+	updateVacancy(id: string, params: UpdatePayrollVacancyParams, options?: RequestOptions): Promise<PayrollOrgChart> {
+		return this.#client.request({ method: "POST", path: `/v1/payroll_org_chart/vacancies/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Cerrar una vacante
+	 *
+	 * La quita del organigrama (se cubrió o ya no hace falta). Contesta el organigrama.
+	 *
+	 * DELETE /v1/payroll_org_chart/vacancies/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/delete-payroll-vacancy
+	 */
+	deleteVacancy(id: string, options?: RequestOptions): Promise<PayrollOrgChart> {
+		return this.#client.request({ method: "DELETE", path: `/v1/payroll_org_chart/vacancies/${encodeURIComponent(id)}` }, options);
+	}
+}
+
 /** Lotes: fiscalisto.invoiceBatches. */
 export class InvoiceBatchesResource {
 	readonly #client: Client;
@@ -22531,6 +22778,7 @@ export class FiscalistoApi extends Core {
 	readonly payrollTaxes = new PayrollTaxesResource(this);
 	readonly payrollReports = new PayrollReportsResource(this);
 	readonly payrollCalendar = new PayrollCalendarResource(this);
+	readonly payrollOrgChart = new PayrollOrgChartResource(this);
 	readonly invoiceBatches = new InvoiceBatchesResource(this);
 	readonly taxIds = new TaxIdsResource(this);
 	readonly branches = new BranchesResource(this);
