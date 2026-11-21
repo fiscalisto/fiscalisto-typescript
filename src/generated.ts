@@ -3839,6 +3839,8 @@ export interface Rule {
 		subject?: string;
 		/** email_supplier: el mensaje. */
 		message?: string;
+		/** email_supplier en los disparadores de pagos: payout, un correo por pago y proveedor; invoice, uno por factura. */
+		per?: "payout" | "invoice";
 		/** review_findings: los hallazgos que da por revisados (sus códigos). */
 		findings?: string[];
 		/** extra_signature: cuántas firmas más pide (1 a 3). */
@@ -9102,6 +9104,20 @@ export interface EventResend {
 	deliveries: number;
 }
 
+/** Los eventos que un webhook no recibió, mandados otra vez: desde cuándo se buscaron, cuántos salieron y, si quedaron más de 1,000, desde dónde seguir. */
+export interface WebhookRecovery {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "webhook_recovery";
+	/** El webhook (whe_…) al que se mandaron. */
+	endpoint: string;
+	/** Desde cuándo se buscaron: el since que mandó, o la creación del webhook si es posterior. */
+	since: string;
+	/** Cuántos eventos salieron otra vez. 0: no le faltaba ninguno. */
+	events: number;
+	/** Si quedaron más de 1,000: llame otra vez con este since. null: ya salieron todos. */
+	next_since: string | null;
+}
+
 /** Cómo se ven los documentos de un emisor: nombre comercial, estilo y color del PDF, y logo. */
 export interface IssuerBranding {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -9323,6 +9339,8 @@ export interface ApiError {
 		doc_url: string;
 		/** El id de la solicitud (req_…). Inclúyalo si nos escribe. */
 		request_id: string;
+		/** La solicitud en Desarrolladores › Solicitudes: lo que mandó, lo que contestamos y cómo repetirla. Viene en todos los errores salvo los 429. */
+		request_log_url?: string;
 	};
 }
 
@@ -13400,6 +13418,8 @@ export interface CreateRuleParams {
 		subject?: string;
 		/** email_supplier: el mensaje. Puede llevar {folio}, {total}, {fecha} y {empresa}. */
 		message?: string;
+		/** email_supplier en payout.submitted, payout.paid y payout.failed: payout manda un correo por pago y proveedor con todas sus facturas ({folio} es la lista de folios, {total} lo que se le paga y {fecha} la fecha del pago); invoice, uno por factura. Por omisión, payout. */
+		per?: "payout" | "invoice";
 		/** extra_signature: cuántas firmas más pide (1 a 3). Por omisión, 1. */
 		signatures?: number;
 		/** extra_signature: por qué, para quien firma («Proveedor nuevo»). */
@@ -13509,6 +13529,8 @@ export interface UpdateRuleParams {
 		subject?: string;
 		/** email_supplier: el mensaje. Puede llevar {folio}, {total}, {fecha} y {empresa}. */
 		message?: string;
+		/** email_supplier en payout.submitted, payout.paid y payout.failed: payout manda un correo por pago y proveedor con todas sus facturas ({folio} es la lista de folios, {total} lo que se le paga y {fecha} la fecha del pago); invoice, uno por factura. Por omisión, payout. */
+		per?: "payout" | "invoice";
 		/** extra_signature: cuántas firmas más pide (1 a 3). Por omisión, 1. */
 		signatures?: number;
 		/** extra_signature: por qué, para quien firma («Proveedor nuevo»). */
@@ -17120,6 +17142,11 @@ export interface ListWebhookDeliveriesParams {
 	starting_after?: string;
 	/** false: solo los que fallaron en su último intento. true: solo los que llegaron. */
 	succeeded?: boolean;
+}
+
+export interface RecoverWebhookEndpointParams {
+	/** Desde cuándo (ISO 8601, de los últimos 30 días): por ejemplo, cuando empezó a fallar su servidor (failing_since del webhook). */
+	since: string;
 }
 
 /** Los parámetros de GET /v1/events. */
@@ -23458,6 +23485,18 @@ export class WebhookEndpointsResource {
 	 */
 	listDeliveries(id: string, params?: ListWebhookDeliveriesParams, options?: RequestOptions): List<WebhookDelivery> {
 		return this.#client.list({ path: `/v1/webhook_endpoints/${encodeURIComponent(id)}/deliveries`, query: params }, options);
+	}
+
+	/**
+	 * Recuperar eventos fallidos
+	 *
+	 * Después de que su servidor estuvo caído: le manda otra vez, ahora, todos los eventos desde since que este webhook escucha y no recibió (los que fallaron todos sus intentos y los que pasaron mientras estuvo apagado), del más antiguo al más reciente. Hasta 1,000 por llamada; si quedan más, next_since dice desde dónde volver a llamar. Cada uno es un intento aparte, firmado con su webhook-id de siempre, para que su servidor descarte los que ya tenía. El webhook tiene que estar encendido.
+	 *
+	 * POST /v1/webhook_endpoints/{id}/recover
+	 * @see https://fiscalisto.com/docs/api/referencia/webhooks/recover-webhook-endpoint
+	 */
+	recover(id: string, params: RecoverWebhookEndpointParams, options?: RequestOptions): Promise<WebhookRecovery> {
+		return this.#client.request({ method: "POST", path: `/v1/webhook_endpoints/${encodeURIComponent(id)}/recover`, body: params, idempotent: true }, options);
 	}
 }
 

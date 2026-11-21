@@ -1025,6 +1025,20 @@ async function events(args: string[], g: Globals) {
 	);
 }
 
+/** «24h», «7d», «30m» or an ISO 8601 date, as the ISO 8601 date it means. */
+function sinceOf(v: string): string {
+	const m = /^(\d+)([mhd])$/.exec(v.trim());
+	if (m) {
+		const ms = { m: 60_000, h: 3_600_000, d: 86_400_000 }[m[2] as "m" | "h" | "d"];
+		return new Date(Date.now() - Number(m[1]) * ms).toISOString();
+	}
+	if (Number.isNaN(Date.parse(v)))
+		throw new UsageError(
+			"--since va como 24h, 7d o una fecha ISO 8601 (2026-11-20T09:00:00-06:00).",
+		);
+	return v;
+}
+
 async function webhooks(args: string[], g: Globals) {
 	const [sub, ...rest] = args;
 	const api = await client(g);
@@ -1075,6 +1089,37 @@ async function webhooks(args: string[], g: Globals) {
 				() => line(`${green("✓")} Borrado.`),
 			);
 		}
+		case "recover": {
+			const { values, positionals } = parseArgs({
+				args: rest,
+				allowPositionals: true,
+				options: { since: { type: "string", default: "24h" } },
+			});
+			const id = need(
+				positionals[0],
+				"fiscalisto webhooks recover whe_… [--since 24h|7d|2026-11-20T09:00:00-06:00]",
+			);
+			const since = sinceOf(values.since ?? "24h");
+			const r = await api.request<{ events: number; next_since: string | null }>({
+				method: "POST",
+				idempotent: true,
+				path: `/v1/webhook_endpoints/${id}/recover`,
+				body: { since },
+			});
+			return print(r, () => {
+				line(
+					r.events === 0
+						? `${green("✓")} No le faltaba ningún evento desde ${since}.`
+						: `${green("✓")} ${r.events} evento${r.events === 1 ? "" : "s"} en camino.`,
+				);
+				if (r.next_since)
+					line(
+						dim(
+							`  Quedan más: fiscalisto webhooks recover ${id} --since ${r.next_since}`,
+						),
+					);
+			});
+		}
 		case "test": {
 			const { values, positionals } = parseArgs({
 				args: rest,
@@ -1109,7 +1154,7 @@ async function webhooks(args: string[], g: Globals) {
 			});
 		}
 		default:
-			throw new UsageError("fiscalisto webhooks list|create|delete|test");
+			throw new UsageError("fiscalisto webhooks list|create|delete|test|recover");
 	}
 }
 
@@ -1633,7 +1678,7 @@ ${bold("Nómina")}
 ${bold("Webhooks")}
   listen [--forward-to URL]     Reenvía los eventos a su computadora, firmados
   trigger <evento>              Crea en pruebas lo que manda ese evento (invoice.stamped, invoice.failed…)
-  webhooks list|create|delete|test
+  webhooks list|create|delete|test|recover
   events list [--type invoice.*] [--failed]   Los últimos 30 días; --failed: los que algún webhook no recibió
   events get <evt_…>
 

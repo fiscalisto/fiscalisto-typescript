@@ -6,7 +6,7 @@
 
 import type { ErrorCode } from "./error-codes.js";
 
-export const VERSION = "0.1.159";
+export const VERSION = "0.1.160";
 /**
  * La versión de la API para la que se hizo este SDK: la manda en cada solicitud
  * (Fiscalisto-Version), así actualizar la API no cambia lo que recibe hasta que actualice el SDK.
@@ -107,6 +107,8 @@ export class FiscalistoError extends Error {
 	readonly docUrl?: string;
 	/** Búsquelo en Desarrolladores › Solicitudes o mándelo a soporte. */
 	readonly requestId?: string;
+	/** La solicitud en Desarrolladores › Solicitudes, para abrirla en el navegador. */
+	readonly requestLogUrl?: string;
 	/** El código HTTP (sin él, la solicitud no llegó). */
 	readonly status?: number;
 	/** El objeto error tal como llegó. */
@@ -123,6 +125,7 @@ export class FiscalistoError extends Error {
 		this.invoice = text("invoice");
 		this.docUrl = text("doc_url");
 		this.requestId = text("request_id") ?? requestId;
+		this.requestLogUrl = text("request_log_url");
 		this.status = status;
 	}
 }
