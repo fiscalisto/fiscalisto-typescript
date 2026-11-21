@@ -5775,6 +5775,18 @@ export interface ClosedPeriod {
 	closed_at: string | null;
 }
 
+/** Cómo se lleva la contabilidad de la empresa del emisor: si cada cliente y cada proveedor tiene su propia subcuenta de Clientes o Proveedores. */
+export interface AccountingSettings {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "accounting_settings";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** true si cada cliente y cada proveedor tiene su subcuenta (105-01-0001…, 201-01-0001…); false si todos van a Clientes y Proveedores. */
+	party_subaccounts: boolean;
+}
+
 /** La revaluación cambiaria de un mes (NIF B-15): las facturas PPD en otra moneda que seguían pendientes al cierre, lo que se debe por moneda con el tipo de cambio de cierre que sugerimos (el FIX del DOF) y la póliza de ajuste que registra la diferencia, si ya se registró. */
 export interface FxRevaluation {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -15883,6 +15895,19 @@ export interface DisposeFixedAssetParams {
 	note?: string | null;
 }
 
+/** Los parámetros de GET /v1/accounting/settings. */
+export interface GetAccountingSettingsParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface UpdateAccountingSettingsParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** true: cada cliente con su subcuenta de Clientes (105-01-0001…) y cada proveedor con la suya de Proveedores (201-01-0001…); false: todos en Clientes y Proveedores. */
+	party_subaccounts: boolean;
+}
+
 /** Los parámetros de GET /v1/accounting/closed_period. */
 export interface GetClosedPeriodParams {
 	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
@@ -22477,6 +22502,38 @@ export class FixedAssetsResource {
 	}
 }
 
+/** Contabilidad: fiscalisto.accountingSettings. */
+export class AccountingSettingsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ver cómo se lleva la contabilidad
+	 *
+	 * Si cada cliente y cada proveedor tiene su propia subcuenta (party_subaccounts), como Catálogo de cuentas › Subcuentas por cliente y proveedor en la app.
+	 *
+	 * GET /v1/accounting/settings
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-accounting-settings
+	 */
+	get(params?: GetAccountingSettingsParams, options?: RequestOptions): Promise<AccountingSettings> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/settings", query: params }, options);
+	}
+
+	/**
+	 * Cambiar cómo se lleva la contabilidad
+	 *
+	 * Con party_subaccounts en true, lo que debe cada cliente va a su subcuenta de Clientes (105-01-0001, 105-01-0002…) y lo que se le debe a cada proveedor a la suya de Proveedores (201-01-0001…), numeradas una vez en el orden en que aparecen sus CFDI y con su nombre; la balanza, los auxiliares, las pólizas y la contabilidad electrónica las usan. En false, sus saldos vuelven a Clientes y Proveedores; los números se conservan si se vuelve a activar. Aplica a toda la empresa del emisor y va a la bitácora.
+	 *
+	 * POST /v1/accounting/settings
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/update-accounting-settings
+	 */
+	update(params: UpdateAccountingSettingsParams, options?: RequestOptions): Promise<AccountingSettings> {
+		return this.#client.request({ method: "POST", path: "/v1/accounting/settings", body: params, idempotent: true }, options);
+	}
+}
+
 /** Contabilidad: fiscalisto.closedPeriod. */
 export class ClosedPeriodResource {
 	readonly #client: Client;
@@ -23894,6 +23951,7 @@ export class FiscalistoApi extends Core {
 	readonly automaticEntries = new AutomaticEntriesResource(this);
 	readonly openingBalances = new OpeningBalancesResource(this);
 	readonly fixedAssets = new FixedAssetsResource(this);
+	readonly accountingSettings = new AccountingSettingsResource(this);
 	readonly closedPeriod = new ClosedPeriodResource(this);
 	readonly fxRevaluations = new FxRevaluationsResource(this);
 	readonly costOfSales = new CostOfSalesResource(this);
