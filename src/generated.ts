@@ -3287,6 +3287,8 @@ export interface SatInvoice {
 	cash_confirmation: "pending" | "confirmed" | null;
 	/** Su centro de costo (ccn_…), o null. Póngalo o cámbielo con POST /v1/sat_invoices/{id}. */
 	cost_center: string | null;
+	/** El número de cuenta de su catálogo en que se registra su ingreso o gasto en vez de la de su categoría (en la app, en una regla de Ajustes › Reglas o con account). Null: la de su categoría. */
+	account: string | null;
 	/** Sus etiquetas, por nombre. automatic: true en las que puso una regla (la orden de compra a la que se vinculó o una regla de Ajustes › Reglas). Cámbielas con POST /v1/sat_invoices/{id}. */
 	tags: {
 		/** La etiqueta (tag_…). */
@@ -3827,9 +3829,11 @@ export interface Rule {
 	/** Entonces: lo que hace, en este orden. */
 	actions: {
 		/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
-		type: "tag" | "cost_center" | "category" | "stage" | "close" | "ask_approval" | "notify" | "lote" | "hold_payment" | "email_supplier" | "review_findings" | "extra_signature";
+		type: "tag" | "cost_center" | "category" | "stage" | "close" | "ask_approval" | "notify" | "lote" | "hold_payment" | "email_supplier" | "review_findings" | "extra_signature" | "account";
 		/** tag: la etiqueta (tag_…, GET /v1/tags). */
 		tag?: string;
+		/** account: el número de cuenta del catálogo en que se registra la factura, en vez de la de su categoría (no cambia la que eligió una persona). */
+		account?: string;
 		/** category: la categoría de gasto (facturas recibidas). */
 		category?: string;
 		/** tag: se quita si la orden deja de cumplir. */
@@ -6745,7 +6749,7 @@ export interface BooksLogEntry {
 	/** Cuándo se hizo el cambio. */
 	created_at: string;
 	/** Qué cambió: una póliza a mano (manual_journal_entry), los saldos iniciales, una cuenta, el catálogo completo (una importación o una renumeración), el cierre del mes (period_close), una eliminación de consolidación, una póliza modelo o la baja de un activo fijo. */
-	subject: "manual_journal_entry" | "opening_balances" | "account" | "chart_of_accounts" | "period_close" | "consolidation_elimination" | "entry_template" | "fixed_asset";
+	subject: "manual_journal_entry" | "opening_balances" | "account" | "chart_of_accounts" | "period_close" | "consolidation_elimination" | "entry_template" | "fixed_asset" | "invoice_account";
 	/** El id de lo que cambió cuando tiene uno en la API (mje_, cel_, mjt_); null en los demás. */
 	subject_id: string | null;
 	/** created, updated, deleted, restored (deshecho), imported, closed (se cerró el mes) o reopened (se reabrió). */
@@ -13414,7 +13418,7 @@ export interface CreateRuleParams {
 		match?: "all" | "any";
 		/** Las condiciones sueltas. */
 		conditions?: {
-			/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note. */
+			/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, iva, saldo, age (días desde su fecha), newParty (la primera factura de ese proveedor o cliente), hasOrder (recibidas: ligada a una orden de compra), payoutAmount y newAccount (en payout.*: lo que se le paga al proveedor en el pago y si es el primer pago a esa cuenta), tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note, project (el id del proyecto), paymentDays, deliveryDays (días para la entrega), advance (lleva anticipo), newSupplier (la primera orden a ese proveedor). */
 			field: string;
 			/** Listas: is (alguno de values), not (ninguno), set, unset. Montos (MXN): gte, lte, between (value y to). Texto: contains, not_contains, starts (text; sin importar acentos ni mayúsculas), set, unset. Sí/no: yes, no. */
 			operator: "is" | "not" | "gte" | "lte" | "between" | "contains" | "not_contains" | "starts" | "yes" | "no" | "set" | "unset";
@@ -13433,7 +13437,7 @@ export interface CreateRuleParams {
 			match: "all" | "any";
 			/** Las condiciones del grupo. */
 			conditions: {
-				/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note. */
+				/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, iva, saldo, age (días desde su fecha), newParty (la primera factura de ese proveedor o cliente), hasOrder (recibidas: ligada a una orden de compra), payoutAmount y newAccount (en payout.*: lo que se le paga al proveedor en el pago y si es el primer pago a esa cuenta), tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note, project (el id del proyecto), paymentDays, deliveryDays (días para la entrega), advance (lleva anticipo), newSupplier (la primera orden a ese proveedor). */
 				field: string;
 				/** Listas: is (alguno de values), not (ninguno), set, unset. Montos (MXN): gte, lte, between (value y to). Texto: contains, not_contains, starts (text; sin importar acentos ni mayúsculas), set, unset. Sí/no: yes, no. */
 				operator: "is" | "not" | "gte" | "lte" | "between" | "contains" | "not_contains" | "starts" | "yes" | "no" | "set" | "unset";
@@ -13450,12 +13454,14 @@ export interface CreateRuleParams {
 	};
 	/** Entonces: de 1 a 8, en este orden. */
 	actions: {
-		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…); lote (invoice.received e invoice.approved): agregar la factura al lote de pagos abierto `lote_name` que paga `pay_on`, o crear uno, preparado como quien hizo la regla; hold_payment (facturas recibidas): retener su pago hasta que alguien lo suelte, con `note`; email_supplier (facturas recibidas): escribirle al proveedor a los correos de su tema `topic`, con `subject` y `message`; review_findings: dar por revisados los hallazgos `findings` de la factura; extra_signature (payout.submitted): el pago necesita `signatures` firmas más que las de Configurar pagos, con `reason` para quien firma (nunca las baja; no cambia un pago que ya salió). */
-		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category" | "lote" | "hold_payment" | "email_supplier" | "review_findings" | "extra_signature";
+		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; account (facturas): registrar su ingreso o gasto en la cuenta `account` del catálogo en vez de la de su categoría, nunca sobre la que eligió una persona ni en un mes cerrado; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…); lote (invoice.received e invoice.approved): agregar la factura al lote de pagos abierto `lote_name` que paga `pay_on`, o crear uno, preparado como quien hizo la regla; hold_payment (facturas recibidas): retener su pago hasta que alguien lo suelte, con `note`; email_supplier (facturas recibidas): escribirle al proveedor a los correos de su tema `topic`, con `subject` y `message`; review_findings: dar por revisados los hallazgos `findings` de la factura; extra_signature (payout.submitted): el pago necesita `signatures` firmas más que las de Configurar pagos, con `reason` para quien firma (nunca las baja; no cambia un pago que ya salió). */
+		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category" | "account" | "lote" | "hold_payment" | "email_supplier" | "review_findings" | "extra_signature";
 		/** tag: la etiqueta (tag_…, GET /v1/tags). Un número, el id de antes, también se acepta. */
 		tag?: string | number;
 		/** category: la categoría de gasto, como la app la nombra («Combustible»). */
 		category?: "Renta y arrendamiento" | "Servicios profesionales" | "Nómina y personal" | "Transporte y fletes" | "Combustible" | "Viáticos y viajes" | "Alimentos y representación" | "Telecomunicaciones e internet" | "Energía y agua" | "Software y suscripciones" | "Equipo de cómputo" | "Papelería y oficina" | "Mantenimiento y reparaciones" | "Publicidad y marketing" | "Seguros y fianzas" | "Comisiones bancarias y financieras" | "Impuestos y derechos" | "Compras de mercancía e inventario" | "Materias primas y producción" | "Activo fijo y mobiliario" | "Vehículos" | "Capacitación" | "Donativos" | "Otros gastos";
+		/** account: el número de la cuenta del catálogo («601-84-002», GET /v1/accounting/accounts). No una de Caja o Bancos. */
+		account?: string;
 		/** tag: quitarla si la orden deja de cumplir. */
 		remove_when_unmet?: boolean;
 		/** lote: el nombre del lote («Fletes»); vacío o null: «Lote del jueves 27 nov». */
@@ -13536,7 +13542,7 @@ export interface UpdateRuleParams {
 		match?: "all" | "any";
 		/** Las condiciones sueltas. */
 		conditions?: {
-			/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note. */
+			/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, iva, saldo, age (días desde su fecha), newParty (la primera factura de ese proveedor o cliente), hasOrder (recibidas: ligada a una orden de compra), payoutAmount y newAccount (en payout.*: lo que se le paga al proveedor en el pago y si es el primer pago a esa cuenta), tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note, project (el id del proyecto), paymentDays, deliveryDays (días para la entrega), advance (lleva anticipo), newSupplier (la primera orden a ese proveedor). */
 			field: string;
 			/** Listas: is (alguno de values), not (ninguno), set, unset. Montos (MXN): gte, lte, between (value y to). Texto: contains, not_contains, starts (text; sin importar acentos ni mayúsculas), set, unset. Sí/no: yes, no. */
 			operator: "is" | "not" | "gte" | "lte" | "between" | "contains" | "not_contains" | "starts" | "yes" | "no" | "set" | "unset";
@@ -13555,7 +13561,7 @@ export interface UpdateRuleParams {
 			match: "all" | "any";
 			/** Las condiciones del grupo. */
 			conditions: {
-				/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note. */
+				/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, iva, saldo, age (días desde su fecha), newParty (la primera factura de ese proveedor o cliente), hasOrder (recibidas: ligada a una orden de compra), payoutAmount y newAccount (en payout.*: lo que se le paga al proveedor en el pago y si es el primer pago a esa cuenta), tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note, project (el id del proyecto), paymentDays, deliveryDays (días para la entrega), advance (lleva anticipo), newSupplier (la primera orden a ese proveedor). */
 				field: string;
 				/** Listas: is (alguno de values), not (ninguno), set, unset. Montos (MXN): gte, lte, between (value y to). Texto: contains, not_contains, starts (text; sin importar acentos ni mayúsculas), set, unset. Sí/no: yes, no. */
 				operator: "is" | "not" | "gte" | "lte" | "between" | "contains" | "not_contains" | "starts" | "yes" | "no" | "set" | "unset";
@@ -13572,12 +13578,14 @@ export interface UpdateRuleParams {
 	};
 	/** Entonces: de 1 a 8, en este orden. */
 	actions?: {
-		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…); lote (invoice.received e invoice.approved): agregar la factura al lote de pagos abierto `lote_name` que paga `pay_on`, o crear uno, preparado como quien hizo la regla; hold_payment (facturas recibidas): retener su pago hasta que alguien lo suelte, con `note`; email_supplier (facturas recibidas): escribirle al proveedor a los correos de su tema `topic`, con `subject` y `message`; review_findings: dar por revisados los hallazgos `findings` de la factura; extra_signature (payout.submitted): el pago necesita `signatures` firmas más que las de Configurar pagos, con `reason` para quien firma (nunca las baja; no cambia un pago que ya salió). */
-		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category" | "lote" | "hold_payment" | "email_supplier" | "review_findings" | "extra_signature";
+		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; account (facturas): registrar su ingreso o gasto en la cuenta `account` del catálogo en vez de la de su categoría, nunca sobre la que eligió una persona ni en un mes cerrado; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…); lote (invoice.received e invoice.approved): agregar la factura al lote de pagos abierto `lote_name` que paga `pay_on`, o crear uno, preparado como quien hizo la regla; hold_payment (facturas recibidas): retener su pago hasta que alguien lo suelte, con `note`; email_supplier (facturas recibidas): escribirle al proveedor a los correos de su tema `topic`, con `subject` y `message`; review_findings: dar por revisados los hallazgos `findings` de la factura; extra_signature (payout.submitted): el pago necesita `signatures` firmas más que las de Configurar pagos, con `reason` para quien firma (nunca las baja; no cambia un pago que ya salió). */
+		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category" | "account" | "lote" | "hold_payment" | "email_supplier" | "review_findings" | "extra_signature";
 		/** tag: la etiqueta (tag_…, GET /v1/tags). Un número, el id de antes, también se acepta. */
 		tag?: string | number;
 		/** category: la categoría de gasto, como la app la nombra («Combustible»). */
 		category?: "Renta y arrendamiento" | "Servicios profesionales" | "Nómina y personal" | "Transporte y fletes" | "Combustible" | "Viáticos y viajes" | "Alimentos y representación" | "Telecomunicaciones e internet" | "Energía y agua" | "Software y suscripciones" | "Equipo de cómputo" | "Papelería y oficina" | "Mantenimiento y reparaciones" | "Publicidad y marketing" | "Seguros y fianzas" | "Comisiones bancarias y financieras" | "Impuestos y derechos" | "Compras de mercancía e inventario" | "Materias primas y producción" | "Activo fijo y mobiliario" | "Vehículos" | "Capacitación" | "Donativos" | "Otros gastos";
+		/** account: el número de la cuenta del catálogo («601-84-002», GET /v1/accounting/accounts). No una de Caja o Bancos. */
+		account?: string;
 		/** tag: quitarla si la orden deja de cumplir. */
 		remove_when_unmet?: boolean;
 		/** lote: el nombre del lote («Fletes»); vacío o null: «Lote del jueves 27 nov». */
@@ -14905,6 +14913,8 @@ export interface UpdateSatInvoiceParams {
 	cost_center?: string | null;
 	/** Sus etiquetas, exactamente estas (hasta 10): ids (tag_…) o nombres; un nombre nuevo crea la etiqueta. [] se las quita. Una que puso una regla y no manda se queda quitada. */
 	tags?: string[];
+	/** El número de cuenta de su catálogo en que se registra su ingreso o gasto («601-84-002»), en vez de la de su categoría; null la regresa a la de su categoría. Solo facturas y notas de crédito, en un mes que no está cerrado; no Caja ni Bancos. */
+	account?: string | null;
 }
 
 export interface MarkSatInvoicePaidParams {
@@ -16019,8 +16029,8 @@ export interface RenumberAccountsParams {
 
 /** Los parámetros de GET /v1/accounting/books_log. */
 export interface ListBooksLogParams {
-	/** Solo los cambios de una cosa: manual_journal_entry, opening_balances, account, chart_of_accounts, period_close, consolidation_elimination, entry_template o fixed_asset. */
-	subject?: "manual_journal_entry" | "opening_balances" | "account" | "chart_of_accounts" | "period_close" | "consolidation_elimination" | "entry_template" | "fixed_asset";
+	/** Solo los cambios de una cosa: manual_journal_entry, opening_balances, account, chart_of_accounts, period_close, consolidation_elimination, entry_template, fixed_asset o invoice_account (la cuenta de una factura). */
+	subject?: "manual_journal_entry" | "opening_balances" | "account" | "chart_of_accounts" | "period_close" | "consolidation_elimination" | "entry_template" | "fixed_asset" | "invoice_account";
 	/** Desde este día (AAAA-MM-DD, hora de la Ciudad de México). */
 	from?: string;
 	/** Hasta este día, incluido. */
