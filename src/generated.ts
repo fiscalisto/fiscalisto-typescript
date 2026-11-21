@@ -3622,7 +3622,7 @@ export interface Rule {
 	/** Nombre. */
 	name: string;
 	/** Cuándo corre. */
-	trigger: "invoice.received" | "invoice.issued" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
+	trigger: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
 	/** Si: lo que tiene que cumplir la factura u orden. Sin condiciones, corre siempre. */
 	conditions: {
 		/** all: se cumplen todas; any: basta con una. */
@@ -3666,9 +3666,11 @@ export interface Rule {
 	/** Entonces: lo que hace, en este orden. */
 	actions: {
 		/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
-		type: "tag" | "cost_center" | "stage" | "close" | "notify";
+		type: "tag" | "cost_center" | "category" | "stage" | "close" | "notify";
 		/** tag: la etiqueta (tag_…, GET /v1/tags). */
 		tag?: string;
+		/** category: la categoría de gasto (facturas recibidas). */
+		category?: string;
 		/** tag: se quita si la orden deja de cumplir. */
 		remove_when_unmet?: boolean;
 		/** Su centro de costo (ccn_…): la obra, proyecto, sucursal o área a la que pertenece, para ver ingresos y gastos por centro en Reportes. No cambia el CFDI. Sus notas de crédito lo toman solas. */
@@ -3730,7 +3732,7 @@ export interface RuleRun {
 	/** La regla (rul_…). */
 	rule: string;
 	/** Cuándo corre. */
-	trigger: "invoice.received" | "invoice.issued" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
+	trigger: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
 	/** La factura u orden, en palabras. */
 	record: string;
 	/** Qué es el registro. */
@@ -12902,15 +12904,15 @@ export interface CreateRuleParams {
 	issuer?: string;
 	/** Cómo se llama en Ajustes › Reglas. Sin él, se nombra por lo que hace. */
 	name?: string;
-	/** Cuándo corre: invoice.received (llega una factura de un proveedor), invoice.issued (se emite una factura), purchase_order.saved, .approved, .sent, .confirmed, .received_part, .received_all, .invoiced_all, .price_variance, .registered. */
-	trigger: "invoice.received" | "invoice.issued" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
+	/** Cuándo corre: invoice.received (llega una factura de un proveedor), invoice.issued (se emite una factura), invoice.paid (una factura PPD queda pagada), invoice.cancelled (el SAT la cancela), purchase_order.saved, .approved, .sent, .confirmed, .received_part, .received_all, .invoiced_all, .price_variance, .registered. */
+	trigger: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
 	/** Si: lo que tiene que cumplir. Sin condiciones, corre siempre. */
 	conditions?: {
 		/** all: se cumplen todas (las condiciones y los grupos); any: basta con una. */
 		match?: "all" | "any";
 		/** Las condiciones sueltas. */
 		conditions?: {
-			/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, total, subtotal, tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note. */
+			/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note. */
 			field: string;
 			/** Listas: is (alguno de values), not (ninguno), set, unset. Montos (MXN): gte, lte, between (value y to). Texto: contains, not_contains, starts (text; sin importar acentos ni mayúsculas), set, unset. Sí/no: yes, no. */
 			operator: "is" | "not" | "gte" | "lte" | "between" | "contains" | "not_contains" | "starts" | "yes" | "no" | "set" | "unset";
@@ -12929,7 +12931,7 @@ export interface CreateRuleParams {
 			match: "all" | "any";
 			/** Las condiciones del grupo. */
 			conditions: {
-				/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, total, subtotal, tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note. */
+				/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note. */
 				field: string;
 				/** Listas: is (alguno de values), not (ninguno), set, unset. Montos (MXN): gte, lte, between (value y to). Texto: contains, not_contains, starts (text; sin importar acentos ni mayúsculas), set, unset. Sí/no: yes, no. */
 				operator: "is" | "not" | "gte" | "lte" | "between" | "contains" | "not_contains" | "starts" | "yes" | "no" | "set" | "unset";
@@ -12946,10 +12948,12 @@ export interface CreateRuleParams {
 	};
 	/** Entonces: de 1 a 8, en este orden. */
 	actions: {
-		/** tag (órdenes): poner la etiqueta `tag`; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; notify: avisar a `members` (mem_…). */
-		type: "tag" | "cost_center" | "stage" | "close" | "notify";
+		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; notify: avisar a `members` (mem_…). */
+		type: "tag" | "cost_center" | "stage" | "close" | "notify" | "category";
 		/** tag: la etiqueta (tag_…, GET /v1/tags). Un número, el id de antes, también se acepta. */
 		tag?: string | number;
+		/** category: la categoría de gasto, como la app la nombra («Combustible»). */
+		category?: "Renta y arrendamiento" | "Servicios profesionales" | "Nómina y personal" | "Transporte y fletes" | "Combustible" | "Viáticos y viajes" | "Alimentos y representación" | "Telecomunicaciones e internet" | "Energía y agua" | "Software y suscripciones" | "Equipo de cómputo" | "Papelería y oficina" | "Mantenimiento y reparaciones" | "Publicidad y marketing" | "Seguros y fianzas" | "Comisiones bancarias y financieras" | "Impuestos y derechos" | "Compras de mercancía e inventario" | "Materias primas y producción" | "Activo fijo y mobiliario" | "Vehículos" | "Capacitación" | "Donativos" | "Otros gastos";
 		/** tag: quitarla si la orden deja de cumplir. */
 		remove_when_unmet?: boolean;
 		/** Su centro de costo (ccn_…): la obra, proyecto, sucursal o área a la que pertenece, para ver ingresos y gastos por centro en Reportes. No cambia el CFDI. Sus notas de crédito lo toman solas. */
@@ -12991,15 +12995,15 @@ export interface OrderRulesParams {
 export interface UpdateRuleParams {
 	/** Cómo se llama en Ajustes › Reglas. Sin él, se nombra por lo que hace. */
 	name?: string;
-	/** Cuándo corre: invoice.received (llega una factura de un proveedor), invoice.issued (se emite una factura), purchase_order.saved, .approved, .sent, .confirmed, .received_part, .received_all, .invoiced_all, .price_variance, .registered. */
-	trigger?: "invoice.received" | "invoice.issued" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
+	/** Cuándo corre: invoice.received (llega una factura de un proveedor), invoice.issued (se emite una factura), invoice.paid (una factura PPD queda pagada), invoice.cancelled (el SAT la cancela), purchase_order.saved, .approved, .sent, .confirmed, .received_part, .received_all, .invoiced_all, .price_variance, .registered. */
+	trigger?: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered";
 	/** Si: lo que tiene que cumplir. Sin condiciones, corre siempre. */
 	conditions?: {
 		/** all: se cumplen todas (las condiciones y los grupos); any: basta con una. */
 		match?: "all" | "any";
 		/** Las condiciones sueltas. */
 		conditions?: {
-			/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, total, subtotal, tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note. */
+			/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note. */
 			field: string;
 			/** Listas: is (alguno de values), not (ninguno), set, unset. Montos (MXN): gte, lte, between (value y to). Texto: contains, not_contains, starts (text; sin importar acentos ni mayúsculas), set, unset. Sí/no: yes, no. */
 			operator: "is" | "not" | "gte" | "lte" | "between" | "contains" | "not_contains" | "starts" | "yes" | "no" | "set" | "unset";
@@ -13018,7 +13022,7 @@ export interface UpdateRuleParams {
 			match: "all" | "any";
 			/** Las condiciones del grupo. */
 			conditions: {
-				/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, total, subtotal, tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note. */
+				/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note. */
 				field: string;
 				/** Listas: is (alguno de values), not (ninguno), set, unset. Montos (MXN): gte, lte, between (value y to). Texto: contains, not_contains, starts (text; sin importar acentos ni mayúsculas), set, unset. Sí/no: yes, no. */
 				operator: "is" | "not" | "gte" | "lte" | "between" | "contains" | "not_contains" | "starts" | "yes" | "no" | "set" | "unset";
@@ -13035,10 +13039,12 @@ export interface UpdateRuleParams {
 	};
 	/** Entonces: de 1 a 8, en este orden. */
 	actions?: {
-		/** tag (órdenes): poner la etiqueta `tag`; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; notify: avisar a `members` (mem_…). */
-		type: "tag" | "cost_center" | "stage" | "close" | "notify";
+		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; notify: avisar a `members` (mem_…). */
+		type: "tag" | "cost_center" | "stage" | "close" | "notify" | "category";
 		/** tag: la etiqueta (tag_…, GET /v1/tags). Un número, el id de antes, también se acepta. */
 		tag?: string | number;
+		/** category: la categoría de gasto, como la app la nombra («Combustible»). */
+		category?: "Renta y arrendamiento" | "Servicios profesionales" | "Nómina y personal" | "Transporte y fletes" | "Combustible" | "Viáticos y viajes" | "Alimentos y representación" | "Telecomunicaciones e internet" | "Energía y agua" | "Software y suscripciones" | "Equipo de cómputo" | "Papelería y oficina" | "Mantenimiento y reparaciones" | "Publicidad y marketing" | "Seguros y fianzas" | "Comisiones bancarias y financieras" | "Impuestos y derechos" | "Compras de mercancía e inventario" | "Materias primas y producción" | "Activo fijo y mobiliario" | "Vehículos" | "Capacitación" | "Donativos" | "Otros gastos";
 		/** tag: quitarla si la orden deja de cumplir. */
 		remove_when_unmet?: boolean;
 		/** Su centro de costo (ccn_…): la obra, proyecto, sucursal o área a la que pertenece, para ver ingresos y gastos por centro en Reportes. No cambia el CFDI. Sus notas de crédito lo toman solas. */
