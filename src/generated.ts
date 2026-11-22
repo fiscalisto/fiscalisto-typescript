@@ -6366,6 +6366,10 @@ export interface Ticket {
 			/** Tasa en por ciento (TasadeTraslado o TasadeRetencion). */
 			rate: number;
 		}[];
+		/** Su IEPS (el de su producto o el que mandó), incluido en su total: una tasa o, con `ieps_factor` `Cuota`, pesos por unidad. `null`: sin IEPS. */
+		ieps: number | null;
+		/** Tasa o Cuota (TipoFactor del IEPS). */
+		ieps_factor: "Tasa" | "Cuota" | null;
 		/** El detalle que mandó (noches, fechas, reservación): va después de la descripción en la factura según `invoice_concepts.line_detail` de la autofactura. */
 		detail: string | null;
 		/** Cantidad (Cantidad). Por omisión 1. */
@@ -17827,6 +17831,10 @@ export interface CreateTicketParams {
 		/** La tasa en porcentaje: 3.5 es 3.5%. */
 		rate: number;
 	}[];
+	/** IEPS incluido en su total, con `product_key` (un producto lleva el suyo): una tasa de c_TasaOCuota como 0.08 (botanas) o, con `ieps_factor` `Cuota`, pesos por unidad. La factura global lo desglosa aparte (RMF 2026 regla 2.7.1.21); la factura de un cliente que no paga IEPS lo lleva dentro del precio (LIEPS art. 19 fr. II). */
+	ieps?: number | null;
+	/** `Tasa` (por omisión) o `Cuota` (pesos por unidad). */
+	ieps_factor?: "Tasa" | "Cuota";
 	/** Quién pagó, para reconocer la venta en Tickets. No es el receptor de la factura (eso lo escribe el comprador en el portal) y no se le manda nada. */
 	buyer?: {
 		/** Su nombre o el de su empresa, como lo conoce su sistema. */
@@ -17857,6 +17865,10 @@ export interface CreateTicketParams {
 			/** La tasa en porcentaje: 3.5 es 3.5%. */
 			rate: number;
 		}[];
+		/** IEPS incluido en su total, con `product_key` (un producto lleva el suyo): una tasa de c_TasaOCuota como 0.08 (botanas) o, con `ieps_factor` `Cuota`, pesos por unidad. La factura global lo desglosa aparte (RMF 2026 regla 2.7.1.21); la factura de un cliente que no paga IEPS lo lleva dentro del precio (LIEPS art. 19 fr. II). */
+		ieps?: number | null;
+		/** `Tasa` (por omisión) o `Cuota` (pesos por unidad). */
+		ieps_factor?: "Tasa" | "Cuota";
 		/** Lo que solo dice esta venta, como las noches, fechas y número de reservación de una estancia. Con él, la factura dice «Hospedaje · 6 noches, del 14 al 20 de noviembre»; cuándo va lo decide `invoice_concepts.line_detail` de la autofactura (por omisión, el cliente lo elige en el portal). */
 		detail?: string;
 		/** Unidades (noches, piezas). Por omisión 1. */
