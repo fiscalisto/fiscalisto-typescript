@@ -2287,8 +2287,8 @@ export interface EmployeePortal {
 	push_phones: number;
 	/** Sus últimos 10 avisos, los más recientes primero. */
 	notices: {
-		/** receipt: recibo nuevo; receipt_canceled: se canceló uno; vacation_approved / vacation_rejected: la respuesta a sus vacaciones; sign_reminder: tiene un recibo por firmar; survey: tiene una encuesta de clima laboral por contestar. */
-		kind: "receipt" | "receipt_canceled" | "vacation_approved" | "vacation_rejected" | "sign_reminder" | "survey";
+		/** receipt: recibo nuevo; receipt_canceled: se canceló uno; vacation_approved / vacation_rejected: la respuesta a sus vacaciones; sign_reminder: tiene un recibo por firmar; survey: tiene una encuesta de clima laboral por contestar; review: tiene evaluaciones de desempeño por hacer. */
+		kind: "receipt" | "receipt_canceled" | "vacation_approved" | "vacation_rejected" | "sign_reminder" | "survey" | "review";
 		/** Cómo le llegó: push (a su celular), email (a su correo), off (usted o el empleado apagó ese aviso), none (no tiene avisos ni correo), skipped (ya no aplicaba: lo firmó, se canceló o se lo mandamos con el recibo), stale (no salió en 7 días); null mientras está por salir (por ejemplo, de noche). */
 		channel: "push" | "email" | "off" | "none" | "skipped" | "stale" | null;
 		/** Cuándo se generó. */
@@ -2321,6 +2321,8 @@ export interface EmployeeNoticeSettings {
 	vacation: boolean;
 	/** Avisar cuando se abre una encuesta NOM-035 o de clima para él. */
 	survey: boolean;
+	/** Avisar cuando se abre un ciclo de Desempeño con evaluaciones que le toca hacer. */
+	review: boolean;
 	/** Los días después de timbrarse en que se le recuerda, una vez, firmar un recibo sin firmar; 0: nunca. */
 	sign_reminder_days: number;
 	/** A quien no activó los avisos en su celular le llega el mismo aviso a su correo. */
@@ -3562,6 +3564,238 @@ export interface ClimateComplaint {
 	note: string | null;
 	/** Cuándo se atendió. */
 	closed_on: string | null;
+}
+
+/** Un ciclo de evaluación (Nómina › Desempeño). */
+export interface ReviewCycle {
+	/** El ciclo (rvc_…). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "review_cycle";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Su nombre, como «Evaluación 2026». */
+	title: string;
+	/** draft, open o closed. */
+	status: string;
+	/** Desde cuándo se evalúa. */
+	period_start: string | null;
+	/** Hasta cuándo. */
+	period_end: string | null;
+	/** La fecha límite para contestar. */
+	closes_on: string | null;
+	/** Cuántas personas se evalúan. */
+	people: number;
+	/** Cuántas evaluaciones hay que hacer (cero en borrador). */
+	evaluations: number;
+	/** Cuántas ya se enviaron. */
+	evaluations_done: number;
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string;
+	/** La sucursal con que se armó (brn_…). */
+	branch?: string | null;
+	/** El departamento con que se armó. */
+	department?: string | null;
+	/** Cómo se califica (al ver un ciclo). */
+	rules?: {
+		/** La escala. */
+		scale: {
+			/** Se califica de 1 a max. */
+			max: number;
+			/** El nombre de cada punto, del 1 al max; vacío: solo los números. */
+			labels: string[];
+		};
+		/** Quién evalúa. */
+		raters: {
+			/** Si cuenta lo que dice la persona misma. */
+			self: boolean;
+			/** Si cuenta lo que dice su jefe en el organigrama. */
+			manager: boolean;
+			/** Si cuenta lo que dice sus compañeros. */
+			peer: boolean;
+			/** Si cuenta lo que dice las personas a su cargo. */
+			report: boolean;
+		};
+		/** El peso de cada uno en las competencias; cuentan solo los que evalúan. */
+		rater_weights: {
+			/** El peso de lo que dice la persona misma. */
+			self: number;
+			/** El peso de lo que dice su jefe en el organigrama. */
+			manager: number;
+			/** El peso de lo que dice sus compañeros. */
+			peer: number;
+			/** El peso de lo que dice las personas a su cargo. */
+			report: number;
+		};
+		/** Cuánto pesan los objetivos en el resultado, de 0 a 100. */
+		objectives_weight: number;
+		/** Compañeros o personas a su cargo con menos respuestas no cuentan. */
+		anonymous_min: number;
+		/** Los cortes de desempeño medio y alto de la matriz de 9 cuadros. */
+		box_cuts: number[];
+	};
+	/** Lo que se califica de cada persona. */
+	competencies?: {
+		/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+		id: string;
+		/** Nombre. */
+		name: string;
+		/** Descripción. */
+		description: string | null;
+	}[];
+	/** Compañeros al azar por persona, para quien no tenga elegidos. */
+	peers_count?: number;
+	/** Si cada persona ve su resultado en su portal al cerrar. */
+	share_results?: boolean;
+	/** Cuándo se abrió. */
+	opened_at?: string | null;
+	/** Cuándo se cerró. */
+	closed_at?: string | null;
+	/** Cada persona que se evalúa (al ver un ciclo). */
+	participants?: {
+		/** El empleado (emp_…). */
+		employee: string;
+		/** Nombre. */
+		name: string;
+		/** Puesto (Puesto). */
+		position: string | null;
+		/** Departamento (Departamento). */
+		department: string | null;
+		/** Su jefe en el organigrama (emp_…), quien la evalúa como jefe. */
+		manager: string | null;
+		/** Los compañeros elegidos para evaluarla (emp_…). */
+		peers: string[];
+		/** Quién la evalúa, desde que se abre el ciclo. */
+		raters: {
+			/** El empleado (emp_…). */
+			employee: string;
+			/** Nombre. */
+			name: string;
+			/** self (autoevaluación), manager (su jefe), peer (compañeros) o report (personas a su cargo). */
+			relation: string;
+			/** Si ya la envió (no qué contestó). */
+			done: boolean;
+			/** Si tiene portal; sin él no puede contestar. */
+			portal: boolean;
+		}[];
+		/** Sus objetivos. */
+		objectives: ReviewObjective[];
+		/** Su calificación de competencias. */
+		competencies_score: number | null;
+		/** Su calificación de objetivos. */
+		objectives_score: number | null;
+		/** El resultado calculado: vivo con el ciclo abierto, guardado al cerrar. */
+		final: number | null;
+		/** La calificación calibrada. */
+		calibrated: number | null;
+		/** Por qué cambió. */
+		calibration_note: string | null;
+		/** 1 bajo, 2 medio, 3 alto, para la matriz de 9 cuadros. */
+		potential: number | null;
+		/** El que cuenta: calibrated, o si no, final. */
+		result: number | null;
+	}[];
+}
+
+/** Un ciclo borrado. */
+export interface ReviewCycleDeleted {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "review_cycle";
+	/** Siempre true. */
+	deleted: boolean;
+}
+
+/** Un objetivo de una persona en un ciclo. */
+export interface ReviewObjective {
+	/** El objetivo (rvo_…). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "review_objective";
+	/** El ciclo (rvc_…). */
+	cycle: string;
+	/** De quién es (emp_…). */
+	employee: string;
+	/** Qué tiene que lograr. */
+	title: string;
+	/** La meta. */
+	target: number | null;
+	/** El avance; lo anota la persona en su portal o usted aquí. */
+	actual: number | null;
+	/** La unidad. */
+	unit: string | null;
+	/** La meta es un máximo: menos es mejor. */
+	lower_better: boolean;
+	/** Cuánto cuenta frente a sus otros objetivos. */
+	weight: number;
+	/** Una nota sobre el objetivo. */
+	note: string | null;
+	/** % logrado: avance entre meta, o al revés con lower_better. null sin los dos. */
+	achievement: number | null;
+	/** La calificación que le dio su jefe al evaluarla. */
+	score: number | null;
+}
+
+/** Un objetivo borrado. */
+export interface ReviewObjectiveDeleted {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "review_objective";
+	/** Siempre true. */
+	deleted: boolean;
+}
+
+/** El resultado de una persona en un ciclo, por competencia y tipo de evaluador. */
+export interface ReviewResult {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "review_result";
+	/** El ciclo (rvc_…). */
+	cycle: string;
+	/** El empleado (emp_…). */
+	employee: string;
+	/** Nombre. */
+	name: string;
+	/** El resultado: competencias y objetivos con el peso de los objetivos. */
+	final: number | null;
+	/** El promedio de cada tipo de evaluador que cuenta, con su peso. */
+	competencies_score: number | null;
+	/** Lo que calificó el jefe en cada objetivo, con su peso. */
+	objectives_score: number | null;
+	/** Cada tipo de evaluador. */
+	relations: {
+		/** self (autoevaluación), manager (su jefe), peer (compañeros) o report (personas a su cargo). */
+		relation: string;
+		/** Cuántos la evaluaron así. */
+		answers: number;
+		/** Su promedio. */
+		score: number | null;
+		/** Menos respuestas que anonymous_min: no cuenta ni se muestra. */
+		hidden: boolean;
+	}[];
+	/** La calificación de cada competencia. */
+	competencies: {
+		/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+		id: string;
+		/** Nombre. */
+		name: string;
+		/** Su calificación, con el peso de cada tipo de evaluador. */
+		score: number | null;
+		/** Lo que dio cada tipo de evaluador que cuenta. */
+		by_relation: Record<string, number>;
+	}[];
+	/** Los comentarios. */
+	comments: {
+		/** self (autoevaluación), manager (su jefe), peer (compañeros) o report (personas a su cargo). */
+		relation: string;
+		/** Texto de la leyenda (textoLeyenda). */
+		text: string;
+		/** Solo de la autoevaluación y del jefe; compañeros y personas a su cargo van sin nombre. */
+		name: string | null;
+	}[];
 }
 
 /** Los archivos para presentar movimientos en IDSE o importarlos en SUA. */
@@ -10869,6 +11103,17 @@ export interface ClimateComplaintList {
 	url: string;
 }
 
+export interface ReviewCycleList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: ReviewCycle[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
 export interface InvoiceBatchList {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "list";
@@ -13747,6 +13992,8 @@ export interface UpdateEmployeeNoticeSettingsParams {
 	vacation?: boolean;
 	/** Cuando se abre una encuesta NOM-035 o de clima para él (POST /v1/climate_surveys/{id}/open). */
 	survey?: boolean;
+	/** Cuando se abre un ciclo de Desempeño con evaluaciones que le toca hacer (POST /v1/review_cycles/{id}/open). */
+	review?: boolean;
 	/** Si un recibo sigue sin firmar de recibido estos días después de timbrarse, se le recuerda una vez. 0: nunca. */
 	sign_reminder_days?: number;
 	/** A quien no activó los avisos en su celular le llega el mismo aviso a su correo. */
@@ -15178,6 +15425,209 @@ export interface UpdateClimateComplaintParams {
 	/** nueva, en_atencion o atendida. */
 	status?: "nueva" | "en_atencion" | "atendida";
 	/** Qué se hizo. */
+	note?: string | null;
+}
+
+/** Los parámetros de GET /v1/review_cycles. */
+export interface ListReviewCyclesParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface CreateReviewCycleParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Su nombre, como «Evaluación 2026». */
+	title: string;
+	/** Desde cuándo se evalúa. */
+	period_start?: string | null;
+	/** Hasta cuándo. */
+	period_end?: string | null;
+	/** La fecha límite para contestar que ve cada evaluador (opcional). */
+	closes_on?: string | null;
+	/** Cómo se califica. Por omisión, escala de 1 a 5, autoevaluación y jefe, objetivos 60 %. */
+	rules?: {
+		/** La escala. */
+		scale: {
+			/** Se califica de 1 a max (de 3 a 10). */
+			max: number;
+			/** El nombre de cada punto, del 1 al max; vacío: solo los números. */
+			labels: string[];
+		};
+		/** Quién evalúa: self (autoevaluación), manager (su jefe en el organigrama), peer (compañeros), report (las personas a su cargo). */
+		raters: {
+			/** Si cuenta lo que dice la persona misma. */
+			self: boolean;
+			/** Si cuenta lo que dice su jefe en el organigrama. */
+			manager: boolean;
+			/** Si cuenta lo que dice sus compañeros. */
+			peer: boolean;
+			/** Si cuenta lo que dice las personas a su cargo. */
+			report: boolean;
+		};
+		/** El peso de cada uno en la calificación de competencias, de 0 a 100. Cuentan solo los que evalúan; no tienen que sumar 100. */
+		rater_weights: {
+			/** El peso de lo que dice la persona misma. */
+			self: number;
+			/** El peso de lo que dice su jefe en el organigrama. */
+			manager: number;
+			/** El peso de lo que dice sus compañeros. */
+			peer: number;
+			/** El peso de lo que dice las personas a su cargo. */
+			report: number;
+		};
+		/** Cuánto pesan los objetivos en el resultado, de 0 a 100; el resto son las competencias. */
+		objectives_weight: number;
+		/** Compañeros o personas a su cargo con menos respuestas no cuentan, para que no se sepa quién contestó qué. */
+		anonymous_min: number;
+		/** Los cortes de desempeño de la matriz de 9 cuadros: debajo del primero es bajo, desde el segundo es alto. */
+		box_cuts: number[];
+	};
+	/** Lo que se califica de cada persona. Por omisión, cinco de ejemplo. */
+	competencies?: {
+		/** Su id, único en el ciclo. */
+		id: string;
+		/** Su nombre. */
+		name: string;
+		/** Qué se espera, en una frase; lo ve cada evaluador. */
+		description?: string | null;
+	}[];
+	/** Con peer: cuántos compañeros se toman al azar, entre quienes tienen el mismo jefe, para quien no tenga elegidos. Por omisión, 3. */
+	peers_count?: number;
+	/** Al cerrar, cada persona ve su resultado en su portal. Por omisión, no. */
+	share_results?: boolean;
+	/** Solo quien trabaja en esta sucursal (brn_…). null u omitido: todo el emisor. */
+	branch?: string | null;
+	/** Solo quien es de este departamento. */
+	department?: string | null;
+}
+
+export interface UpdateReviewCycleParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Su nombre, como «Evaluación 2026». */
+	title: string;
+	/** Desde cuándo se evalúa. */
+	period_start?: string | null;
+	/** Hasta cuándo. */
+	period_end?: string | null;
+	/** La fecha límite para contestar que ve cada evaluador (opcional). */
+	closes_on?: string | null;
+	/** Cómo se califica. Por omisión, escala de 1 a 5, autoevaluación y jefe, objetivos 60 %. */
+	rules?: {
+		/** La escala. */
+		scale: {
+			/** Se califica de 1 a max (de 3 a 10). */
+			max: number;
+			/** El nombre de cada punto, del 1 al max; vacío: solo los números. */
+			labels: string[];
+		};
+		/** Quién evalúa: self (autoevaluación), manager (su jefe en el organigrama), peer (compañeros), report (las personas a su cargo). */
+		raters: {
+			/** Si cuenta lo que dice la persona misma. */
+			self: boolean;
+			/** Si cuenta lo que dice su jefe en el organigrama. */
+			manager: boolean;
+			/** Si cuenta lo que dice sus compañeros. */
+			peer: boolean;
+			/** Si cuenta lo que dice las personas a su cargo. */
+			report: boolean;
+		};
+		/** El peso de cada uno en la calificación de competencias, de 0 a 100. Cuentan solo los que evalúan; no tienen que sumar 100. */
+		rater_weights: {
+			/** El peso de lo que dice la persona misma. */
+			self: number;
+			/** El peso de lo que dice su jefe en el organigrama. */
+			manager: number;
+			/** El peso de lo que dice sus compañeros. */
+			peer: number;
+			/** El peso de lo que dice las personas a su cargo. */
+			report: number;
+		};
+		/** Cuánto pesan los objetivos en el resultado, de 0 a 100; el resto son las competencias. */
+		objectives_weight: number;
+		/** Compañeros o personas a su cargo con menos respuestas no cuentan, para que no se sepa quién contestó qué. */
+		anonymous_min: number;
+		/** Los cortes de desempeño de la matriz de 9 cuadros: debajo del primero es bajo, desde el segundo es alto. */
+		box_cuts: number[];
+	};
+	/** Lo que se califica de cada persona. Por omisión, cinco de ejemplo. */
+	competencies?: {
+		/** Su id, único en el ciclo. */
+		id: string;
+		/** Su nombre. */
+		name: string;
+		/** Qué se espera, en una frase; lo ve cada evaluador. */
+		description?: string | null;
+	}[];
+	/** Con peer: cuántos compañeros se toman al azar, entre quienes tienen el mismo jefe, para quien no tenga elegidos. Por omisión, 3. */
+	peers_count?: number;
+	/** Al cerrar, cada persona ve su resultado en su portal. Por omisión, no. */
+	share_results?: boolean;
+}
+
+export interface SetReviewParticipantsParams {
+	/** Todas las personas que se evalúan (emp_…), en borrador. Reemplaza la lista. */
+	employees: string[];
+}
+
+export interface SetReviewPeersParams {
+	/** La persona que se evalúa (emp_…). */
+	employee: string;
+	/** Los compañeros que la evalúan (emp_…). Vacío: al abrir se toman al azar. Con el ciclo abierto agrega o quita sus evaluaciones (las ya contestadas se quedan). */
+	peers: string[];
+}
+
+export interface CalibrateReviewParams {
+	/** La persona (emp_…). */
+	employee: string;
+	/** La calificación calibrada, en la escala del ciclo; null usa la calculada. */
+	calibrated?: number | null;
+	/** Por qué cambia; se pide con calibrated. */
+	note?: string | null;
+	/** El potencial para la matriz de 9 cuadros: 1 bajo, 2 medio, 3 alto. */
+	potential?: number | null;
+}
+
+export interface CreateReviewObjectiveParams {
+	/** El ciclo (rvc_…). */
+	cycle: string;
+	/** La persona (emp_…). */
+	employee: string;
+	/** Qué tiene que lograr. */
+	title: string;
+	/** La meta, si se mide con un número. */
+	target?: number | null;
+	/** El avance. */
+	actual?: number | null;
+	/** La unidad: pesos, %, piezas. */
+	unit?: string | null;
+	/** La meta es un máximo (quejas, mermas): menos es mejor. */
+	lower_better?: boolean;
+	/** Cuánto cuenta frente a sus otros objetivos. Por omisión, 1. */
+	weight?: number;
+	/** Una nota. */
+	note?: string | null;
+}
+
+export interface UpdateReviewObjectiveParams {
+	/** Qué tiene que lograr. */
+	title: string;
+	/** La meta, si se mide con un número. */
+	target?: number | null;
+	/** El avance. */
+	actual?: number | null;
+	/** La unidad: pesos, %, piezas. */
+	unit?: string | null;
+	/** La meta es un máximo (quejas, mermas): menos es mejor. */
+	lower_better?: boolean;
+	/** Cuánto cuenta frente a sus otros objetivos. Por omisión, 1. */
+	weight?: number;
+	/** Una nota. */
 	note?: string | null;
 }
 
@@ -22309,6 +22759,190 @@ export class ClimateComplaintsResource {
 	}
 }
 
+/** Nómina: fiscalisto.reviewCycles. */
+export class ReviewCyclesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar ciclos de evaluación
+	 *
+	 * Los ciclos de evaluación de desempeño del emisor (rvc_…), los más recientes primero, con cuántas personas y cuántas evaluaciones van enviadas.
+	 *
+	 * GET /v1/review_cycles
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/list-review-cycles
+	 */
+	list(params?: ListReviewCyclesParams, options?: RequestOptions): List<ReviewCycle> {
+		return this.#client.list({ path: "/v1/review_cycles", query: params }, options);
+	}
+
+	/**
+	 * Crear un ciclo de evaluación
+	 *
+	 * Lo crea en borrador con todas las personas que trabajan hoy en el emisor, o en la sucursal o el departamento que diga. Ninguna ley pide evaluar el desempeño, así que la escala, quién evalúa, los pesos y las competencias los decide usted; lo que no manda toma los valores por omisión. Ábralo con POST /v1/review_cycles/{id}/open.
+	 *
+	 * POST /v1/review_cycles
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-review-cycle
+	 */
+	create(params: CreateReviewCycleParams, options?: RequestOptions): Promise<ReviewCycle> {
+		return this.#client.request({ method: "POST", path: "/v1/review_cycles", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Ver un ciclo de evaluación
+	 *
+	 * El ciclo con sus reglas, competencias y cada persona: su jefe, quién la evalúa y si ya envió su evaluación (no qué contestó), sus objetivos y su resultado. Con el ciclo abierto el resultado se calcula con lo que va llegando; al cerrarlo queda guardado.
+	 *
+	 * GET /v1/review_cycles/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-review-cycle
+	 */
+	get(id: string, options?: RequestOptions): Promise<ReviewCycle> {
+		return this.#client.request({ method: "GET", path: `/v1/review_cycles/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Cambiar un ciclo de evaluación
+	 *
+	 * En borrador cambia todo. Abierto, solo el nombre, el periodo, la fecha límite, compañeros por persona y share_results: la escala, las competencias y quién evalúa ya no cambian porque hay quien ya contestó con ellas. Cerrado ya no cambia.
+	 *
+	 * POST /v1/review_cycles/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-review-cycle
+	 */
+	update(id: string, params: UpdateReviewCycleParams, options?: RequestOptions): Promise<ReviewCycle> {
+		return this.#client.request({ method: "POST", path: `/v1/review_cycles/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Borrar un ciclo de evaluación
+	 *
+	 * Lo borra con sus personas y objetivos si nadie ha enviado una evaluación. Con evaluaciones, ciérrelo.
+	 *
+	 * DELETE /v1/review_cycles/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/delete-review-cycle
+	 */
+	delete(id: string, options?: RequestOptions): Promise<ReviewCycleDeleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/review_cycles/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Abrir un ciclo de evaluación
+	 *
+	 * Arma quién evalúa a quién: la persona misma, su jefe en el organigrama, sus compañeros (los elegidos o, si no, peers_count al azar entre quienes tienen el mismo jefe) y las personas a su cargo, según rules.raters. A cada evaluador le aparece en su portal lo que le toca, con el aviso review si lo tiene encendido.
+	 *
+	 * POST /v1/review_cycles/{id}/open
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/open-review-cycle
+	 */
+	open(id: string, options?: RequestOptions): Promise<ReviewCycle> {
+		return this.#client.request({ method: "POST", path: `/v1/review_cycles/${encodeURIComponent(id)}/open`, idempotent: true }, options);
+	}
+
+	/**
+	 * Cerrar un ciclo de evaluación
+	 *
+	 * Deja de recibir evaluaciones y guarda el resultado de cada persona como quedó. Con share_results, cada persona lo ve en su portal.
+	 *
+	 * POST /v1/review_cycles/{id}/close
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/close-review-cycle
+	 */
+	close(id: string, options?: RequestOptions): Promise<ReviewCycle> {
+		return this.#client.request({ method: "POST", path: `/v1/review_cycles/${encodeURIComponent(id)}/close`, idempotent: true }, options);
+	}
+
+	/**
+	 * Elegir a quién se evalúa
+	 *
+	 * En borrador: reemplaza la lista de personas del ciclo. Quien sale pierde sus objetivos en el ciclo.
+	 *
+	 * POST /v1/review_cycles/{id}/participants
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/set-review-participants
+	 */
+	setParticipants(id: string, params: SetReviewParticipantsParams, options?: RequestOptions): Promise<ReviewCycle> {
+		return this.#client.request({ method: "POST", path: `/v1/review_cycles/${encodeURIComponent(id)}/participants`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Elegir los compañeros que evalúan a alguien
+	 *
+	 * Los compañeros que evalúan a una persona. Con el ciclo abierto agrega las evaluaciones de los nuevos y quita las que no se han enviado de los que salen.
+	 *
+	 * POST /v1/review_cycles/{id}/peers
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/set-review-peers
+	 */
+	setPeers(id: string, params: SetReviewPeersParams, options?: RequestOptions): Promise<ReviewCycle> {
+		return this.#client.request({ method: "POST", path: `/v1/review_cycles/${encodeURIComponent(id)}/peers`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Calibrar el resultado de una persona
+	 *
+	 * Con el ciclo abierto o cerrado: una calificación calibrada en lugar de la calculada (con la nota de por qué cambia) y su potencial para la matriz de 9 cuadros. Lo que no manda no cambia.
+	 *
+	 * POST /v1/review_cycles/{id}/calibrations
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/calibrate-review
+	 */
+	calibrate(id: string, params: CalibrateReviewParams, options?: RequestOptions): Promise<ReviewCycle> {
+		return this.#client.request({ method: "POST", path: `/v1/review_cycles/${encodeURIComponent(id)}/calibrations`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Ver el resultado de una persona
+	 *
+	 * Su calificación por competencia y por tipo de evaluador, y los comentarios. Compañeros y personas a su cargo se promedian juntos y nunca llevan nombre; con menos respuestas que rules.anonymous_min no cuentan ni se muestran.
+	 *
+	 * GET /v1/review_cycles/{id}/results/{employee}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-review-result
+	 */
+	result(id: string, employee: string, options?: RequestOptions): Promise<ReviewResult> {
+		return this.#client.request({ method: "GET", path: `/v1/review_cycles/${encodeURIComponent(id)}/results/${encodeURIComponent(employee)}` }, options);
+	}
+}
+
+/** Nómina: fiscalisto.reviewObjectives. */
+export class ReviewObjectivesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Agregar un objetivo
+	 *
+	 * Un objetivo de una persona en un ciclo, con su meta, unidad y peso (hasta 20 por persona). Su jefe lo califica al evaluarla y la persona anota su avance en su portal. Ya no se agregan cuando el jefe la evaluó.
+	 *
+	 * POST /v1/review_objectives
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-review-objective
+	 */
+	create(params: CreateReviewObjectiveParams, options?: RequestOptions): Promise<ReviewObjective> {
+		return this.#client.request({ method: "POST", path: "/v1/review_objectives", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Cambiar un objetivo
+	 *
+	 * Reemplaza el objetivo con lo que manda: lo que no manda queda vacío o con su valor por omisión.
+	 *
+	 * POST /v1/review_objectives/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-review-objective
+	 */
+	update(id: string, params: UpdateReviewObjectiveParams, options?: RequestOptions): Promise<ReviewObjective> {
+		return this.#client.request({ method: "POST", path: `/v1/review_objectives/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Borrar un objetivo
+	 *
+	 * Lo borra, salvo que su jefe ya lo haya calificado.
+	 *
+	 * DELETE /v1/review_objectives/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/delete-review-objective
+	 */
+	delete(id: string, options?: RequestOptions): Promise<ReviewObjectiveDeleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/review_objectives/${encodeURIComponent(id)}` }, options);
+	}
+}
+
 /** Lotes: fiscalisto.invoiceBatches. */
 export class InvoiceBatchesResource {
 	readonly #client: Client;
@@ -26760,6 +27394,8 @@ export class FiscalistoApi extends Core {
 	readonly climateSurveys = new ClimateSurveysResource(this);
 	readonly climateActions = new ClimateActionsResource(this);
 	readonly climateComplaints = new ClimateComplaintsResource(this);
+	readonly reviewCycles = new ReviewCyclesResource(this);
+	readonly reviewObjectives = new ReviewObjectivesResource(this);
 	readonly invoiceBatches = new InvoiceBatchesResource(this);
 	readonly taxIds = new TaxIdsResource(this);
 	readonly branches = new BranchesResource(this);
