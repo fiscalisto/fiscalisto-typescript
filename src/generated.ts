@@ -3218,6 +3218,339 @@ export interface EmployeeTraining {
 	}[];
 }
 
+/** El clima laboral de un emisor (Nómina › Clima laboral). */
+export interface Climate {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "climate";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Lo que se configura en POST /v1/climate/policy. */
+	settings: {
+		/** La política de prevención de riesgos psicosociales (numeral 5.1). */
+		policy: string | null;
+		/** La versión publicada (0: ninguna). */
+		policy_version: number;
+		/** Cuándo se publicó. */
+		policy_published_at: string | null;
+		/** Con quién más presentar una queja, además del buzón. */
+		complaints_contact: string | null;
+		/** Quienes leyeron la versión publicada (numeral 5.7 a)). */
+		policy_reads: number;
+		/** Quienes trabajan hoy en el emisor. */
+		workers: number;
+	};
+	/** Cada centro de trabajo con su guía y cuándo le toca. */
+	centros: {
+		/** Sucursal (brn_…) desde donde se factura: su código postal va en LugarExpedicion, su dirección en el PDF y, si las tiene, sus series. Sin ella, el domicilio fiscal del emisor (la Matriz). */
+		branch: string | null;
+		/** Nombre. */
+		name: string;
+		/** Quienes trabajan ahí hoy. */
+		workers: number;
+		/** II, III o null (solo la Guía I). */
+		guide: string | null;
+		/** Cuándo se cerró la última identificación NOM-035 ahí. */
+		last_on: string | null;
+		/** Cuándo toca la siguiente: cada dos años como mínimo (numeral 7.9). */
+		next_due: string | null;
+		/** Si ya le tocaba (o nunca se ha hecho). */
+		overdue: boolean;
+	}[];
+	/** Las acciones del Programa de intervención. */
+	actions: {
+		/** Total en la moneda del comprobante (Total). */
+		total: number;
+		/** Las que no se han terminado. */
+		pending: number;
+		/** De ellas, las que pasaron su fecha. */
+		late: number;
+	};
+	/** Las quejas del buzón que esperan atención. */
+	complaints: {
+		/** Quejas nuevas. */
+		new: number;
+		/** Quejas en atención. */
+		in_progress: number;
+	};
+}
+
+/** Una encuesta NOM-035 o de clima (Nómina › Clima laboral). */
+export interface ClimateSurvey {
+	/** La encuesta (cls_…). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "climate_survey";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** nom035 o clima. */
+	kind: string;
+	/** Su nombre. */
+	title: string;
+	/** El centro de trabajo (brn_…); null: todos los trabajadores del emisor. */
+	branch: string | null;
+	/** El nombre del centro de trabajo. */
+	centro: string;
+	/** NOM-035: II (de 16 a 50 trabajadores), III (más de 50) o null (hasta 15: solo la Guía I), numeral 7.1. */
+	guide: string | null;
+	/** Si también pregunta la Guía I. */
+	guide_i: boolean;
+	/** Si se aplica a una muestra (Guía III). */
+	sample: boolean;
+	/** draft, open o closed. */
+	status: string;
+	/** La fecha límite para contestar. */
+	closes_on: string | null;
+	/** Los trabajadores del centro cuando se abrió. */
+	workers: number | null;
+	/** A cuántos se les pidió contestarla. */
+	invited: number;
+	/** Cuántos la contestaron. */
+	answered: number;
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string;
+	/** Cuándo se abrió. */
+	opened_at: string | null;
+	/** Cuándo se cerró. */
+	closed_at: string | null;
+	/** Encuesta de clima: sus preguntas (al ver una encuesta). */
+	questions?: {
+		/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+		id: string;
+		/** Texto de la leyenda (textoLeyenda). */
+		text: string;
+		/** scale, nps, choice o text. */
+		type: string;
+		/** Con choice: sus opciones. */
+		options: string[] | null;
+		/** Si es obligatoria. */
+		required: boolean;
+	}[];
+	/** Lo que dice el informe además de los resultados (numeral 7.7). */
+	report?: {
+		/** El domicilio del centro de trabajo. */
+		address: string | null;
+		/** Su actividad principal. */
+		activity: string | null;
+		/** El objetivo de la evaluación. */
+		objective: string | null;
+		/** Las principales actividades que se hacen ahí. */
+		activities: string | null;
+		/** Las conclusiones. */
+		conclusions: string | null;
+		/** El responsable de la evaluación. */
+		responsible: string | null;
+		/** Su cédula profesional. */
+		license: string | null;
+	};
+	/** Los resultados, sin nombres. */
+	results?: {
+		/** A cuántos se les pidió. */
+		invited: number;
+		/** Cuántos contestaron. */
+		answered: number;
+		/** Cuántas respuestas hacen falta para mostrar resultados (5). */
+		min_group: number;
+		/** true con menos de min_group respuestas: no se muestra nada, para que no se distinga lo que contestó cada quien. */
+		hidden: boolean;
+		/** La calificación final, por categoría y por dominio (Guías II y III). */
+		nom035: {
+			/** La calificación final y su nivel de riesgo. */
+			final: {
+				/** La calificación final del cuestionario. */
+				score: number;
+				/** Nivel educativo (nivelEducativo). */
+				level: string;
+				/** Cuántos trabajadores quedaron en cada nivel (nulo, bajo, medio, alto, muy_alto). */
+				levels: Record<string, number>;
+			};
+			/** Cada categoría de la guía. */
+			categories: {
+				/** Su clave (la que va en area de una acción). */
+				key: string;
+				/** Nombre. */
+				name: string;
+				/** El promedio de las calificaciones de los trabajadores. */
+				score: number;
+				/** El nivel de riesgo de ese promedio según las tablas de la norma: nulo, bajo, medio, alto o muy_alto. */
+				level: string;
+				/** Cuántos trabajadores quedaron en cada nivel (nulo, bajo, medio, alto, muy_alto). */
+				levels: Record<string, number>;
+				/** De medio para arriba pide un Programa de intervención (numeral 8.3). */
+				needs_program: boolean;
+			}[];
+			/** Cada dominio de la guía. */
+			domains: {
+				/** Su clave (la que va en area de una acción). */
+				key: string;
+				/** Nombre. */
+				name: string;
+				/** El promedio de las calificaciones de los trabajadores. */
+				score: number;
+				/** El nivel de riesgo de ese promedio según las tablas de la norma: nulo, bajo, medio, alto o muy_alto. */
+				level: string;
+				/** Cuántos trabajadores quedaron en cada nivel (nulo, bajo, medio, alto, muy_alto). */
+				levels: Record<string, number>;
+				/** De medio para arriba pide un Programa de intervención (numeral 8.3). */
+				needs_program: boolean;
+			}[];
+			/** Cada departamento con min_group respuestas o más. */
+			departments: {
+				/** Nombre. */
+				name: string;
+				/** Cuántos de ahí contestaron. */
+				answered: number;
+				/** La calificación final promedio del departamento. */
+				score: number;
+				/** Nivel educativo (nivelEducativo). */
+				level: string;
+			}[];
+			/** Departamentos con menos de min_group respuestas, que no se muestran. */
+			hidden_departments: number;
+		} | null;
+		/** Encuesta de clima: cada pregunta. */
+		climate: {
+			/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+			id: string;
+			/** Texto de la leyenda (textoLeyenda). */
+			text: string;
+			/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
+			type: string;
+			/** Cuántos la contestaron. */
+			answered: number;
+			/** scale y nps: el promedio. */
+			average: number | null;
+			/** Cuántos dieron cada respuesta (cada número o cada opción). */
+			counts: Record<string, number> | null;
+			/** nps: el porcentaje de promotores menos el de detractores. */
+			enps: number | null;
+			/** text: las respuestas, en orden alfabético y sin nombre. */
+			texts: string[] | null;
+		}[] | null;
+		/** Guía I: cuántos dijeron «Sí» (los nombres, en traumatic_events). */
+		traumatic: {
+			/** Quienes dijeron haber vivido un acontecimiento traumático severo. */
+			yes: number;
+			/** De ellos, quienes requieren valoración clínica (Guía I). */
+			needs_attention: number;
+		} | null;
+	};
+	/** A quién se le pidió y si contestó, para recordarle a quien falta. */
+	invites?: {
+		/** El empleado (emp_…). */
+		employee: string;
+		/** Nombre. */
+		name: string;
+		/** Si ya contestó (no qué). */
+		answered: boolean;
+	}[];
+}
+
+/** Una encuesta borrada. */
+export interface ClimateSurveyDeleted {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "climate_survey";
+	/** Siempre true. */
+	deleted: boolean;
+}
+
+/** Quien dijo haber vivido un acontecimiento traumático severo (Guía I). */
+export interface ClimateTraumaticEvent {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "climate_traumatic_event";
+	/** La encuesta (cls_…). */
+	survey: string;
+	/** El empleado (emp_…). */
+	employee: string;
+	/** Nombre. */
+	name: string;
+	/** Si requiere valoración clínica según la Guía I (numeral 5.5). */
+	needs_attention: boolean;
+	/** Cuándo contestó. */
+	answered_on: string;
+	/** A dónde se le canalizó. */
+	referred_to: string | null;
+	/** Cuándo se le canalizó. */
+	referred_on: string | null;
+	/** Una nota. */
+	note: string | null;
+}
+
+/** Una acción del Programa de intervención (numerales 8.3 a 8.5). */
+export interface ClimateAction {
+	/** La acción (cla_…). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "climate_action";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** La encuesta de la que sale (cls_…). */
+	survey: string | null;
+	/** La categoría o el dominio que atiende. */
+	area: string;
+	/** primer, segundo o tercer nivel (numeral 8.5). */
+	level: string;
+	/** Qué se va a hacer. */
+	action: string;
+	/** El responsable. */
+	owner: string | null;
+	/** Para cuándo. */
+	due_on: string | null;
+	/** pending, in_progress o done. */
+	status: string;
+	/** Cuándo se terminó. */
+	done_on: string | null;
+	/** Cómo resultó (numeral 8.4 c)). */
+	evaluation: string | null;
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string;
+}
+
+/** Una acción borrada. */
+export interface ClimateActionDeleted {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "climate_action";
+	/** Siempre true. */
+	deleted: boolean;
+}
+
+/** Una queja del buzón (numeral 8.1 b)). */
+export interface ClimateComplaint {
+	/** La queja (clq_…). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "climate_complaint";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** violencia, entorno u otro. */
+	kind: string;
+	/** Lo que escribió. */
+	body: string;
+	/** Solo si quien la mandó la firmó. */
+	employee: string | null;
+	/** Nombre. */
+	name: string | null;
+	/** Cuándo llegó. */
+	received_on: string;
+	/** nueva, en_atencion o atendida. */
+	status: string;
+	/** Qué se hizo. */
+	note: string | null;
+	/** Cuándo se atendió. */
+	closed_on: string | null;
+}
+
 /** Los archivos para presentar movimientos en IDSE o importarlos en SUA. */
 export interface ImssFiles {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -10211,6 +10544,50 @@ export interface TrainingCourseList {
 	url: string;
 }
 
+export interface ClimateSurveyList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: ClimateSurvey[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface ClimateTraumaticEventList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: ClimateTraumaticEvent[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface ClimateActionList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: ClimateAction[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface ClimateComplaintList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: ClimateComplaint[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
 export interface InvoiceBatchList {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "list";
@@ -14119,6 +14496,196 @@ export interface UpdateEmployeeTrainingParams {
 	occupation?: string | null;
 	/** Su grado de estudios terminados, que pide el aviso a la STPS: primaria, secundaria, bachillerato, tecnico, licenciatura, especialidad, maestria o doctorado. */
 	education?: "primaria" | "secundaria" | "bachillerato" | "tecnico" | "licenciatura" | "especialidad" | "maestria" | "doctorado" | null;
+}
+
+/** Los parámetros de GET /v1/climate. */
+export interface GetClimateParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface UpdateClimatePolicyParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** El texto de la política de prevención de riesgos psicosociales (numeral 5.1). La Guía IV de la norma trae un ejemplo. */
+	policy?: string | null;
+	/** Con quién más pueden presentar una queja, además del buzón del portal (Recursos Humanos, por ejemplo). */
+	complaints_contact?: string | null;
+	/** true la publica en el portal de cada trabajador (numeral 5.7) como una versión nueva, que se les pide leer otra vez. */
+	publish?: boolean;
+}
+
+/** Los parámetros de GET /v1/climate_surveys. */
+export interface ListClimateSurveysParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface CreateClimateSurveyParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** nom035 (las guías de la norma por centro de trabajo) o clima (una encuesta propia con sus preguntas). */
+	kind: "nom035" | "clima";
+	/** Su nombre; por omisión «NOM-035 2026» o «Encuesta de clima 2026». */
+	title?: string | null;
+	/** El centro de trabajo: una sucursal (brn_…). null u omitido: todos los trabajadores del emisor. */
+	branch?: string | null;
+	/** NOM-035: también pregunta la Guía I, para identificar a quien vivió un acontecimiento traumático severo (numeral 5.5). Por omisión, sí. */
+	guide_i?: boolean;
+	/** NOM-035 con la Guía III (más de 50 trabajadores): la aplica a una muestra elegida al azar según la Ecuación 1 de la norma, en proporción de hombres y mujeres. */
+	sample?: boolean;
+	/** Encuesta de clima: sus preguntas, en orden. */
+	questions?: {
+		/** Su id, único en la encuesta. */
+		id: string;
+		/** La pregunta. */
+		text: string;
+		/** scale (del 1 al 5, qué tan de acuerdo), nps (del 0 al 10, para el eNPS), choice (opciones) o text (respuesta abierta). */
+		type: "scale" | "nps" | "choice" | "text";
+		/** Con choice: de 2 a 12 opciones. */
+		options?: string[];
+		/** Si es obligatoria (por omisión, sí). */
+		required?: boolean;
+	}[];
+	/** La fecha límite para contestar (opcional). */
+	closes_on?: string | null;
+	/** true la abre de una vez: invita a quien trabaja hoy en ese centro y aparece en su portal. */
+	open?: boolean;
+}
+
+export interface UpdateClimateSurveyParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** nom035 (las guías de la norma por centro de trabajo) o clima (una encuesta propia con sus preguntas). */
+	kind: "nom035" | "clima";
+	/** Su nombre; por omisión «NOM-035 2026» o «Encuesta de clima 2026». */
+	title?: string | null;
+	/** El centro de trabajo: una sucursal (brn_…). null u omitido: todos los trabajadores del emisor. */
+	branch?: string | null;
+	/** NOM-035: también pregunta la Guía I, para identificar a quien vivió un acontecimiento traumático severo (numeral 5.5). Por omisión, sí. */
+	guide_i?: boolean;
+	/** NOM-035 con la Guía III (más de 50 trabajadores): la aplica a una muestra elegida al azar según la Ecuación 1 de la norma, en proporción de hombres y mujeres. */
+	sample?: boolean;
+	/** Encuesta de clima: sus preguntas, en orden. */
+	questions?: {
+		/** Su id, único en la encuesta. */
+		id: string;
+		/** La pregunta. */
+		text: string;
+		/** scale (del 1 al 5, qué tan de acuerdo), nps (del 0 al 10, para el eNPS), choice (opciones) o text (respuesta abierta). */
+		type: "scale" | "nps" | "choice" | "text";
+		/** Con choice: de 2 a 12 opciones. */
+		options?: string[];
+		/** Si es obligatoria (por omisión, sí). */
+		required?: boolean;
+	}[];
+	/** La fecha límite para contestar (opcional). */
+	closes_on?: string | null;
+}
+
+export interface UpdateClimateSurveyReportParams {
+	/** El domicilio del centro de trabajo (numeral 7.7 b)). */
+	address?: string | null;
+	/** Su actividad principal. */
+	activity?: string | null;
+	/** El objetivo de la evaluación. */
+	objective?: string | null;
+	/** Las principales actividades que se hacen ahí. */
+	activities?: string | null;
+	/** Las conclusiones (numeral 7.7 g)). */
+	conclusions?: string | null;
+	/** El responsable de la evaluación. */
+	responsible?: string | null;
+	/** Su cédula profesional, si la tiene. */
+	license?: string | null;
+}
+
+export interface ReferClimateTraumaticEventParams {
+	/** Quien vivió el acontecimiento (emp_…), de GET /v1/climate_surveys/{id}/traumatic_events. */
+	employee: string;
+	/** A dónde se le canalizó: el IMSS, un médico, un psicólogo. */
+	referred_to?: string | null;
+	/** Cuándo. */
+	referred_on?: string | null;
+	/** Una nota. */
+	note?: string | null;
+}
+
+/** Los parámetros de GET /v1/climate_actions. */
+export interface ListClimateActionsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Solo las de esta encuesta (cls_…). */
+	survey?: string;
+}
+
+export interface CreateClimateActionParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** La encuesta de la que sale (cls_…), si sale de una. */
+	survey?: string | null;
+	/** La categoría o el dominio que atiende (su clave en results), o un texto libre. */
+	area: string;
+	/** El nivel de la acción (numeral 8.5): primer (la organización, por omisión), segundo (grupos) o tercer (cada persona). */
+	level?: "primer" | "segundo" | "tercer";
+	/** Qué se va a hacer. */
+	action: string;
+	/** El responsable. */
+	owner?: string | null;
+	/** Para cuándo. */
+	due_on?: string | null;
+	/** pending (por omisión), in_progress o done. */
+	status?: "pending" | "in_progress" | "done";
+	/** Al terminarla: cómo resultó (numeral 8.4 c)). */
+	evaluation?: string | null;
+}
+
+export interface UpdateClimateActionParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** La encuesta de la que sale (cls_…), si sale de una. */
+	survey?: string | null;
+	/** La categoría o el dominio que atiende (su clave en results), o un texto libre. */
+	area: string;
+	/** El nivel de la acción (numeral 8.5): primer (la organización, por omisión), segundo (grupos) o tercer (cada persona). */
+	level?: "primer" | "segundo" | "tercer";
+	/** Qué se va a hacer. */
+	action: string;
+	/** El responsable. */
+	owner?: string | null;
+	/** Para cuándo. */
+	due_on?: string | null;
+	/** pending (por omisión), in_progress o done. */
+	status?: "pending" | "in_progress" | "done";
+	/** Al terminarla: cómo resultó (numeral 8.4 c)). */
+	evaluation?: string | null;
+}
+
+/** Los parámetros de GET /v1/climate_complaints. */
+export interface ListClimateComplaintsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Solo las nueva, en_atencion o atendida. */
+	status?: string;
+}
+
+export interface UpdateClimateComplaintParams {
+	/** nueva, en_atencion o atendida. */
+	status?: "nueva" | "en_atencion" | "atendida";
+	/** Qué se hizo. */
+	note?: string | null;
 }
 
 export interface UpdatePayrollTaxSettingsParams {
@@ -20811,6 +21378,254 @@ export class TrainingCoursesResource {
 	}
 }
 
+/** Nómina: fiscalisto.climate. */
+export class ClimateResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Clima laboral
+	 *
+	 * Como «Nómina › Clima laboral» de la app: la política de prevención de riesgos psicosociales y cuántos la leyeron (NOM-035-STPS-2018, numerales 5.1 y 5.7), cada centro de trabajo con la guía que le toca por cuántos trabajan ahí (numeral 7.1) y cuándo le toca la siguiente identificación (cada dos años como mínimo, numeral 7.9), cuántas acciones del Programa de intervención faltan y cuántas quejas del buzón esperan atención.
+	 *
+	 * GET /v1/climate
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-climate
+	 */
+	get(params?: GetClimateParams, options?: RequestOptions): Promise<Climate> {
+		return this.#client.request({ method: "GET", path: "/v1/climate", query: params }, options);
+	}
+
+	/**
+	 * Guardar la política de prevención
+	 *
+	 * El texto de la política (numeral 5.1) y con quién más presentar una queja. Con publish true la publica en el portal de cada trabajador como una versión nueva (numeral 5.7) y se les pide leerla otra vez. Lo que no manda no cambia. Contesta climate.
+	 *
+	 * POST /v1/climate/policy
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-climate-policy
+	 */
+	updatePolicy(params?: UpdateClimatePolicyParams, options?: RequestOptions): Promise<Climate> {
+		return this.#client.request({ method: "POST", path: "/v1/climate/policy", body: params, idempotent: true }, options);
+	}
+}
+
+/** Nómina: fiscalisto.climateSurveys. */
+export class ClimateSurveysResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar encuestas de clima laboral
+	 *
+	 * Las encuestas NOM-035 y de clima del emisor (cls_…), las más recientes primero, con a cuántos se les pidió y cuántos contestaron.
+	 *
+	 * GET /v1/climate_surveys
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/list-climate-surveys
+	 */
+	list(params?: ListClimateSurveysParams, options?: RequestOptions): List<ClimateSurvey> {
+		return this.#client.list({ path: "/v1/climate_surveys", query: params }, options);
+	}
+
+	/**
+	 * Crear una encuesta de clima laboral
+	 *
+	 * kind nom035 aplica la guía que le toca al centro de trabajo por cuántos trabajan ahí hoy: la Guía II de 16 a 50 y la Guía III con más de 50 (numeral 7.1), y la Guía I para identificar a quien vivió un acontecimiento traumático severo (numeral 5.5). Un centro tiene una sola encuesta NOM-035 abierta a la vez. kind clima es una encuesta propia con sus preguntas (scale, nps para el eNPS, choice o text). Queda en borrador salvo con open true. Las respuestas llegan solo desde el portal del empleado y nunca con nombre.
+	 *
+	 * POST /v1/climate_surveys
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-climate-survey
+	 */
+	create(params: CreateClimateSurveyParams, options?: RequestOptions): Promise<ClimateSurvey> {
+		return this.#client.request({ method: "POST", path: "/v1/climate_surveys", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Ver una encuesta de clima laboral
+	 *
+	 * La encuesta con sus resultados: con la NOM-035, la calificación final y la de cada categoría y dominio con su nivel de riesgo según las tablas de la norma, y si pide un Programa de intervención (de medio para arriba, numeral 8.3); con la de clima, cada pregunta y el eNPS. Los resultados se muestran desde 5 respuestas (hidden true antes), y los departamentos con menos se dejan fuera, para que no se distinga lo que contestó cada quien. invites dice a quién se le pidió y si ya contestó, no qué.
+	 *
+	 * GET /v1/climate_surveys/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-climate-survey
+	 */
+	get(id: string, options?: RequestOptions): Promise<ClimateSurvey> {
+		return this.#client.request({ method: "GET", path: `/v1/climate_surveys/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Cambiar una encuesta de clima laboral
+	 *
+	 * Cambia un borrador. Una encuesta abierta o cerrada ya no cambia, porque hay quien contestó esas preguntas: ciérrela y haga otra.
+	 *
+	 * POST /v1/climate_surveys/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-climate-survey
+	 */
+	update(id: string, params: UpdateClimateSurveyParams, options?: RequestOptions): Promise<ClimateSurvey> {
+		return this.#client.request({ method: "POST", path: `/v1/climate_surveys/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Borrar una encuesta de clima laboral
+	 *
+	 * La borra si nadie la ha contestado. Con respuestas se conserva: los resultados se guardan al menos un año (numeral 5.8).
+	 *
+	 * DELETE /v1/climate_surveys/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/delete-climate-survey
+	 */
+	delete(id: string, options?: RequestOptions): Promise<ClimateSurveyDeleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/climate_surveys/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Abrir una encuesta de clima laboral
+	 *
+	 * Invita a quien trabaja hoy en el centro (o a la muestra, con sample) y la encuesta aparece en su portal. Con la NOM-035 no se abre si el centro ya tiene otra abierta.
+	 *
+	 * POST /v1/climate_surveys/{id}/open
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/open-climate-survey
+	 */
+	open(id: string, options?: RequestOptions): Promise<ClimateSurvey> {
+		return this.#client.request({ method: "POST", path: `/v1/climate_surveys/${encodeURIComponent(id)}/open`, idempotent: true }, options);
+	}
+
+	/**
+	 * Cerrar una encuesta de clima laboral
+	 *
+	 * Deja de recibir respuestas. Una NOM-035 cerrada cuenta como la identificación del centro de trabajo, y la siguiente toca dos años después (numeral 7.9).
+	 *
+	 * POST /v1/climate_surveys/{id}/close
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/close-climate-survey
+	 */
+	close(id: string, options?: RequestOptions): Promise<ClimateSurvey> {
+		return this.#client.request({ method: "POST", path: `/v1/climate_surveys/${encodeURIComponent(id)}/close`, idempotent: true }, options);
+	}
+
+	/**
+	 * Guardar el informe de una encuesta
+	 *
+	 * Solo de la NOM-035: lo que pide el informe de resultados además de lo que calcula Fiscalisto (numeral 7.7): domicilio y actividad del centro, objetivo, actividades, conclusiones y el responsable de la evaluación. Lo que no manda no cambia.
+	 *
+	 * POST /v1/climate_surveys/{id}/report
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-climate-survey-report
+	 */
+	updateReport(id: string, params?: UpdateClimateSurveyReportParams, options?: RequestOptions): Promise<ClimateSurvey> {
+		return this.#client.request({ method: "POST", path: `/v1/climate_surveys/${encodeURIComponent(id)}/report`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar acontecimientos traumáticos
+	 *
+	 * Quienes contestaron «Sí» en la Guía I, con su nombre, porque el patrón debe canalizar a quien lo requiera para su atención (numeral 5.5), y si requiere valoración clínica según la guía. Es lo único de una encuesta que lleva nombre.
+	 *
+	 * GET /v1/climate_surveys/{id}/traumatic_events
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/list-climate-traumatic-events
+	 */
+	traumaticEvents(id: string, options?: RequestOptions): Promise<ClimateTraumaticEventList> {
+		return this.#client.request({ method: "GET", path: `/v1/climate_surveys/${encodeURIComponent(id)}/traumatic_events` }, options);
+	}
+
+	/**
+	 * Anotar a dónde se canalizó a un trabajador
+	 *
+	 * A dónde se canalizó a quien vivió un acontecimiento traumático severo (el IMSS, un médico, un psicólogo), cuándo y una nota. Lo que no manda se borra.
+	 *
+	 * POST /v1/climate_surveys/{id}/referrals
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/refer-climate-traumatic-event
+	 */
+	refer(id: string, params: ReferClimateTraumaticEventParams, options?: RequestOptions): Promise<ClimateTraumaticEvent> {
+		return this.#client.request({ method: "POST", path: `/v1/climate_surveys/${encodeURIComponent(id)}/referrals`, body: params, idempotent: true }, options);
+	}
+}
+
+/** Nómina: fiscalisto.climateActions. */
+export class ClimateActionsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar acciones del Programa de intervención
+	 *
+	 * Las acciones del emisor (cla_…), las pendientes primero y por fecha, o solo las de una encuesta con survey.
+	 *
+	 * GET /v1/climate_actions
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/list-climate-actions
+	 */
+	list(params?: ListClimateActionsParams, options?: RequestOptions): List<ClimateAction> {
+		return this.#client.list({ path: "/v1/climate_actions", query: params }, options);
+	}
+
+	/**
+	 * Agregar una acción del Programa de intervención
+	 *
+	 * Lo que pide el programa (numeral 8.4): el área que atiende, la acción, su nivel (primer nivel la organización, segundo los grupos, tercero cada persona, numeral 8.5), el responsable y la fecha. Al marcarla done se anota el día, y evaluation dice cómo resultó.
+	 *
+	 * POST /v1/climate_actions
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-climate-action
+	 */
+	create(params: CreateClimateActionParams, options?: RequestOptions): Promise<ClimateAction> {
+		return this.#client.request({ method: "POST", path: "/v1/climate_actions", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Cambiar una acción del Programa de intervención
+	 *
+	 * Reemplaza la acción con lo que manda: lo que no manda queda vacío o con su valor por omisión.
+	 *
+	 * POST /v1/climate_actions/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-climate-action
+	 */
+	update(id: string, params: UpdateClimateActionParams, options?: RequestOptions): Promise<ClimateAction> {
+		return this.#client.request({ method: "POST", path: `/v1/climate_actions/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Borrar una acción del Programa de intervención
+	 *
+	 * La borra. No se puede deshacer.
+	 *
+	 * DELETE /v1/climate_actions/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/delete-climate-action
+	 */
+	delete(id: string, options?: RequestOptions): Promise<ClimateActionDeleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/climate_actions/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Nómina: fiscalisto.climateComplaints. */
+export class ClimateComplaintsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar quejas del buzón
+	 *
+	 * Las quejas que mandaron los trabajadores desde su portal (numeral 8.1 b)): de violencia laboral, del entorno u otra. Llevan nombre solo si quien la mandó la firmó.
+	 *
+	 * GET /v1/climate_complaints
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/list-climate-complaints
+	 */
+	list(params?: ListClimateComplaintsParams, options?: RequestOptions): List<ClimateComplaint> {
+		return this.#client.list({ path: "/v1/climate_complaints", query: params }, options);
+	}
+
+	/**
+	 * Atender una queja del buzón
+	 *
+	 * Su estado y qué se hizo. Al marcarla atendida se anota el día. Lo que no manda no cambia.
+	 *
+	 * POST /v1/climate_complaints/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-climate-complaint
+	 */
+	update(id: string, params?: UpdateClimateComplaintParams, options?: RequestOptions): Promise<ClimateComplaint> {
+		return this.#client.request({ method: "POST", path: `/v1/climate_complaints/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+}
+
 /** Lotes: fiscalisto.invoiceBatches. */
 export class InvoiceBatchesResource {
 	readonly #client: Client;
@@ -25254,6 +26069,10 @@ export class FiscalistoApi extends Core {
 	readonly candidates = new CandidatesResource(this);
 	readonly training = new TrainingResource(this);
 	readonly trainingCourses = new TrainingCoursesResource(this);
+	readonly climate = new ClimateResource(this);
+	readonly climateSurveys = new ClimateSurveysResource(this);
+	readonly climateActions = new ClimateActionsResource(this);
+	readonly climateComplaints = new ClimateComplaintsResource(this);
 	readonly invoiceBatches = new InvoiceBatchesResource(this);
 	readonly taxIds = new TaxIdsResource(this);
 	readonly branches = new BranchesResource(this);
