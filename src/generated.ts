@@ -4498,6 +4498,26 @@ export interface CustomerGroup {
 	created_at: string | null;
 }
 
+/** Un grupo de proveedores (Proveedores › Grupos): cada proveedor está en uno a lo más, y una regla vale para todo el grupo con la condición supplierGroup. */
+export interface SupplierGroup {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "supplier_group";
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Nombre. */
+	name: string;
+	/** Color de su etiqueta en la app: info, warning, positive, critical o muted. */
+	color: string;
+	/** Cuántos proveedores hay en el grupo. */
+	suppliers: number;
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string | null;
+}
+
 /** Lo que un cliente paga por unos productos a una cantidad: su precio por unidad sin IVA (de su lista), su descuento y el siguiente escalón de mayoreo. */
 export interface PriceQuote {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -6388,6 +6408,70 @@ export interface PayrollProvision {
 	}[];
 	/** La póliza de provisión (mje_…) si ya se registró, o null. Es una póliza a mano de tipo adjustment. */
 	manual_entry: string | null;
+}
+
+/** La cédula de determinación de cuotas del SUA comparada, trabajador por trabajador, con las cuotas patronales que Fiscalisto calculó de los recibos del mes. */
+export interface SuaComparison {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "sua_comparison";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor. */
+	issuer: string;
+	/** El mes que se comparó (AAAA-MM). */
+	month: string;
+	/** El mes que dice la cédula (AAAA-MM), o null si no lo dice. */
+	cedula_month: string | null;
+	/** El registro patronal de la cédula, sin guiones. */
+	employer_registration: string | null;
+	/** true si la cédula es de otro registro patronal que el de sus datos fiscales. */
+	other_employer_registration: boolean;
+	/** La prima de riesgo de trabajo de la cédula, como fracción; el cálculo se hizo con ella. */
+	employer_risk_premium: number | null;
+	/** true si no se pudo leer el texto del PDF (dañado o escaneado): imprímalo de nuevo desde el SUA. */
+	unreadable: boolean;
+	/** Cada trabajador: primero los que difieren, luego los que coinciden. */
+	workers: {
+		/** El NSS, 11 dígitos. */
+		nss: string | null;
+		/** El nombre en Fiscalisto, o null si solo está en el SUA. */
+		name: string | null;
+		/** Lo que dice el SUA, o null si no está en la cédula. */
+		sua: {
+			/** Días en enfermedades y maternidad: los del mes menos las incapacidades. */
+			days_health: number;
+			/** Días en invalidez y vida: menos incapacidades y ausentismos. */
+			days_disability_life: number;
+			/** El salario base de cotización. */
+			sbc: number;
+			/** Los días de incapacidad que trae el SUA. */
+			disability_days: number;
+			/** Los ausentismos que trae el SUA. */
+			absences: number;
+			/** Lo que paga el patrón del renglón (Patronal, más Obrera si gana el salario mínimo), o null si sus importes no se pudieron leer. */
+			amount: number | null;
+		} | null;
+		/** Lo que calculó Fiscalisto, o null si no tiene recibos timbrados del mes. */
+		calculated: {
+			/** Días en enfermedades y maternidad: los del mes menos las incapacidades. */
+			days_health: number;
+			/** Días en invalidez y vida: menos incapacidades y ausentismos. */
+			days_disability_life: number;
+			/** El salario base de cotización. */
+			sbc: number;
+			/** Sus cuotas patronales al IMSS. */
+			amount: number;
+		} | null;
+		/** En qué difieren: days, sbc, amount (más de un peso), o missing si está solo en uno de los dos. Vacío si coinciden. */
+		differs: ("days" | "sbc" | "amount" | "missing")[];
+	}[];
+	/** Totales (Totales). */
+	totals: {
+		/** Las cuotas al IMSS del mes según el SUA; 0 si algún renglón no se pudo leer. */
+		sua: number;
+		/** Las calculadas por Fiscalisto. */
+		calculated: number;
+	};
 }
 
 /** El presupuesto de un año (de toda la empresa o de un centro de costo) por cuenta de resultados y mes, y cómo va lo real contra él: el mes y de enero a ese mes. */
@@ -10176,6 +10260,17 @@ export interface RuleRunList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: RuleRun[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface SupplierGroupList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: SupplierGroup[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -14200,7 +14295,7 @@ export interface CreateRuleParams {
 		match?: "all" | "any";
 		/** Las condiciones sueltas. */
 		conditions?: {
-			/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, iva, saldo, saldoPct (el saldo en % del total), orderDiff (recibidas: cuánto pasa de sus órdenes, en %), age (días desde su fecha), weekday (el día de su fecha: lun, mar, mie, jue, vie, sab, dom), newParty (la primera factura de ese proveedor o cliente), monthTotal (lo facturado ese mes por ese proveedor o cliente, en pesos), dayCount (sus facturas ese día), opinion (recibidas: la opinión 32-D del proveedor en el portal: positive, negative, expired o none), satList (está en una lista del SAT: 69-B o 69), hasOrder (recibidas: ligada a una orden de compra), payoutAmount, newAccount y accountCheck (en payout.*: lo que se le paga al proveedor en el pago, si es el primer pago a esa cuenta y cómo se verificó: bank, hand o none), tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note, project (el id del proyecto), paymentDays, deliveryDays (días para la entrega), advance (lleva anticipo), newSupplier (la primera orden a ese proveedor), monthTotal (lo ordenado ese mes a ese proveedor, en pesos). Movimientos del banco: flow (out: retiro; in: depósito), description (el texto del banco), reference, amount, bankAccount (los últimos 4 dígitos de la cuenta), ownRfc, classification (de un depósito: prestamo, traspaso, devolucion o intereses), monthDay (el día del mes), weekday. */
+			/** Qué se revisa. Facturas: supplier, customer, supplierGroup (recibidas: el grupo del proveedor, sgr_…), customerGroup (emitidas: el grupo del cliente, cgr_…), partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, iva, saldo, saldoPct (el saldo en % del total), orderDiff (recibidas: cuánto pasa de sus órdenes, en %), age (días desde su fecha), weekday (el día de su fecha: lun, mar, mie, jue, vie, sab, dom), newParty (la primera factura de ese proveedor o cliente), monthTotal (lo facturado ese mes por ese proveedor o cliente, en pesos), dayCount (sus facturas ese día), opinion (recibidas: la opinión 32-D del proveedor en el portal: positive, negative, expired o none), satList (está en una lista del SAT: 69-B o 69), hasOrder (recibidas: ligada a una orden de compra), payoutAmount, newAccount y accountCheck (en payout.*: lo que se le paga al proveedor en el pago, si es el primer pago a esa cuenta y cómo se verificó: bank, hand o none), tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, supplierGroup (sgr_…), ownRfc, total, category, warehouse, stage, createdBy, moneda, note, project (el id del proyecto), paymentDays, deliveryDays (días para la entrega), advance (lleva anticipo), newSupplier (la primera orden a ese proveedor), monthTotal (lo ordenado ese mes a ese proveedor, en pesos). Movimientos del banco: flow (out: retiro; in: depósito), description (el texto del banco), reference, amount, bankAccount (los últimos 4 dígitos de la cuenta), ownRfc, classification (de un depósito: prestamo, traspaso, devolucion o intereses), monthDay (el día del mes), weekday. */
 			field: string;
 			/** Listas: is (alguno de values), not (ninguno), set, unset. Montos (MXN): gte, lte, between (value y to). Texto: contains, not_contains, starts (text; sin importar acentos ni mayúsculas), set, unset. Sí/no: yes, no. */
 			operator: "is" | "not" | "gte" | "lte" | "between" | "contains" | "not_contains" | "starts" | "yes" | "no" | "set" | "unset";
@@ -14219,7 +14314,7 @@ export interface CreateRuleParams {
 			match: "all" | "any";
 			/** Las condiciones del grupo. */
 			conditions: {
-				/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, iva, saldo, saldoPct (el saldo en % del total), orderDiff (recibidas: cuánto pasa de sus órdenes, en %), age (días desde su fecha), weekday (el día de su fecha: lun, mar, mie, jue, vie, sab, dom), newParty (la primera factura de ese proveedor o cliente), monthTotal (lo facturado ese mes por ese proveedor o cliente, en pesos), dayCount (sus facturas ese día), opinion (recibidas: la opinión 32-D del proveedor en el portal: positive, negative, expired o none), satList (está en una lista del SAT: 69-B o 69), hasOrder (recibidas: ligada a una orden de compra), payoutAmount, newAccount y accountCheck (en payout.*: lo que se le paga al proveedor en el pago, si es el primer pago a esa cuenta y cómo se verificó: bank, hand o none), tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note, project (el id del proyecto), paymentDays, deliveryDays (días para la entrega), advance (lleva anticipo), newSupplier (la primera orden a ese proveedor), monthTotal (lo ordenado ese mes a ese proveedor, en pesos). Movimientos del banco: flow (out: retiro; in: depósito), description (el texto del banco), reference, amount, bankAccount (los últimos 4 dígitos de la cuenta), ownRfc, classification (de un depósito: prestamo, traspaso, devolucion o intereses), monthDay (el día del mes), weekday. */
+				/** Qué se revisa. Facturas: supplier, customer, supplierGroup (recibidas: el grupo del proveedor, sgr_…), customerGroup (emitidas: el grupo del cliente, cgr_…), partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, iva, saldo, saldoPct (el saldo en % del total), orderDiff (recibidas: cuánto pasa de sus órdenes, en %), age (días desde su fecha), weekday (el día de su fecha: lun, mar, mie, jue, vie, sab, dom), newParty (la primera factura de ese proveedor o cliente), monthTotal (lo facturado ese mes por ese proveedor o cliente, en pesos), dayCount (sus facturas ese día), opinion (recibidas: la opinión 32-D del proveedor en el portal: positive, negative, expired o none), satList (está en una lista del SAT: 69-B o 69), hasOrder (recibidas: ligada a una orden de compra), payoutAmount, newAccount y accountCheck (en payout.*: lo que se le paga al proveedor en el pago, si es el primer pago a esa cuenta y cómo se verificó: bank, hand o none), tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, supplierGroup (sgr_…), ownRfc, total, category, warehouse, stage, createdBy, moneda, note, project (el id del proyecto), paymentDays, deliveryDays (días para la entrega), advance (lleva anticipo), newSupplier (la primera orden a ese proveedor), monthTotal (lo ordenado ese mes a ese proveedor, en pesos). Movimientos del banco: flow (out: retiro; in: depósito), description (el texto del banco), reference, amount, bankAccount (los últimos 4 dígitos de la cuenta), ownRfc, classification (de un depósito: prestamo, traspaso, devolucion o intereses), monthDay (el día del mes), weekday. */
 				field: string;
 				/** Listas: is (alguno de values), not (ninguno), set, unset. Montos (MXN): gte, lte, between (value y to). Texto: contains, not_contains, starts (text; sin importar acentos ni mayúsculas), set, unset. Sí/no: yes, no. */
 				operator: "is" | "not" | "gte" | "lte" | "between" | "contains" | "not_contains" | "starts" | "yes" | "no" | "set" | "unset";
@@ -14382,7 +14477,7 @@ export interface UpdateRuleParams {
 		match?: "all" | "any";
 		/** Las condiciones sueltas. */
 		conditions?: {
-			/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, iva, saldo, saldoPct (el saldo en % del total), orderDiff (recibidas: cuánto pasa de sus órdenes, en %), age (días desde su fecha), weekday (el día de su fecha: lun, mar, mie, jue, vie, sab, dom), newParty (la primera factura de ese proveedor o cliente), monthTotal (lo facturado ese mes por ese proveedor o cliente, en pesos), dayCount (sus facturas ese día), opinion (recibidas: la opinión 32-D del proveedor en el portal: positive, negative, expired o none), satList (está en una lista del SAT: 69-B o 69), hasOrder (recibidas: ligada a una orden de compra), payoutAmount, newAccount y accountCheck (en payout.*: lo que se le paga al proveedor en el pago, si es el primer pago a esa cuenta y cómo se verificó: bank, hand o none), tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note, project (el id del proyecto), paymentDays, deliveryDays (días para la entrega), advance (lleva anticipo), newSupplier (la primera orden a ese proveedor), monthTotal (lo ordenado ese mes a ese proveedor, en pesos). Movimientos del banco: flow (out: retiro; in: depósito), description (el texto del banco), reference, amount, bankAccount (los últimos 4 dígitos de la cuenta), ownRfc, classification (de un depósito: prestamo, traspaso, devolucion o intereses), monthDay (el día del mes), weekday. */
+			/** Qué se revisa. Facturas: supplier, customer, supplierGroup (recibidas: el grupo del proveedor, sgr_…), customerGroup (emitidas: el grupo del cliente, cgr_…), partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, iva, saldo, saldoPct (el saldo en % del total), orderDiff (recibidas: cuánto pasa de sus órdenes, en %), age (días desde su fecha), weekday (el día de su fecha: lun, mar, mie, jue, vie, sab, dom), newParty (la primera factura de ese proveedor o cliente), monthTotal (lo facturado ese mes por ese proveedor o cliente, en pesos), dayCount (sus facturas ese día), opinion (recibidas: la opinión 32-D del proveedor en el portal: positive, negative, expired o none), satList (está en una lista del SAT: 69-B o 69), hasOrder (recibidas: ligada a una orden de compra), payoutAmount, newAccount y accountCheck (en payout.*: lo que se le paga al proveedor en el pago, si es el primer pago a esa cuenta y cómo se verificó: bank, hand o none), tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, supplierGroup (sgr_…), ownRfc, total, category, warehouse, stage, createdBy, moneda, note, project (el id del proyecto), paymentDays, deliveryDays (días para la entrega), advance (lleva anticipo), newSupplier (la primera orden a ese proveedor), monthTotal (lo ordenado ese mes a ese proveedor, en pesos). Movimientos del banco: flow (out: retiro; in: depósito), description (el texto del banco), reference, amount, bankAccount (los últimos 4 dígitos de la cuenta), ownRfc, classification (de un depósito: prestamo, traspaso, devolucion o intereses), monthDay (el día del mes), weekday. */
 			field: string;
 			/** Listas: is (alguno de values), not (ninguno), set, unset. Montos (MXN): gte, lte, between (value y to). Texto: contains, not_contains, starts (text; sin importar acentos ni mayúsculas), set, unset. Sí/no: yes, no. */
 			operator: "is" | "not" | "gte" | "lte" | "between" | "contains" | "not_contains" | "starts" | "yes" | "no" | "set" | "unset";
@@ -14401,7 +14496,7 @@ export interface UpdateRuleParams {
 			match: "all" | "any";
 			/** Las condiciones del grupo. */
 			conditions: {
-				/** Qué se revisa. Facturas: supplier, customer, partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, iva, saldo, saldoPct (el saldo en % del total), orderDiff (recibidas: cuánto pasa de sus órdenes, en %), age (días desde su fecha), weekday (el día de su fecha: lun, mar, mie, jue, vie, sab, dom), newParty (la primera factura de ese proveedor o cliente), monthTotal (lo facturado ese mes por ese proveedor o cliente, en pesos), dayCount (sus facturas ese día), opinion (recibidas: la opinión 32-D del proveedor en el portal: positive, negative, expired o none), satList (está en una lista del SAT: 69-B o 69), hasOrder (recibidas: ligada a una orden de compra), payoutAmount, newAccount y accountCheck (en payout.*: lo que se le paga al proveedor en el pago, si es el primer pago a esa cuenta y cómo se verificó: bank, hand o none), tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, ownRfc, total, category, warehouse, stage, createdBy, moneda, note, project (el id del proyecto), paymentDays, deliveryDays (días para la entrega), advance (lleva anticipo), newSupplier (la primera orden a ese proveedor), monthTotal (lo ordenado ese mes a ese proveedor, en pesos). Movimientos del banco: flow (out: retiro; in: depósito), description (el texto del banco), reference, amount, bankAccount (los últimos 4 dígitos de la cuenta), ownRfc, classification (de un depósito: prestamo, traspaso, devolucion o intereses), monthDay (el día del mes), weekday. */
+				/** Qué se revisa. Facturas: supplier, customer, supplierGroup (recibidas: el grupo del proveedor, sgr_…), customerGroup (emitidas: el grupo del cliente, cgr_…), partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, iva, saldo, saldoPct (el saldo en % del total), orderDiff (recibidas: cuánto pasa de sus órdenes, en %), age (días desde su fecha), weekday (el día de su fecha: lun, mar, mie, jue, vie, sab, dom), newParty (la primera factura de ese proveedor o cliente), monthTotal (lo facturado ese mes por ese proveedor o cliente, en pesos), dayCount (sus facturas ese día), opinion (recibidas: la opinión 32-D del proveedor en el portal: positive, negative, expired o none), satList (está en una lista del SAT: 69-B o 69), hasOrder (recibidas: ligada a una orden de compra), payoutAmount, newAccount y accountCheck (en payout.*: lo que se le paga al proveedor en el pago, si es el primer pago a esa cuenta y cómo se verificó: bank, hand o none), tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, supplierGroup (sgr_…), ownRfc, total, category, warehouse, stage, createdBy, moneda, note, project (el id del proyecto), paymentDays, deliveryDays (días para la entrega), advance (lleva anticipo), newSupplier (la primera orden a ese proveedor), monthTotal (lo ordenado ese mes a ese proveedor, en pesos). Movimientos del banco: flow (out: retiro; in: depósito), description (el texto del banco), reference, amount, bankAccount (los últimos 4 dígitos de la cuenta), ownRfc, classification (de un depósito: prestamo, traspaso, devolucion o intereses), monthDay (el día del mes), weekday. */
 				field: string;
 				/** Listas: is (alguno de values), not (ninguno), set, unset. Montos (MXN): gte, lte, between (value y to). Texto: contains, not_contains, starts (text; sin importar acentos ni mayúsculas), set, unset. Sí/no: yes, no. */
 				operator: "is" | "not" | "gte" | "lte" | "between" | "contains" | "not_contains" | "starts" | "yes" | "no" | "set" | "unset";
@@ -14547,6 +14642,38 @@ export interface ListRuleRunsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
+}
+
+export interface CreateSupplierGroupParams {
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** Nombre. */
+	name: string;
+	/** Color de su etiqueta en la app: info, warning, positive, critical o muted. */
+	color?: "info" | "warning" | "positive" | "critical" | "muted";
+	/** RFC de los proveedores que entran al grupo (hasta 500); salen del que tenían. */
+	suppliers?: string[];
+}
+
+/** Los parámetros de GET /v1/supplier_groups. */
+export interface ListSupplierGroupsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface UpdateSupplierGroupParams {
+	/** Nombre. */
+	name?: string;
+	/** Color de su etiqueta en la app: info, warning, positive, critical o muted. */
+	color?: "info" | "warning" | "positive" | "critical" | "muted";
+	/** RFC de los proveedores que entran al grupo (hasta 500); salen del que tenían. */
+	add_suppliers?: string[];
+	/** RFC de los proveedores que salen del grupo y quedan sin grupo (hasta 500). */
+	remove_suppliers?: string[];
 }
 
 /** Los parámetros de GET /v1/findings. */
@@ -17167,6 +17294,13 @@ export interface CreatePayrollProvisionParams {
 export interface DeletePayrollProvisionParams {
 	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
 	issuer?: string;
+}
+
+export interface CompareSuaCedulaParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** La cédula de determinación de cuotas del mes (la mensual, del IMSS) en PDF como la imprimió el SUA, en base64; hasta 10 MB. */
+	file: string;
 }
 
 /** Los parámetros de GET /v1/accounting/tax_determinations/{month}. */
@@ -20937,6 +21071,74 @@ export class RulesResource {
 	}
 }
 
+/** Reglas: fiscalisto.supplierGroups. */
+export class SupplierGroupsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Crear un grupo de proveedores
+	 *
+	 * Un grupo de proveedores (fletes, materia prima…), como Proveedores › Grupos en la app. Cada proveedor está en un solo grupo: los de suppliers salen del que tenían. Una regla vale para todo el grupo con la condición supplierGroup.
+	 *
+	 * POST /v1/supplier_groups
+	 * @see https://fiscalisto.com/docs/api/referencia/reglas/create-supplier-group
+	 */
+	create(params: CreateSupplierGroupParams, options?: RequestOptions): Promise<SupplierGroup> {
+		return this.#client.request({ method: "POST", path: "/v1/supplier_groups", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar grupos de proveedores
+	 *
+	 * Los grupos de proveedores, con cuántos proveedores tiene cada uno.
+	 *
+	 * GET /v1/supplier_groups
+	 * @see https://fiscalisto.com/docs/api/referencia/reglas/list-supplier-groups
+	 */
+	list(params?: ListSupplierGroupsParams, options?: RequestOptions): List<SupplierGroup> {
+		return this.#client.list({ path: "/v1/supplier_groups", query: params }, options);
+	}
+
+	/**
+	 * Ver un grupo de proveedores
+	 *
+	 * Un grupo de proveedores.
+	 *
+	 * GET /v1/supplier_groups/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/reglas/get-supplier-group
+	 */
+	get(id: string, options?: RequestOptions): Promise<SupplierGroup> {
+		return this.#client.request({ method: "GET", path: `/v1/supplier_groups/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Actualizar un grupo de proveedores
+	 *
+	 * Cambia solo lo que manda: su nombre, su color, los proveedores que entran (add_suppliers) y los que salen (remove_suppliers).
+	 *
+	 * POST /v1/supplier_groups/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/reglas/update-supplier-group
+	 */
+	update(id: string, params?: UpdateSupplierGroupParams, options?: RequestOptions): Promise<SupplierGroup> {
+		return this.#client.request({ method: "POST", path: `/v1/supplier_groups/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Quitar un grupo de proveedores
+	 *
+	 * Sus proveedores se quedan sin grupo, y las reglas que lo usan ya no aplican a nadie.
+	 *
+	 * DELETE /v1/supplier_groups/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/reglas/delete-supplier-group
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/supplier_groups/${encodeURIComponent(id)}` }, options);
+	}
+}
+
 /** Hallazgos: fiscalisto.findings. */
 export class FindingsResource {
 	readonly #client: Client;
@@ -24207,6 +24409,18 @@ export class PayrollProvisionsResource {
 	delete(month: string, params?: DeletePayrollProvisionParams, options?: RequestOptions): Promise<PayrollProvision> {
 		return this.#client.request({ method: "DELETE", path: `/v1/accounting/payroll_provisions/${encodeURIComponent(month)}`, query: params }, options);
 	}
+
+	/**
+	 * Comparar las cuotas de un mes con el SUA
+	 *
+	 * Lee la cédula de determinación de cuotas que imprimió el SUA para el mes (la mensual, del IMSS: cuota fija, excedente, prestaciones en dinero, gastos médicos de pensionados, riesgos de trabajo, invalidez y vida y guarderías) y la compara trabajador por trabajador, por su NSS, con lo que Fiscalisto calculó de los recibos timbrados: quién está solo en uno de los dos y en qué difieren los días, el salario base de cotización o las cuotas (hasta un peso es redondeo del SUA). Se calcula con la prima de riesgo de la cédula. No guarda nada: si el SUA tiene razón, mande sus importes a POST /v1/accounting/payroll_provisions/{month}. Como Cierre del mes › Cuotas patronales del mes › Comparar con el SUA en la app. Una cédula de otro mes contesta workers vacío y cedula_month con su mes.
+	 *
+	 * POST /v1/accounting/payroll_provisions/{month}/sua_comparison
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/compare-sua-cedula
+	 */
+	compareSua(month: string, params: CompareSuaCedulaParams, options?: RequestOptions): Promise<SuaComparison> {
+		return this.#client.request({ method: "POST", path: `/v1/accounting/payroll_provisions/${encodeURIComponent(month)}/sua_comparison`, body: params, idempotent: true }, options);
+	}
 }
 
 /** Contabilidad: fiscalisto.taxDeterminations. */
@@ -25044,6 +25258,7 @@ export class FiscalistoApi extends Core {
 	readonly taxIds = new TaxIdsResource(this);
 	readonly branches = new BranchesResource(this);
 	readonly rules = new RulesResource(this);
+	readonly supplierGroups = new SupplierGroupsResource(this);
 	readonly findings = new FindingsResource(this);
 	readonly costCenters = new CostCentersResource(this);
 	readonly tags = new TagsResource(this);
