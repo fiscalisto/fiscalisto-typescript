@@ -2258,7 +2258,7 @@ export interface EmployeeVacations {
 	}[];
 }
 
-/** El portal del empleado: su enlace y los recibos que firmó de recibido. */
+/** El portal del empleado: su enlace, los avisos que le llegan y los recibos que firmó de recibido. */
 export interface EmployeePortal {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "employee_portal";
@@ -2270,10 +2270,23 @@ export interface EmployeePortal {
 	url: string | null;
 	/** Cuándo se hizo el enlace. */
 	enabled_at: string | null;
-	/** Los celulares ligados: el primero que lo abre y los que lo abren en la hora siguiente, hasta 3. */
+	/** Los celulares ligados: el primero que lo abre, los que lo abren en la hora siguiente (hasta 3) y la app Mi nómina que instala desde su enlace (hasta 6 en total). */
 	phones: number;
 	/** La última vez que lo abrió. */
 	last_seen_at: string | null;
+	/** Los celulares en que instaló Mi nómina y activó los avisos (recibo nuevo, recibo cancelado, respuesta a sus vacaciones, recibo sin firmar). */
+	push_phones: number;
+	/** Sus últimos 10 avisos, los más recientes primero. */
+	notices: {
+		/** receipt: recibo nuevo; receipt_canceled: se canceló uno; vacation_approved / vacation_rejected: la respuesta a sus vacaciones; sign_reminder: tiene un recibo por firmar. */
+		kind: "receipt" | "receipt_canceled" | "vacation_approved" | "vacation_rejected" | "sign_reminder";
+		/** Cómo le llegó: push (a su celular), email (a su correo), off (usted o el empleado apagó ese aviso), none (no tiene avisos ni correo), skipped (ya no aplicaba: lo firmó, se canceló o se lo mandamos con el recibo), stale (no salió en 7 días); null mientras está por salir (por ejemplo, de noche). */
+		channel: "push" | "email" | "off" | "none" | "skipped" | "stale" | null;
+		/** Cuándo se generó. */
+		created_at: string;
+		/** Cuándo salió. */
+		sent_at: string | null;
+	}[];
 	/** Los recibos que firmó de recibido desde su enlace (con el día, su celular y su IP guardados), los más recientes primero. */
 	signed_receipts: {
 		/** El folio fiscal del recibo. */
@@ -2281,6 +2294,30 @@ export interface EmployeePortal {
 		/** Cuándo lo firmó de recibido. */
 		signed_at: string;
 	}[];
+}
+
+/** Qué avisos les llegan a los empleados del emisor en Mi nómina (al celular o a su correo). Cada empleado puede apagar los suyos. */
+export interface EmployeeNoticeSettings {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "employee_notice_settings";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Avisar cada recibo nuevo en cuanto se timbra. */
+	receipt: boolean;
+	/** Avisar cuando un recibo suyo se cancela ante el SAT. */
+	receipt_canceled: boolean;
+	/** Avisar la respuesta a sus vacaciones, con su nota. */
+	vacation: boolean;
+	/** Los días después de timbrarse en que se le recuerda, una vez, firmar un recibo sin firmar; 0: nunca. */
+	sign_reminder_days: number;
+	/** A quien no activó los avisos en su celular le llega el mismo aviso a su correo. */
+	email_fallback: boolean;
+	/** Los avisos de entre las 21:00 y las 7:00 (hora del centro) llegan a las 7:00. */
+	quiet_hours: boolean;
+	/** Cuándo se cambiaron; null, nunca (son los de omisión). */
+	updated_at: string | null;
 }
 
 /** Días de vacaciones que un empleado pidió desde su enlace. */
@@ -12908,6 +12945,29 @@ export interface UpdateEmployeePortalParams {
 	send_email?: boolean;
 }
 
+/** Los parámetros de GET /v1/employee_notice_settings. */
+export interface GetEmployeeNoticeSettingsParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface UpdateEmployeeNoticeSettingsParams {
+	/** El emisor (iss_…); por omisión, el único de la cuenta. */
+	issuer?: string;
+	/** «Ya está su recibo de nómina» en cuanto se timbra. */
+	receipt?: boolean;
+	/** Cuando un recibo suyo se cancela ante el SAT. */
+	receipt_canceled?: boolean;
+	/** Al aprobar o rechazar los días que pidió, con su nota. */
+	vacation?: boolean;
+	/** Si un recibo sigue sin firmar de recibido estos días después de timbrarse, se le recuerda una vez. 0: nunca. */
+	sign_reminder_days?: number;
+	/** A quien no activó los avisos en su celular le llega el mismo aviso a su correo. */
+	email_fallback?: boolean;
+	/** Los avisos de entre las 21:00 y las 7:00 (hora del centro) llegan a las 7:00. */
+	quiet_hours?: boolean;
+}
+
 /** Los parámetros de GET /v1/vacation_requests. */
 export interface ListVacationRequestsParams {
 	/** Solo las de este empleado (emp_…). */
@@ -19465,7 +19525,7 @@ export class EmployeesResource {
 	/**
 	 * Portal del empleado
 	 *
-	 * El enlace personal del empleado (sin cuenta) para ver, descargar y firmar de recibido sus recibos de nómina, ver sus vacaciones y pedir días; los celulares ligados y los recibos que firmó.
+	 * El enlace personal del empleado (sin cuenta) para ver, descargar y firmar de recibido sus recibos de nómina, ver sus vacaciones y pedir días; los celulares ligados, los que tienen avisos, sus últimos avisos y los recibos que firmó.
 	 *
 	 * GET /v1/employees/{id}/portal
 	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-employee-portal
@@ -19508,6 +19568,38 @@ export class EmployeesResource {
 	 */
 	updateTraining(id: string, params?: UpdateEmployeeTrainingParams, options?: RequestOptions): Promise<EmployeeTraining> {
 		return this.#client.request({ method: "POST", path: `/v1/employees/${encodeURIComponent(id)}/training`, body: params, idempotent: true }, options);
+	}
+}
+
+/** Nómina: fiscalisto.employeeNoticeSettings. */
+export class EmployeeNoticeSettingsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Avisos a empleados
+	 *
+	 * Qué avisos les llegan a los empleados del emisor en Mi nómina: recibo nuevo, recibo cancelado, la respuesta a sus vacaciones y el recordatorio de firmar. Llegan al celular de quien instaló Mi nómina y activó sus avisos; si no, a su correo (email_fallback).
+	 *
+	 * GET /v1/employee_notice_settings
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-employee-notice-settings
+	 */
+	get(params?: GetEmployeeNoticeSettingsParams, options?: RequestOptions): Promise<EmployeeNoticeSettings> {
+		return this.#client.request({ method: "GET", path: "/v1/employee_notice_settings", query: params }, options);
+	}
+
+	/**
+	 * Cambiar los avisos a empleados
+	 *
+	 * Lo que no mande se queda como estaba. Cada empleado puede, además, apagar los suyos desde su enlace.
+	 *
+	 * POST /v1/employee_notice_settings
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-employee-notice-settings
+	 */
+	update(params?: UpdateEmployeeNoticeSettingsParams, options?: RequestOptions): Promise<EmployeeNoticeSettings> {
+		return this.#client.request({ method: "POST", path: "/v1/employee_notice_settings", body: params, idempotent: true }, options);
 	}
 }
 
@@ -24906,6 +24998,7 @@ export class FiscalistoApi extends Core {
 	readonly advances = new AdvancesResource(this);
 	readonly retentions = new RetentionsResource(this);
 	readonly employees = new EmployeesResource(this);
+	readonly employeeNoticeSettings = new EmployeeNoticeSettingsResource(this);
 	readonly vacationRequests = new VacationRequestsResource(this);
 	readonly payrollReceipts = new PayrollReceiptsResource(this);
 	readonly payrollBatches = new PayrollBatchesResource(this);
