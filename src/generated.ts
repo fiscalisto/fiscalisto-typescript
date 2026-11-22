@@ -4039,6 +4039,59 @@ export interface RuleRun {
 	created_at: string;
 }
 
+/** Un hallazgo en una orden de compra, un pago, un proveedor o la contabilidad: lo que Fiscalisto encontró y conviene revisar. Los de facturas están en SatFinding. */
+export interface Finding {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "finding";
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** purchase_orders (órdenes de compra), payouts (pagos a proveedores), suppliers (proveedores), accounting (contabilidad) o bank (movimientos del banco). */
+	area: "purchase_orders" | "payouts" | "suppliers" | "accounting" | "bank" | null;
+	/** En qué registro está. */
+	record: {
+		/** purchase_order, payout, supplier, poliza (la contabilidad de un mes), account (una cuenta en un mes) o bank_movement. */
+		type: "purchase_order" | "payout" | "supplier" | "poliza" | "account" | "bank_movement";
+		/** Su id en la API: el pago (pyo_…) o el RFC del proveedor; null si no tiene. */
+		id: string | null;
+		/** Cómo lo nombra Fiscalisto: el número de la orden, el RFC, «RFC:AAAA-MM» un mes de contabilidad, «RFC:AAAA-MM:cuenta» una cuenta. */
+		reference: string;
+		/** El registro en palabras: «Orden de compra 12». */
+		description: string;
+	};
+	/** El tipo de hallazgo (oc_factura_distinta, prov_lista_sat…). */
+	code: string;
+	/** critical (grave), warning (revisar) o info (aviso), como lo puso la empresa. */
+	severity: "critical" | "warning" | "info";
+	/** El tipo de hallazgo en palabras. */
+	title: string;
+	/** Qué significa y por qué, con el artículo. */
+	explanation: string | null;
+	/** Qué encontró exactamente en este registro. */
+	text: string;
+	/** El monto en cuestión, en pesos, o null. */
+	amount: number | null;
+	/** El RFC del proveedor, o null. */
+	counterparty_tax_id: string | null;
+	/** open: nadie lo ha revisado; reviewed: alguien dijo que está bien; resolved: ya no aplica (lo que lo causó cambió). */
+	status: "open" | "reviewed" | "resolved";
+	/** true si detiene su registro hasta que alguien lo revise («No dejar aprobar», «No dejar pagar»). */
+	holds_record: boolean;
+	/** Por qué está bien, si quien lo revisó lo dijo. */
+	note: string | null;
+	/** Cuándo lo encontró. */
+	created_at: string | null;
+	/** La última vez que cambió su texto. */
+	updated_at: string | null;
+	/** Cuándo lo revisaron, o null. */
+	reviewed_at: string | null;
+	/** Cuándo dejó de aplicar, o null. */
+	resolved_at: string | null;
+}
+
 /** Una lista de precios: parte del precio del catálogo (o de otra lista), lo mueve un porcentaje y lo redondea, con precios propios por producto, presentación y desde cierta cantidad (escalones de mayoreo). items solo viene al ver una lista. */
 export interface PriceList {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
@@ -9790,6 +9843,17 @@ export interface RuleRunList {
 	url: string;
 }
 
+export interface FindingList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: Finding[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
 export interface CostCenterList {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "list";
@@ -13938,6 +14002,31 @@ export interface ListRuleRunsParams {
 	starting_after?: string;
 }
 
+/** Los parámetros de GET /v1/findings. */
+export interface ListFindingsParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** Solo los de un área: purchase_orders, payouts, suppliers, accounting o bank. */
+	area?: "purchase_orders" | "payouts" | "suppliers" | "accounting" | "bank";
+	/** open (por omisión: sin revisar), reviewed (revisados), resolved (ya no aplican) o all. */
+	status?: "open" | "reviewed" | "resolved" | "all";
+	/** Solo los de esta gravedad: critical, warning o info. */
+	severity?: "critical" | "warning" | "info";
+	/** Solo este tipo de hallazgo (oc_factura_distinta…). */
+	code?: string;
+	/** Solo los de este proveedor (su RFC). */
+	counterparty_tax_id?: string;
+}
+
+export interface ReviewFindingParams {
+	/** Por qué está bien (hasta 500 caracteres). */
+	note?: string;
+}
+
 export interface CreateCostCenterParams {
 	/** El emisor (iss_…). Por omisión, su único emisor. */
 	issuer?: string;
@@ -16744,7 +16833,7 @@ export interface CreateRecurringInvoiceParams {
 		/** La hora (0 a 23) en que se timbra, en time_zone. Por omisión 7. */
 		hour?: number;
 		/** La zona de esa hora. Por omisión America/Mexico_City. */
-		time_zone?: "America/Mexico_City" | "America/Cancun" | "America/Mazatlan" | "America/Hermosillo" | "America/Tijuana" | "America/Ciudad_Juarez";
+		time_zone?: "America/Mexico_City" | "America/Cancun" | "America/Mazatlan" | "America/Hermosillo" | "America/Tijuana" | "America/Matamoros" | "America/Ciudad_Juarez";
 	};
 	/** La factura que se repite: el cuerpo de POST /v1/invoices, sin issuer, folio, date, global ni metadata. En description puede usar {mes}, {mes anterior}, {mes siguiente}, {año}, {año anterior}, {año siguiente} y {periodo}: cada factura los llena con su fecha. Como se escriben es como salen: {mes} «noviembre», {Mes} «Noviembre», {MES} «NOVIEMBRE». */
 	invoice: InvoiceCreate;
@@ -16782,7 +16871,7 @@ export interface UpdateRecurringInvoiceParams {
 		/** La hora (0 a 23) en que se timbra, en time_zone. Por omisión 7. */
 		hour?: number;
 		/** La zona de esa hora. Por omisión America/Mexico_City. */
-		time_zone?: "America/Mexico_City" | "America/Cancun" | "America/Mazatlan" | "America/Hermosillo" | "America/Tijuana" | "America/Ciudad_Juarez";
+		time_zone?: "America/Mexico_City" | "America/Cancun" | "America/Mazatlan" | "America/Hermosillo" | "America/Tijuana" | "America/Matamoros" | "America/Ciudad_Juarez";
 	};
 	/** La factura completa que se repite desde la siguiente vez (reemplaza la anterior). */
 	invoice?: InvoiceCreate;
@@ -20070,6 +20159,62 @@ export class RulesResource {
 	 */
 	listRuns(id: string, params?: ListRuleRunsParams, options?: RequestOptions): List<RuleRun> {
 		return this.#client.list({ path: `/v1/rules/${encodeURIComponent(id)}/runs`, query: params }, options);
+	}
+}
+
+/** Hallazgos: fiscalisto.findings. */
+export class FindingsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar hallazgos
+	 *
+	 * Lo que Fiscalisto encontró en las órdenes de compra, pagos, proveedores y contabilidad del emisor, el más reciente primero: una factura que no coincide con su orden, un proveedor en la lista 69-B, un documento vencido, Caja con saldo acreedor. Sin status, los que nadie ha revisado. Los de facturas están en GET /v1/sat_findings. No usa timbres.
+	 *
+	 * GET /v1/findings
+	 * @see https://fiscalisto.com/docs/api/referencia/hallazgos/list-findings
+	 */
+	list(params?: ListFindingsParams, options?: RequestOptions): List<Finding> {
+		return this.#client.list({ path: "/v1/findings", query: params }, options);
+	}
+
+	/**
+	 * Ver un hallazgo
+	 *
+	 * Un hallazgo, con su registro y si lo revisaron.
+	 *
+	 * GET /v1/findings/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/hallazgos/get-finding
+	 */
+	get(id: string, options?: RequestOptions): Promise<Finding> {
+		return this.#client.request({ method: "GET", path: `/v1/findings/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Marcar un hallazgo como revisado
+	 *
+	 * Como «Revisado» en la app: alguien vio el hallazgo y está bien, con una nota opcional de por qué. Si detenía su registro, ya no lo detiene. Uno ya revisado cambia su nota. Uno que ya no aplica contesta finding_resolved. Si lo que lo causó cambia después, vuelve a abrirse solo.
+	 *
+	 * POST /v1/findings/{id}/review
+	 * @see https://fiscalisto.com/docs/api/referencia/hallazgos/review-finding
+	 */
+	review(id: string, params?: ReviewFindingParams, options?: RequestOptions): Promise<Finding> {
+		return this.#client.request({ method: "POST", path: `/v1/findings/${encodeURIComponent(id)}/review`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Volver a abrir un hallazgo
+	 *
+	 * Como «Deshacer» en la app: un hallazgo revisado vuelve a «Sin revisar», sin su nota, y si su ajuste es detener el registro, lo vuelve a detener.
+	 *
+	 * POST /v1/findings/{id}/reopen
+	 * @see https://fiscalisto.com/docs/api/referencia/hallazgos/reopen-finding
+	 */
+	reopen(id: string, options?: RequestOptions): Promise<Finding> {
+		return this.#client.request({ method: "POST", path: `/v1/findings/${encodeURIComponent(id)}/reopen`, idempotent: true }, options);
 	}
 }
 
@@ -24121,6 +24266,7 @@ export class FiscalistoApi extends Core {
 	readonly taxIds = new TaxIdsResource(this);
 	readonly branches = new BranchesResource(this);
 	readonly rules = new RulesResource(this);
+	readonly findings = new FindingsResource(this);
 	readonly costCenters = new CostCentersResource(this);
 	readonly tags = new TagsResource(this);
 	readonly priceLists = new PriceListsResource(this);
