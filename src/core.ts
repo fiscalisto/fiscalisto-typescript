@@ -6,7 +6,7 @@
 
 import type { ErrorCode } from "./error-codes.js";
 
-export const VERSION = "0.1.202";
+export const VERSION = "0.1.203";
 /**
  * La versión de la API para la que se hizo este SDK: la manda en cada solicitud
  * (Fiscalisto-Version), así actualizar la API no cambia lo que recibe hasta que actualice el SDK.
