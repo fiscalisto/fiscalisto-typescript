@@ -2550,8 +2550,17 @@ export interface PayrollApproval {
 	requested_at: string;
 	/** Cuándo se aprobó, rechazó o retiró, o null. */
 	decided_at: string | null;
-	/** Por qué se rechazó (o el comentario de quien la aprobó), o null. */
+	/** Por qué se rechazó, el comentario de quien la aprobó, o el paso que la aprobó solo; o null. */
 	note: string | null;
+	/** Mientras espera (pending): en qué paso de sus «Pasos de aprobación» va (Ajustes › Aprobaciones › Prenómina); null en otro estado. */
+	step: {
+		/** El paso en que va, desde 1. */
+		number: number;
+		/** Cuántos pasos tiene. */
+		of: number;
+		/** El nombre del paso, como «Finanzas». */
+		name: string;
+	} | null;
 }
 
 /** Lo que cuesta la nómina del año mes por mes: lo pagado más las cuotas del patrón y el impuesto sobre nómina. */
@@ -2624,8 +2633,8 @@ export interface PayrollTaxSettings {
 export interface PayrollCalendarEvent {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "payroll_calendar_event";
-	/** pago (una nómina, en su fecha de pago), imss (cuotas del mes, LSS art. 39), rcv_infonavit (bimestrales), isn (impuesto sobre nómina de un estado), aguinaldo (LFT art. 87), ptu (LFT art. 122), prima_riesgo (determinación anual, RACERF art. 32) o ajuste_anual (LISR art. 97). */
-	obligation: "pago" | "imss" | "rcv_infonavit" | "isn" | "aguinaldo" | "ptu" | "prima_riesgo" | "ajuste_anual";
+	/** pago (una nómina, en su fecha de pago), imss (cuotas del mes, LSS art. 39), rcv_infonavit (bimestrales), isn (impuesto sobre nómina de un estado), aguinaldo (LFT art. 87), ptu (LFT art. 122), prima_riesgo (determinación anual, RACERF art. 32), ajuste_anual (LISR art. 97), icsoe (informativa cuatrimestral al IMSS de un contratista REPSE, LSS art. 15-A) o sisub (la del Infonavit, Ley del Infonavit art. 29 Bis). */
+	obligation: "pago" | "imss" | "rcv_infonavit" | "isn" | "aguinaldo" | "ptu" | "prima_riesgo" | "ajuste_anual" | "icsoe" | "sisub";
 	/** Lo identifica junto con obligation: 2026-11 (mes), 2026-B6 (bimestre), 2026 (año), 2026-11:CMX (ISN de un estado) o 2026-11-16/2026-11-30:04 (una nómina). */
 	key: string;
 	/** Qué es, como lo dice la app. */
@@ -6807,6 +6816,206 @@ export interface SuaComparison {
 	};
 }
 
+/** Un contrato de servicios u obras especializados (LFT art. 15) con un cliente, y quién del personal del emisor trabaja en él: lo que piden el ICSOE y el SISUB. Como Nómina › REPSE en la app. */
+export interface RepseContract {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "repse_contract";
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Número de contrato (dígitos, hasta 20). */
+	number: string;
+	/** Tipo de contrato. */
+	kind: string;
+	/** Objeto del contrato. */
+	contract_object: string;
+	/** El servicio u obra especializada registrado en el REPSE que cubre. */
+	service: string;
+	/** Monto pactado, en pesos. */
+	amount: number;
+	/** Inicio de su vigencia (YYYY-MM-DD). */
+	start_date: string;
+	/** Fecha de término, o null si es por tiempo indefinido. */
+	end_date: string | null;
+	/** Número estimado mensual de trabajadores que pone a disposición. */
+	estimated_workers: number;
+	/** RFC del cliente (el beneficiario). */
+	client_tax_id: string;
+	/** Razón social del cliente. */
+	client_name: string;
+	/** Registro patronal del cliente, o null si no tiene. */
+	client_employer_registration: string | null;
+	/** Domicilio fiscal del cliente. */
+	client_address: {
+		/** Calle. */
+		street: string;
+		/** Número exterior. */
+		exterior: string | null;
+		/** Número interior. */
+		interior: string | null;
+		/** Colonia. */
+		neighborhood: string | null;
+		/** Código postal. */
+		zip: string;
+		/** Municipio o demarcación territorial. */
+		municipality: string;
+		/** Estado (c_Estado). */
+		state: string;
+	};
+	/** El centro de trabajo donde trabajan las personas que pone a disposición. */
+	site_address: {
+		/** Calle. */
+		street: string;
+		/** Número exterior. */
+		exterior: string | null;
+		/** Número interior. */
+		interior: string | null;
+		/** Colonia. */
+		neighborhood: string | null;
+		/** Código postal. */
+		zip: string;
+		/** Municipio o demarcación territorial. */
+		municipality: string;
+		/** Estado (c_Estado). */
+		state: string;
+	};
+	/** Quién trabaja en el contrato y desde cuándo. */
+	workers: {
+		/** El empleado (emp_…). */
+		employee: string;
+		/** Su nombre. */
+		name: string;
+		/** Desde cuándo trabaja en el contrato (YYYY-MM-DD). */
+		start_date: string;
+		/** Hasta cuándo, o null mientras siga. */
+		end_date: string | null;
+	}[];
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string | null;
+}
+
+/** Lo que el SISUB pide del sujeto obligado (el contratista); la razón social y el registro patronal salen de sus datos fiscales. */
+export interface RepseProfile {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "repse_profile";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Folio de su registro en el REPSE que dio la STPS. */
+	stps_folio: string | null;
+	/** Correo del sujeto obligado. */
+	email: string | null;
+	/** Teléfono, 10 dígitos. */
+	phone: string | null;
+	/** Domicilio fiscal en una línea. */
+	address: string | null;
+	/** Representante legal (persona moral). */
+	legal_representative: string | null;
+	/** Administrador único (persona moral). */
+	sole_administrator: string | null;
+	/** Número de la escritura constitutiva. */
+	deed_number: string | null;
+	/** Nombre del notario público. */
+	notary_name: string | null;
+	/** Número de la notaría. */
+	notary_number: string | null;
+	/** Fecha de la escritura (YYYY-MM-DD). */
+	deed_date: string | null;
+	/** Folio mercantil. */
+	commercial_folio: string | null;
+}
+
+/** El ICSOE (IMSS, LSS art. 15-A) y el SISUB (Infonavit, Ley del Infonavit art. 29 Bis) de un cuatrimestre, hechos de los contratos y los recibos timbrados. No hay forma de mandarlos por API: se suben, firmados con la e.firma, en cada portal. */
+export interface RepseReturn {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "repse_return";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** El cuatrimestre: AAAA-1 (enero a abril), AAAA-2 o AAAA-3. */
+	period: string;
+	/** Primer día del cuatrimestre. */
+	start_date: string;
+	/** Último día del cuatrimestre. */
+	end_date: string;
+	/** Último día para presentarlos: el 17 de enero, mayo o septiembre, o el siguiente día hábil (CFF art. 12). */
+	due_date: string;
+	/** Los contratos vigentes en el cuatrimestre. */
+	contracts: {
+		/** El contrato (rpc_…). */
+		contract: string;
+		/** Su número de contrato. */
+		number: string;
+		/** Sus trabajadores en el cuatrimestre (el CSV del ICSOE). */
+		workers: {
+			/** El empleado (emp_…). */
+			employee: string;
+			/** Su nombre. */
+			name: string;
+			/** Su NSS, 11 dígitos. */
+			nss: string;
+			/** Su CURP. */
+			curp: string;
+			/** Su último salario base de cotización del cuatrimestre, hasta 25 UMA. */
+			sbc: number;
+		}[];
+	}[];
+	/** Cada trabajador por bimestre (el detalle de trabajadores del SISUB). */
+	workers: {
+		/** El empleado (emp_…). */
+		employee: string;
+		/** Su nombre. */
+		name: string;
+		/** Su NSS. */
+		nss: string;
+		/** El bimestre del año (1 a 6). */
+		bimester: number;
+		/** Los números de los contratos en que trabajó ese bimestre. */
+		contracts: string[];
+		/** Las percepciones variables del bimestre anterior que integraron su salario (LSS arts. 27 y 30). */
+		variable_perceptions: number;
+		/** Lo pagado en el bimestre de sueldos, aguinaldo y prima vacacional. */
+		fixed_perceptions: number;
+		/** Días de incapacidad del bimestre. */
+		disability_days: number;
+		/** Lo demás pagado en el bimestre que no integra el salario. */
+		non_integrable_perceptions: number;
+		/** Su salario base al cierre del bimestre, hasta 25 UMA. */
+		capped_salary: number;
+		/** Su aportación al Infonavit del bimestre (5% del salario base). */
+		infonavit_contribution: number;
+		/** true si tuvo descuento de crédito Infonavit en el bimestre. */
+		has_credit: boolean;
+		/** Lo que se le descontó de amortización del crédito en el bimestre. */
+		amortization: number;
+	}[];
+	/** Lo que el archivo del sujeto obligado del SISUB suma. */
+	totals: {
+		/** Aportaciones de los trabajadores sin crédito. */
+		contributions_without_credit: number;
+		/** Aportaciones de los trabajadores con crédito. */
+		contributions_with_credit: number;
+		/** Amortizaciones descontadas. */
+		amortizations: number;
+	};
+	/** Lo que falta o está mal antes de presentarlos; vacío si nada. */
+	problems: string[];
+	/** Los 3 CSV del SISUB (sujeto obligado, contratos, trabajadores) y un CSV de trabajadores del ICSOE por contrato. */
+	files: {
+		/** Nombre del archivo. */
+		name: string;
+		/** sisub (Infonavit) o icsoe (IMSS). */
+		system: "sisub" | "icsoe";
+		/** El CSV, en texto. */
+		content: string;
+	}[];
+}
+
 /** El presupuesto de un año (de toda la empresa o de un centro de costo) por cuenta de resultados y mes, y cómo va lo real contra él: el mes y de enero a ese mes. */
 export interface Budget {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -10511,6 +10720,17 @@ export interface EmployeeDeductionList {
 	url: string;
 }
 
+export interface RepseContractList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: RepseContract[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
 export interface CandidateList {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "list";
@@ -14046,12 +14266,199 @@ export interface GetPayrollCalendarParams {
 export interface MarkPayrollCalendarEventParams {
 	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
 	issuer?: string;
-	/** imss, rcv_infonavit, isn, aguinaldo, ptu, prima_riesgo o ajuste_anual. */
-	obligation: "imss" | "rcv_infonavit" | "isn" | "aguinaldo" | "ptu" | "prima_riesgo" | "ajuste_anual";
-	/** Como lo da GET /v1/payroll_calendar: 2026-11, 2026-B6, 2026, 2026-11:CMX. */
+	/** imss, rcv_infonavit, isn, aguinaldo, ptu, prima_riesgo, ajuste_anual, icsoe o sisub. */
+	obligation: "imss" | "rcv_infonavit" | "isn" | "aguinaldo" | "ptu" | "prima_riesgo" | "ajuste_anual" | "icsoe" | "sisub";
+	/** Como lo da GET /v1/payroll_calendar: 2026-11, 2026-B6, 2026-C3, 2026, 2026-11:CMX. */
 	key: string;
 	/** true lo marca pagado; false lo desmarca. */
 	paid: boolean;
+}
+
+export interface CreateRepseContractParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Número de contrato: dígitos, hasta 20 (así lo pide el SISUB). */
+	number: string;
+	/** Tipo de contrato, como lo dice el contrato. */
+	kind: string;
+	/** Objeto del contrato. */
+	contract_object: string;
+	/** El servicio u obra especializada registrado en el REPSE que cubre. */
+	service: string;
+	/** Monto pactado, en pesos. */
+	amount: number;
+	/** Inicio de su vigencia (YYYY-MM-DD). */
+	start_date: string;
+	/** Fecha de término; null si es por tiempo indefinido. */
+	end_date?: string | null;
+	/** Número estimado mensual de trabajadores que pone a disposición. */
+	estimated_workers: number;
+	/** RFC del cliente (el beneficiario de los servicios). */
+	client_tax_id: string;
+	/** Razón social del cliente. */
+	client_name: string;
+	/** Registro patronal del cliente ante el IMSS, si tiene. */
+	client_employer_registration?: string | null;
+	/** Domicilio fiscal del cliente. */
+	client_address: {
+		/** Calle. */
+		street: string;
+		/** Número exterior. */
+		exterior?: string;
+		/** Número interior. */
+		interior?: string;
+		/** Colonia. */
+		neighborhood?: string;
+		/** Código postal, 5 dígitos. */
+		zip: string;
+		/** Municipio o demarcación territorial, sin abreviar. */
+		municipality: string;
+		/** Estado (c_Estado: NLE, CMX…). */
+		state: string;
+	};
+	/** El centro de trabajo donde trabajan las personas que pone a disposición. */
+	site_address: {
+		/** Calle. */
+		street: string;
+		/** Número exterior. */
+		exterior?: string;
+		/** Número interior. */
+		interior?: string;
+		/** Colonia. */
+		neighborhood?: string;
+		/** Código postal, 5 dígitos. */
+		zip: string;
+		/** Municipio o demarcación territorial, sin abreviar. */
+		municipality: string;
+		/** Estado (c_Estado: NLE, CMX…). */
+		state: string;
+	};
+	/** Quién trabaja en el contrato y desde cuándo (hasta 2,000). */
+	workers: {
+		/** El empleado (emp_…) del mismo emisor. */
+		employee: string;
+		/** Desde cuándo trabaja en el contrato (YYYY-MM-DD). */
+		start_date: string;
+		/** Hasta cuándo; null mientras siga. */
+		end_date?: string | null;
+	}[];
+}
+
+/** Los parámetros de GET /v1/repse_contracts. */
+export interface ListRepseContractsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface UpdateRepseContractParams {
+	/** Número de contrato: dígitos, hasta 20 (así lo pide el SISUB). */
+	number?: string;
+	/** Tipo de contrato, como lo dice el contrato. */
+	kind?: string;
+	/** Objeto del contrato. */
+	contract_object?: string;
+	/** El servicio u obra especializada registrado en el REPSE que cubre. */
+	service?: string;
+	/** Monto pactado, en pesos. */
+	amount?: number;
+	/** Inicio de su vigencia (YYYY-MM-DD). */
+	start_date?: string;
+	/** Fecha de término; null si es por tiempo indefinido. */
+	end_date?: string | null;
+	/** Número estimado mensual de trabajadores que pone a disposición. */
+	estimated_workers?: number;
+	/** RFC del cliente (el beneficiario de los servicios). */
+	client_tax_id?: string;
+	/** Razón social del cliente. */
+	client_name?: string;
+	/** Registro patronal del cliente ante el IMSS, si tiene. */
+	client_employer_registration?: string | null;
+	/** Domicilio fiscal del cliente. */
+	client_address?: {
+		/** Calle. */
+		street: string;
+		/** Número exterior. */
+		exterior?: string;
+		/** Número interior. */
+		interior?: string;
+		/** Colonia. */
+		neighborhood?: string;
+		/** Código postal, 5 dígitos. */
+		zip: string;
+		/** Municipio o demarcación territorial, sin abreviar. */
+		municipality: string;
+		/** Estado (c_Estado: NLE, CMX…). */
+		state: string;
+	};
+	/** El centro de trabajo donde trabajan las personas que pone a disposición. */
+	site_address?: {
+		/** Calle. */
+		street: string;
+		/** Número exterior. */
+		exterior?: string;
+		/** Número interior. */
+		interior?: string;
+		/** Colonia. */
+		neighborhood?: string;
+		/** Código postal, 5 dígitos. */
+		zip: string;
+		/** Municipio o demarcación territorial, sin abreviar. */
+		municipality: string;
+		/** Estado (c_Estado: NLE, CMX…). */
+		state: string;
+	};
+	/** Quién trabaja en el contrato y desde cuándo (hasta 2,000). */
+	workers?: {
+		/** El empleado (emp_…) del mismo emisor. */
+		employee: string;
+		/** Desde cuándo trabaja en el contrato (YYYY-MM-DD). */
+		start_date: string;
+		/** Hasta cuándo; null mientras siga. */
+		end_date?: string | null;
+	}[];
+}
+
+/** Los parámetros de GET /v1/repse_profile. */
+export interface GetRepseProfileParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface UpdateRepseProfileParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Folio de su registro en el REPSE que dio la STPS (AR65000). */
+	stps_folio?: string;
+	/** Correo del sujeto obligado. */
+	email?: string;
+	/** Teléfono, 10 dígitos. */
+	phone?: string;
+	/** Domicilio fiscal en una línea: calle, números, colonia, C.P., municipio y estado. */
+	address?: string;
+	/** Representante legal (persona moral). */
+	legal_representative?: string;
+	/** Administrador único, si tiene (persona moral). */
+	sole_administrator?: string;
+	/** Número de la escritura constitutiva (persona moral). */
+	deed_number?: string;
+	/** Nombre del notario público de la escritura. */
+	notary_name?: string;
+	/** Número de la notaría. */
+	notary_number?: string;
+	/** Fecha de la escritura (YYYY-MM-DD). */
+	deed_date?: string | "";
+	/** Folio mercantil (persona moral). */
+	commercial_folio?: string;
+}
+
+/** Los parámetros de GET /v1/repse_returns/{period}. */
+export interface GetRepseReturnParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
 }
 
 /** Los parámetros de GET /v1/payroll_org_chart. */
@@ -20932,13 +21339,133 @@ export class PayrollCalendarResource {
 	/**
 	 * Marcar un pago de nómina como pagado
 	 *
-	 * Marca (paid true) o desmarca (false) un pago del calendario de nómina: imss, rcv_infonavit, isn, aguinaldo, ptu, prima_riesgo o ajuste_anual, con su key como lo da GET /v1/payroll_calendar. Una nómina (pago) queda hecha al timbrar sus recibos.
+	 * Marca (paid true) o desmarca (false) un pago del calendario de nómina: imss, rcv_infonavit, isn, aguinaldo, ptu, prima_riesgo, ajuste_anual, icsoe o sisub, con su key como lo da GET /v1/payroll_calendar. Una nómina (pago) queda hecha al timbrar sus recibos.
 	 *
 	 * POST /v1/payroll_calendar/mark
 	 * @see https://fiscalisto.com/docs/api/referencia/nomina/mark-payroll-calendar-event
 	 */
 	mark(params: MarkPayrollCalendarEventParams, options?: RequestOptions): Promise<PayrollCalendarEvent> {
 		return this.#client.request({ method: "POST", path: "/v1/payroll_calendar/mark", body: params, idempotent: true }, options);
+	}
+}
+
+/** Nómina: fiscalisto.repseContracts. */
+export class RepseContractsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Registrar un contrato de servicios especializados
+	 *
+	 * Un contrato de servicios u obras especializadas (LFT art. 15 y 15-A) con su cliente, el centro de trabajo y quién trabaja en él y desde cuándo, como «Nómina › REPSE › + Contrato» en la app. Con él se arman los informes cuatrimestrales ICSOE del IMSS (LSS art. 15-A) y SISUB del Infonavit (Ley del Infonavit art. 29 Bis) de GET /v1/repse_returns/{period}, y aparecen sus fechas en el calendario de nómina. Un número de contrato que ya usó contesta parameter_invalid en number; un trabajador de otro emisor, en workers.
+	 *
+	 * POST /v1/repse_contracts
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-repse-contract
+	 */
+	create(params: CreateRepseContractParams, options?: RequestOptions): Promise<RepseContract> {
+		return this.#client.request({ method: "POST", path: "/v1/repse_contracts", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar contratos de servicios especializados
+	 *
+	 * Los contratos del emisor que no ha archivado, por fecha de inicio (el más antiguo primero) y número.
+	 *
+	 * GET /v1/repse_contracts
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/list-repse-contracts
+	 */
+	list(params?: ListRepseContractsParams, options?: RequestOptions): List<RepseContract> {
+		return this.#client.list({ path: "/v1/repse_contracts", query: params }, options);
+	}
+
+	/**
+	 * Ver un contrato de servicios especializados
+	 *
+	 * Un contrato con su cliente, centro de trabajo y trabajadores.
+	 *
+	 * GET /v1/repse_contracts/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-repse-contract
+	 */
+	get(id: string, options?: RequestOptions): Promise<RepseContract> {
+		return this.#client.request({ method: "GET", path: `/v1/repse_contracts/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Cambiar un contrato de servicios especializados
+	 *
+	 * Cambia lo que mande; lo demás queda. workers reemplaza la lista completa: para que alguien deje el contrato, póngale end_date en vez de quitarlo, así sigue en los informes de los meses que trabajó. Un contrato que terminó lleva su end_date.
+	 *
+	 * POST /v1/repse_contracts/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-repse-contract
+	 */
+	update(id: string, params?: UpdateRepseContractParams, options?: RequestOptions): Promise<RepseContract> {
+		return this.#client.request({ method: "POST", path: `/v1/repse_contracts/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Archivar un contrato de servicios especializados
+	 *
+	 * Lo archiva: sale de la lista y de todos los informes, también de los pasados. Para un contrato que terminó, mejor póngale end_date con POST /v1/repse_contracts/{id}.
+	 *
+	 * DELETE /v1/repse_contracts/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/delete-repse-contract
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/repse_contracts/${encodeURIComponent(id)}` }, options);
+	}
+}
+
+/** Nómina: fiscalisto.repseProfile. */
+export class RepseProfileResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ver los datos del sujeto obligado
+	 *
+	 * Los datos del emisor que pide el SISUB del Infonavit y no están en Fiscalisto: folio del REPSE, correo, teléfono, domicilio, representante legal y, de una persona moral, su acta constitutiva y folio mercantil. Como «Datos del sujeto obligado» en «Nómina › REPSE».
+	 *
+	 * GET /v1/repse_profile
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-repse-profile
+	 */
+	get(params?: GetRepseProfileParams, options?: RequestOptions): Promise<RepseProfile> {
+		return this.#client.request({ method: "GET", path: "/v1/repse_profile", query: params }, options);
+	}
+
+	/**
+	 * Guardar los datos del sujeto obligado
+	 *
+	 * Cambia lo que mande; lo demás queda y "" lo vacía. El teléfono va con 10 dígitos y deed_date como AAAA-MM-DD; si no, contesta parameter_invalid en ese campo.
+	 *
+	 * POST /v1/repse_profile
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-repse-profile
+	 */
+	update(params?: UpdateRepseProfileParams, options?: RequestOptions): Promise<RepseProfile> {
+		return this.#client.request({ method: "POST", path: "/v1/repse_profile", body: params, idempotent: true }, options);
+	}
+}
+
+/** Nómina: fiscalisto.repseReturns. */
+export class RepseReturnsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Informes ICSOE y SISUB de un cuatrimestre
+	 *
+	 * Lo que se presenta del cuatrimestre (AAAA-1 enero a abril, AAAA-2 mayo a agosto, AAAA-3 septiembre a diciembre) a más tardar el día 17 del mes siguiente, o el siguiente día hábil: por contrato, sus trabajadores con NSS, CURP y último salario base de cotización (ICSOE, LSS art. 15-A), y por trabajador y bimestre las percepciones, el salario topado a 25 UMA, la aportación del 5% y la amortización de su crédito (SISUB, Ley del Infonavit art. 29 Bis), calculados de los recibos timbrados. files trae los archivos para subir: los tres del SISUB y uno del ICSOE por contrato. problems dice lo que falta para presentarlos.
+	 *
+	 * GET /v1/repse_returns/{period}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-repse-return
+	 */
+	get(period: string, params?: GetRepseReturnParams, options?: RequestOptions): Promise<RepseReturn> {
+		return this.#client.request({ method: "GET", path: `/v1/repse_returns/${encodeURIComponent(period)}`, query: params }, options);
 	}
 }
 
@@ -26064,6 +26591,9 @@ export class FiscalistoApi extends Core {
 	readonly payrollTaxes = new PayrollTaxesResource(this);
 	readonly payrollReports = new PayrollReportsResource(this);
 	readonly payrollCalendar = new PayrollCalendarResource(this);
+	readonly repseContracts = new RepseContractsResource(this);
+	readonly repseProfile = new RepseProfileResource(this);
+	readonly repseReturns = new RepseReturnsResource(this);
 	readonly payrollOrgChart = new PayrollOrgChartResource(this);
 	readonly hiring = new HiringResource(this);
 	readonly candidates = new CandidatesResource(this);
