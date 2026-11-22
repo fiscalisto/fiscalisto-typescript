@@ -6105,6 +6105,8 @@ export interface Ticket {
 	invoice: string | null;
 	/** La factura global (inv_…) en que entró, o null. */
 	global_invoice: string | null;
+	/** Lo que ya cubren las facturas de un ticket dividido en varias (la autofactura lo permite con `split_max`), con impuestos. 0 si no se ha dividido; un ticket `pending` con más de 0 tiene `total - invoiced_amount` por facturar con el mismo código, y un ticket `invoiced` dividido tiene `invoice` null. */
+	invoiced_amount: number;
 	/** A quién se facturó, o null. */
 	customer: {
 		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
@@ -6274,6 +6276,12 @@ export interface SelfInvoicing {
 	customer_notes: boolean;
 	/** true: cuando un comprador no puede facturar por algo del emisor, se avisa por correo; false: solo queda en Alertas. */
 	failure_email: boolean;
+	/** Cuántas facturas puede tener un ticket como máximo (dividir un ticket en varias facturas), contando la que toma todo lo que queda; 0: no se puede dividir. */
+	split_max: number;
+	/** Lo menos que puede ser cada factura de un ticket dividido, con impuestos; tampoco puede quedar menos por facturar, salvo la factura que toma todo lo que queda. */
+	split_min: number;
+	/** true: un comprador puede hacerse varias facturas con los mismos datos de una vez (4 de 250 de un ticket de 1,000). */
+	split_same: boolean;
 	/** ticket: la factura global lleva un concepto «Venta» por ticket, con su folio. summary: solo el monto total del periodo, uno por combinación de impuestos (NoIdentificacion «Resumen»), para una persona física en RESICO (regla 2.7.1.21 de la RMF 2026). */
 	global_concepts: "ticket" | "summary";
 }
@@ -17577,6 +17585,12 @@ export interface UpdateSelfInvoicingParams {
 	customer_notes?: boolean;
 	/** `true` (por omisión): cuando un comprador no puede facturar por algo del emisor (su CSD, sus datos, el PAC), se avisa por correo a los dueños y administradores. `false`: solo queda en Alertas, sin correo. Un error en los datos del comprador nunca avisa: el portal le dice cómo corregirlo. */
 	failure_email?: boolean;
+	/** Dividir un ticket en varias facturas (Autofactura › Reglas de los tickets): cuántas facturas puede tener un ticket como máximo, de 2 a 50, contando la que toma todo lo que queda. `0` (por omisión): el comprador no puede dividirlo. Cada factura usa un timbre. */
+	split_max?: number;
+	/** Lo menos que puede ser cada factura de un ticket dividido, con impuestos (por omisión 100). Tampoco puede quedar por facturar menos que esto, salvo la factura que toma todo lo que queda. */
+	split_min?: number;
+	/** `true` (por omisión): un comprador puede hacerse varias facturas con los mismos datos de una vez (4 de 250 de un ticket de 1,000). `false`: una por persona. */
+	split_same?: boolean;
 	/** Los conceptos de la factura que se hace el comprador (Autofactura › Conceptos de la factura): desglosados o en uno solo, y si el comprador puede elegir. Mande solo lo que cambia; `null` regresa a desglosados sin elección. */
 	invoice_concepts?: {
 		/** `itemized` (por omisión): un concepto por renglón del ticket (Hospedaje, Restaurante, Bar…). `single`: uno solo, con `description`. `grouped`: los conceptos de `groups`. Un concepto lleva un solo juego de impuestos, así que los renglones con otros (una noche con ISH, IVA 0 %, retenciones) van aparte. El total y los impuestos no cambian. */
