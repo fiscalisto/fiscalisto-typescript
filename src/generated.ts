@@ -310,7 +310,7 @@ export interface Issuer {
 	livemode: boolean;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "issuer";
-	/** api si lo creó con la API o en Desarrolladores; empresa si es una empresa de la app conectada a su cuenta (Desarrolladores › Emisores › Conectar una empresa): con ella solo se usa su Portal de proveedores, y status siempre es active. */
+	/** api si lo creó con la API o en Desarrolladores; empresa si es una empresa de la app conectada a su cuenta (Desarrolladores › Emisores › Conectar una empresa): con ella solo se usan su Portal de proveedores y, si se encendieron, sus pagos a proveedores, y status siempre es active. */
 	source: "api" | "empresa";
 	/** own: un RFC de la empresa de esta API (lo da de alta la empresa en la app; no se archiva por la API). connected: un emisor conectado, que su plataforma agregó con POST /v1/issuers. portal: otra empresa de Fiscalisto conectada por su Portal de proveedores. */
 	type: "own" | "connected" | "portal";
@@ -9712,8 +9712,8 @@ export interface PayeeAccount {
 	holder_name: string | null;
 	/** true si es de un tercero que la empresa autorizó. */
 	third_party: boolean;
-	/** Cómo se confió en la cuenta: bank (el banco confirmó el RFC del proveedor), by_hand (alguien la verificó a mano porque el RFC del banco solo cambiaba la homoclave o no venía), third_party (se autorizó como de un tercero), o null si aún no está aprobada. */
-	verification: "bank" | "by_hand" | "third_party" | null;
+	/** Cómo se confió en la cuenta: bank (el banco confirmó el RFC del proveedor), by_name (el banco no dio el RFC y el nombre del titular es el del proveedor según el SAT, cuando la empresa lo permite), by_hand (alguien la verificó a mano porque el RFC del banco solo cambiaba la homoclave o no venía), third_party (se autorizó como de un tercero), o null si aún no está aprobada. */
+	verification: "bank" | "by_name" | "by_hand" | "third_party" | null;
 	/** Cómo la verificó a mano quien la aprobó, o null. */
 	verified_by_hand_reason: string | null;
 	/** Su número de cuenta, si se anotó junto a la CLABE (solo de referencia: la transferencia usa la CLABE), o null. */
@@ -24601,7 +24601,7 @@ export class PayoutsResource {
 	/**
 	 * Cancelar un pago a proveedores
 	 *
-	 * Uno que preparó la API, mientras no ha salido nada (draft, pending_approval o approved): sus facturas vuelven a Por pagar y llega payout.canceled. Uno preparado en la app se cancela en la app (400 payout_not_from_api).
+	 * Uno que prepararon las llaves de esta cuenta, mientras no ha salido nada (draft, pending_approval o approved): sus facturas vuelven a Por pagar y llega payout.canceled. Uno preparado en la app, o por otra cuenta API conectada a la empresa, se cancela ahí (400 payout_not_from_api).
 	 *
 	 * POST /v1/payouts/{id}/cancel
 	 * @see https://fiscalisto.com/docs/api/referencia/pagos-a-proveedores/cancel-payout
