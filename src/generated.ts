@@ -2905,6 +2905,275 @@ export interface Candidate {
 	created_at: string;
 }
 
+/** La capacitación de un emisor (Nómina › Capacitación). */
+export interface Training {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "training";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** Lo que se configura en POST /v1/training/settings. */
+	settings: {
+		/** El nombre en la constancia; null usa la razón social. */
+		company_name: string | null;
+		/** Quien firma con hasta 50 trabajadores. */
+		legal_rep: string | null;
+		/** El representante del patrón ante la comisión mixta. */
+		commission_employer_rep: string | null;
+		/** El representante de los trabajadores ante la comisión mixta. */
+		workers_rep: string | null;
+		/** Los integrantes de la comisión mixta de capacitación (artículo 153-E LFT). */
+		commission: {
+			/** Nombre. */
+			name: string;
+			/** patron o trabajadores. */
+			side: string;
+			/** Su cargo en la comisión (presidente, secretario…). */
+			role: string | null;
+		}[];
+		/** El día en que se constituyó la comisión mixta. */
+		commission_constituted_on: string | null;
+		/** Los trabajadores contados a mano; null cuenta Nómina. */
+		workers_count: number | null;
+		/** Cuándo empieza el plan de capacitación vigente. */
+		plan_start: string | null;
+		/** Cuándo termina el plan de capacitación vigente. */
+		plan_end: string | null;
+		/** La ocupación de cada puesto. */
+		occupations: Record<string, string>;
+	};
+	/** Los trabajadores que cuenta. */
+	workers: number;
+	/** Si los cuenta de Nómina (true) o a mano (false). */
+	workers_from_payroll: boolean;
+	/** Si son más de 50 y firman los representantes de la comisión mixta (artículo 24, fracción II). */
+	mixed_commission: boolean;
+	/** Los años del plan de capacitación. */
+	plan_years: {
+		/** El primer día del año del plan. */
+		from: string;
+		/** El último día del año del plan. */
+		to: string;
+		/** El día límite del aviso a la STPS (60 días hábiles después de to). */
+		list_by: string;
+	}[];
+	/** Constancias que vencen en 60 días o ya vencieron. */
+	renewals: {
+		/** El empleado (emp_…). */
+		employee: string;
+		/** Nombre. */
+		name: string;
+		/** El nombre del curso. */
+		course: string;
+		/** La clave del área temática. */
+		thematic_area: string;
+		/** Hasta cuándo está vigente. */
+		until: string;
+		/** Si ya venció. */
+		expired: boolean;
+	}[];
+	/** Totales (Totales). */
+	totals: {
+		/** Constancias por entregar. */
+		due: number;
+		/** De ellas, fuera de plazo. */
+		late: number;
+		/** Empleados activos sin ocupación del catálogo. */
+		missing_occupation: number;
+	};
+}
+
+/** Quien tomó un curso y su constancia DC-3. */
+export interface TrainingParticipant {
+	/** Quien tomó el curso (trp_…). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "training_participant";
+	/** El empleado (emp_…). */
+	employee: string;
+	/** Nombre. */
+	name: string;
+	/** Su clave del Catálogo Nacional de Ocupaciones. */
+	occupation: string | null;
+	/** pending, passed, failed o sufficiency. */
+	result: string;
+	/** Su calificación de 0 a 100. */
+	score: number | null;
+	/** Una nota sobre su resultado. */
+	note: string | null;
+	/** El folio de su constancia DC-3, consecutivo por emisor. */
+	folio: number | null;
+	/** Cuándo se emitió. */
+	issued_at: string | null;
+	/** Cuándo se entregó. */
+	delivered_at: string | null;
+	/** paper, email o portal. */
+	delivered_via: string | null;
+	/** none (sin constancia), waiting (el curso no termina), due (por entregar), late (pasó el plazo), issued (emitida, sin entregar) o delivered. */
+	status: string;
+	/** El día límite para entregarla (20 días hábiles desde el fin del curso). */
+	deliver_by: string | null;
+	/** Hasta cuándo está vigente, si el curso tiene vigencia. */
+	expires_on: string | null;
+	/** Por qué todavía no se puede emitir su constancia. */
+	blocker: string | null;
+}
+
+/** Un curso de capacitación (Nómina › Capacitación). */
+export interface TrainingCourse {
+	/** El curso (trc_…). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "training_course";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** El nombre del curso. */
+	name: string;
+	/** La clave del área temática del catálogo de la STPS (1000 a 9000). */
+	thematic_area: string;
+	/** La duración en horas. */
+	hours: number;
+	/** presencial, en_linea o mixta. */
+	modality: string;
+	/** internal, external, supplier, foreign o stps. */
+	trainer_kind: string;
+	/** El agente capacitador. */
+	trainer_name: string | null;
+	/** Fecha de inicio de la relación laboral (FechaInicioRelLaboral), AAAA-MM-DD. */
+	start_date: string;
+	/** Último día trabajado si ya no trabaja ahí, AAAA-MM-DD. */
+	end_date: string;
+	/** Si se canceló teniendo constancias emitidas (se conservan). */
+	cancelled: boolean;
+	/** El registro del agente externo ante la STPS. */
+	trainer_registration?: string | null;
+	/** Quien firma como instructor o tutor. */
+	instructor_name?: string | null;
+	/** Cada cuántos meses se renueva. */
+	validity_months?: number | null;
+	/** La calificación mínima. */
+	passing_score?: number | null;
+	/** Dónde se imparte. */
+	place?: string | null;
+	/** El objetivo del curso. */
+	objective?: string | null;
+	/** Qué falta de quién firma las constancias. */
+	signers_problem?: string | null;
+	/** Quienes lo tomaron (al ver un curso; no en la lista). */
+	participants?: TrainingParticipant[];
+	/** Los totales (en la lista). */
+	counts?: {
+		/** Quienes lo tomaron. */
+		participants: number;
+		/** Quienes aprobaron (o el examen de suficiencia). */
+		passed: number;
+		/** Quienes faltan por calificar. */
+		pending: number;
+		/** Constancias emitidas. */
+		issued: number;
+		/** Constancias entregadas. */
+		delivered: number;
+		/** Constancias que se deben (aprobaron) y no se han entregado. */
+		due: number;
+		/** De due, las que pasaron los 20 días hábiles (artículo 24, fracción III). */
+		late: number;
+	};
+}
+
+/** Un curso borrado o cancelado. */
+export interface TrainingCourseDeleted {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "training_course";
+	/** true si se borró. */
+	deleted: boolean;
+	/** true si se canceló porque tenía constancias emitidas. */
+	cancelled: boolean;
+}
+
+/** Una constancia DC-3 emitida, con lo que pide el aviso a la STPS. */
+export interface TrainingCertificate {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "training_certificate";
+	/** Folio (Folio). Fiscalisto asigna el siguiente de la serie; mande uno solo si debe ser ese. */
+	folio: number;
+	/** Apellido paterno, materno y nombre(s). */
+	name: string;
+	/** CURP, 18 caracteres. */
+	curp: string;
+	/** Su ocupación del Catálogo Nacional de Ocupaciones, clave y nombre («06 Transporte»). */
+	occupation: string;
+	/** Puesto (Puesto). */
+	position: string | null;
+	/** Su grado de estudios terminados. */
+	education: string | null;
+	/** El nombre del curso. */
+	course: string;
+	/** El área temática, clave y nombre («6000 Seguridad»). */
+	thematic_area: string;
+	/** La duración en horas. */
+	hours: number;
+	/** Fecha de inicio de la relación laboral (FechaInicioRelLaboral), AAAA-MM-DD. */
+	start_date: string;
+	/** Último día trabajado si ya no trabaja ahí, AAAA-MM-DD. */
+	end_date: string;
+	/** El agente capacitador como va en la constancia. */
+	trainer: string;
+	/** El registro del agente externo ante la STPS. */
+	trainer_registration: string | null;
+	/** Cuándo se entregó. */
+	delivered_at: string | null;
+}
+
+/** La capacitación de un empleado. */
+export interface EmployeeTraining {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "employee_training";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** El empleado (emp_…). */
+	employee: string;
+	/** Su ocupación: la suya o la de su puesto. */
+	occupation: string | null;
+	/** La suya, cuando no es la de su puesto. */
+	own_occupation: string | null;
+	/** Su grado de estudios terminados. */
+	education: string | null;
+	/** Los cursos que tomó, del más reciente al más antiguo. */
+	courses: {
+		/** El curso (trc_…). */
+		course: string;
+		/** Su lugar en el curso (trp_…). */
+		participant: string;
+		/** Nombre. */
+		name: string;
+		/** El área temática, clave y nombre. */
+		thematic_area: string;
+		/** La duración en horas. */
+		hours: number;
+		/** Fecha de inicio de la relación laboral (FechaInicioRelLaboral), AAAA-MM-DD. */
+		start_date: string;
+		/** Último día trabajado si ya no trabaja ahí, AAAA-MM-DD. */
+		end_date: string;
+		/** pending, passed, failed o sufficiency. */
+		result: string;
+		/** Folio (Folio). Fiscalisto asigna el siguiente de la serie; mande uno solo si debe ser ese. */
+		folio: number | null;
+		/** Cuándo se emitió su constancia. */
+		issued_at: string | null;
+		/** Cuándo se le entregó. */
+		delivered_at: string | null;
+		/** Hasta cuándo está vigente, si el curso tiene vigencia. */
+		expires_on: string | null;
+	}[];
+}
+
 /** Los archivos para presentar movimientos en IDSE o importarlos en SUA. */
 export interface ImssFiles {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -9788,6 +10057,28 @@ export interface CandidateList {
 	url: string;
 }
 
+export interface TrainingCertificateList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: TrainingCertificate[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface TrainingCourseList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: TrainingCourse[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
 export interface InvoiceBatchList {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "list";
@@ -13481,6 +13772,180 @@ export interface UpdateCandidateParams {
 export interface HireCandidateParams {
 	/** El empleado (emp_…) que ya dio de alta con POST /v1/employees: cubre la vacante con él. */
 	employee: string;
+}
+
+/** Los parámetros de GET /v1/training. */
+export interface GetTrainingParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface UpdateTrainingSettingsParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** El nombre de la empresa en la constancia; null usa la razón social. Persona física: apellido paterno, materno y nombre(s). */
+	company_name?: string | null;
+	/** Quien firma como patrón o representante legal cuando hay hasta 50 trabajadores (art. 24, fr. II). */
+	legal_rep?: string | null;
+	/** Con más de 50 trabajadores: el representante del patrón ante la comisión mixta de capacitación, que firma la constancia. */
+	commission_employer_rep?: string | null;
+	/** Con más de 50 trabajadores: el representante de los trabajadores ante la comisión mixta, que también firma. */
+	workers_rep?: string | null;
+	/** Los integrantes de la comisión mixta de capacitación (LFT 153-E: igual número por cada parte). */
+	commission?: {
+		/** Su nombre. */
+		name: string;
+		/** A quién representa: patron o trabajadores. */
+		side: "patron" | "trabajadores";
+		/** Su cargo en la comisión (opcional). */
+		role?: string | null;
+	}[];
+	/** El día en que se constituyó la comisión mixta. */
+	commission_constituted_on?: string | null;
+	/** Los trabajadores de la empresa, si no todos están en Nómina; null cuenta los empleados activos. */
+	workers_count?: number | null;
+	/** El día en que empieza el plan de capacitación (dos años como máximo, LFT 153-H). */
+	plan_start?: string | null;
+	/** El día en que termina el plan. */
+	plan_end?: string | null;
+	/** La ocupación del Catálogo Nacional de Ocupaciones de cada puesto: {"Operador de montacargas": "06.2"}. Reemplaza las de antes. */
+	occupations?: Record<string, string>;
+}
+
+/** Los parámetros de GET /v1/training/certificates. */
+export interface ListTrainingCertificatesParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Desde (AAAA-MM-DD), por la fecha de fin del curso. */
+	from: string;
+	/** Hasta (AAAA-MM-DD). */
+	to: string;
+}
+
+/** Los parámetros de GET /v1/training_courses. */
+export interface ListTrainingCoursesParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface CreateTrainingCourseParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** El nombre del curso, como va en la constancia. */
+	name: string;
+	/** La clave del área temática del catálogo de la STPS (1000 Producción general … 9000 Participación social). */
+	thematic_area: string;
+	/** La duración en horas. */
+	hours: number;
+	/** presencial (por omisión), en_linea o mixta. */
+	modality?: "presencial" | "en_linea" | "mixta";
+	/** El día en que empezó. */
+	start_date: string;
+	/** El día en que terminó; de ahí corren los 20 días hábiles para entregar las constancias. */
+	end_date: string;
+	/** Quién lo imparte: internal (instructor interno, por omisión: la constancia dice el nombre de la empresa como agente), external (agente capacitador externo, con su registro), supplier (proveedor de un bien o servicio), foreign (capacitador extranjero) o stps. */
+	trainer_kind?: "internal" | "external" | "supplier" | "foreign" | "stps";
+	/** El nombre del agente capacitador, salvo internal y stps. */
+	trainer_name?: string | null;
+	/** El registro del agente externo ante la STPS. */
+	trainer_registration?: string | null;
+	/** Quien firma la constancia como instructor o tutor. */
+	instructor_name?: string | null;
+	/** Cada cuántos meses se renueva (para avisar); null, sin vigencia. */
+	validity_months?: number | null;
+	/** La calificación mínima para aprobar (opcional). */
+	passing_score?: number | null;
+	/** Dónde se impartió. */
+	place?: string | null;
+	/** Su objetivo. */
+	objective?: string | null;
+	/** Quiénes lo tomaron (emp_…); en una actualización reemplaza la lista. */
+	employees?: string[];
+}
+
+export interface UpdateTrainingCourseParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** El nombre del curso, como va en la constancia. */
+	name: string;
+	/** La clave del área temática del catálogo de la STPS (1000 Producción general … 9000 Participación social). */
+	thematic_area: string;
+	/** La duración en horas. */
+	hours: number;
+	/** presencial (por omisión), en_linea o mixta. */
+	modality?: "presencial" | "en_linea" | "mixta";
+	/** El día en que empezó. */
+	start_date: string;
+	/** El día en que terminó; de ahí corren los 20 días hábiles para entregar las constancias. */
+	end_date: string;
+	/** Quién lo imparte: internal (instructor interno, por omisión: la constancia dice el nombre de la empresa como agente), external (agente capacitador externo, con su registro), supplier (proveedor de un bien o servicio), foreign (capacitador extranjero) o stps. */
+	trainer_kind?: "internal" | "external" | "supplier" | "foreign" | "stps";
+	/** El nombre del agente capacitador, salvo internal y stps. */
+	trainer_name?: string | null;
+	/** El registro del agente externo ante la STPS. */
+	trainer_registration?: string | null;
+	/** Quien firma la constancia como instructor o tutor. */
+	instructor_name?: string | null;
+	/** Cada cuántos meses se renueva (para avisar); null, sin vigencia. */
+	validity_months?: number | null;
+	/** La calificación mínima para aprobar (opcional). */
+	passing_score?: number | null;
+	/** Dónde se impartió. */
+	place?: string | null;
+	/** Su objetivo. */
+	objective?: string | null;
+	/** Quiénes lo tomaron (emp_…); en una actualización reemplaza la lista. */
+	employees?: string[];
+}
+
+export interface SetTrainingParticipantsParams {
+	/** Los empleados (emp_…). */
+	employees: string[];
+}
+
+export interface SetTrainingResultsParams {
+	/** La calificación de cada empleado, hasta 1,000 a la vez. */
+	results: {
+		/** El empleado (emp_…). */
+		employee: string;
+		/** pending (por calificar), passed (aprobó), failed (no aprobó) o sufficiency (aprobó el examen de suficiencia, art. 24, fr. III, inciso b). */
+		result: "pending" | "passed" | "failed" | "sufficiency";
+		/** Su calificación de 0 a 100. */
+		score?: number | null;
+		/** Una nota. */
+		note?: string | null;
+	}[];
+}
+
+export interface IssueTrainingCertificatesParams {
+	/** A quiénes; por omisión a todos los que aprobaron y no la tienen. */
+	employees?: string[];
+}
+
+export interface DeliverTrainingCertificatesParams {
+	/** A quiénes se entregó; por omisión todas las emitidas sin entregar. */
+	employees?: string[];
+	/** El día de la entrega; por omisión hoy. */
+	delivered_on?: string;
+	/** Cómo: paper (en papel, por omisión), email o portal. */
+	via?: "paper" | "email" | "portal";
+}
+
+/** Los parámetros de GET /v1/training_courses/{id}/pdf. */
+export interface GetTrainingCertificatesPdfParams {
+	/** Solo las de estos empleados (emp_…, separados por comas). */
+	employees?: string;
+}
+
+export interface UpdateEmployeeTrainingParams {
+	/** Su clave del Catálogo Nacional de Ocupaciones cuando no es la de su puesto; null usa la de su puesto. */
+	occupation?: string | null;
+	/** Su grado de estudios terminados, que pide el aviso a la STPS: primaria, secundaria, bachillerato, tecnico, licenciatura, especialidad, maestria o doctorado. */
+	education?: "primaria" | "secundaria" | "bachillerato" | "tecnico" | "licenciatura" | "especialidad" | "maestria" | "doctorado" | null;
 }
 
 export interface UpdatePayrollTaxSettingsParams {
@@ -19020,6 +19485,30 @@ export class EmployeesResource {
 	updatePortal(id: string, params: UpdateEmployeePortalParams, options?: RequestOptions): Promise<EmployeePortal> {
 		return this.#client.request({ method: "POST", path: `/v1/employees/${encodeURIComponent(id)}/portal`, body: params, idempotent: true }, options);
 	}
+
+	/**
+	 * Capacitación de un empleado
+	 *
+	 * Su ocupación del Catálogo Nacional de Ocupaciones (la suya o la de su puesto), su grado de estudios y los cursos que tomó con su constancia.
+	 *
+	 * GET /v1/employees/{id}/training
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-employee-training
+	 */
+	training(id: string, options?: RequestOptions): Promise<EmployeeTraining> {
+		return this.#client.request({ method: "GET", path: `/v1/employees/${encodeURIComponent(id)}/training` }, options);
+	}
+
+	/**
+	 * Ocupación y estudios de un empleado
+	 *
+	 * Su ocupación cuando no es la de su puesto (null usa la del puesto) y su grado de estudios terminados, que pide el aviso a la STPS.
+	 *
+	 * POST /v1/employees/{id}/training
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-employee-training
+	 */
+	updateTraining(id: string, params?: UpdateEmployeeTrainingParams, options?: RequestOptions): Promise<EmployeeTraining> {
+		return this.#client.request({ method: "POST", path: `/v1/employees/${encodeURIComponent(id)}/training`, body: params, idempotent: true }, options);
+	}
 }
 
 /** Nómina: fiscalisto.vacationRequests. */
@@ -19899,6 +20388,178 @@ export class CandidatesResource {
 	 */
 	file(id: string, question: string, options?: RequestOptions): Promise<string> {
 		return this.#client.request({ method: "GET", path: `/v1/candidates/${encodeURIComponent(id)}/files/${encodeURIComponent(question)}`, as: "text" }, options);
+	}
+}
+
+/** Nómina: fiscalisto.training. */
+export class TrainingResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Capacitación
+	 *
+	 * Como «Nómina › Capacitación» de la app: quién firma las constancias DC-3 (con hasta 50 trabajadores el patrón o su representante legal; con más, el representante del patrón y el de los trabajadores ante la comisión mixta: Acuerdo de la STPS del 14 de junio de 2013, artículo 24, fracción II), cuántos trabajadores cuenta, los años del plan de capacitación con el día límite del aviso a la STPS de cada uno (60 días hábiles, artículo 26, fracción I), las constancias por renovar y cuántas faltan por entregar.
+	 *
+	 * GET /v1/training
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-training
+	 */
+	get(params?: GetTrainingParams, options?: RequestOptions): Promise<Training> {
+		return this.#client.request({ method: "GET", path: "/v1/training", query: params }, options);
+	}
+
+	/**
+	 * Configurar la capacitación
+	 *
+	 * Quién firma las constancias, la comisión mixta (LFT 153-E: igual número por cada parte), cuántos trabajadores contar si no todos están en Nómina, las fechas del plan (dos años como máximo, LFT 153-H) y la ocupación del Catálogo Nacional de Ocupaciones de cada puesto. Lo que no manda no cambia. Contesta training.
+	 *
+	 * POST /v1/training/settings
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-training-settings
+	 */
+	updateSettings(params?: UpdateTrainingSettingsParams, options?: RequestOptions): Promise<Training> {
+		return this.#client.request({ method: "POST", path: "/v1/training/settings", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Constancias para el aviso a la STPS
+	 *
+	 * Las constancias DC-3 emitidas de los cursos que terminaron entre from y to, con lo que pide el aviso a la STPS (artículo 26, fracción I: nombre, CURP, ocupación, puesto, estudios, curso, área temática, horas, fechas y agente capacitador), ordenadas por folio. El día límite para presentarlo de cada año del plan viene en plan_years de GET /v1/training. El aviso se presenta en el sistema de la STPS, que no tiene API.
+	 *
+	 * GET /v1/training/certificates
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/list-training-certificates
+	 */
+	certificates(params: ListTrainingCertificatesParams, options?: RequestOptions): Promise<TrainingCertificateList> {
+		return this.#client.request({ method: "GET", path: "/v1/training/certificates", query: params }, options);
+	}
+}
+
+/** Nómina: fiscalisto.trainingCourses. */
+export class TrainingCoursesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar cursos de capacitación
+	 *
+	 * Los cursos del emisor (trc_…), los más recientes primero, con cuántos lo tomaron, aprobaron, tienen su constancia y faltan por entregar (due) o ya pasaron los 20 días hábiles (late).
+	 *
+	 * GET /v1/training_courses
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/list-training-courses
+	 */
+	list(params?: ListTrainingCoursesParams, options?: RequestOptions): List<TrainingCourse> {
+		return this.#client.list({ path: "/v1/training_courses", query: params }, options);
+	}
+
+	/**
+	 * Registrar un curso de capacitación
+	 *
+	 * Lo que pide la constancia DC-3 (artículo 24, fracción IV): nombre, área temática del catálogo de la STPS, horas, periodo y quién lo imparte (con un instructor interno la constancia dice el nombre de la empresa como agente capacitador), con quiénes lo tomaron (employees).
+	 *
+	 * POST /v1/training_courses
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/create-training-course
+	 */
+	create(params: CreateTrainingCourseParams, options?: RequestOptions): Promise<TrainingCourse> {
+		return this.#client.request({ method: "POST", path: "/v1/training_courses", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Ver un curso de capacitación
+	 *
+	 * Un curso (trc_…) con quienes lo tomaron (trp_…): su resultado, el folio de su constancia, el día límite para entregarla (20 días hábiles desde el fin del curso, artículo 24, fracción III), si ya se entregó y, cuando todavía no se puede emitir, por qué (blocker).
+	 *
+	 * GET /v1/training_courses/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-training-course
+	 */
+	get(id: string, options?: RequestOptions): Promise<TrainingCourse> {
+		return this.#client.request({ method: "GET", path: `/v1/training_courses/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Cambiar un curso de capacitación
+	 *
+	 * Cambia sus datos; employees reemplaza la lista (quien ya tiene su constancia se queda). Las constancias ya emitidas guardan lo que decían.
+	 *
+	 * POST /v1/training_courses/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/update-training-course
+	 */
+	update(id: string, params: UpdateTrainingCourseParams, options?: RequestOptions): Promise<TrainingCourse> {
+		return this.#client.request({ method: "POST", path: `/v1/training_courses/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Borrar un curso de capacitación
+	 *
+	 * Lo borra si nadie tiene su constancia; si alguien la tiene, lo cancela (cancelled true), porque las copias se conservan a disposición de la STPS (artículo 26, fracción III).
+	 *
+	 * DELETE /v1/training_courses/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/delete-training-course
+	 */
+	delete(id: string, options?: RequestOptions): Promise<TrainingCourseDeleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/training_courses/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Quién tomó un curso
+	 *
+	 * Reemplaza la lista de quienes lo tomaron (emp_…). Quien ya tiene su constancia se queda.
+	 *
+	 * POST /v1/training_courses/{id}/participants
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/set-training-participants
+	 */
+	setParticipants(id: string, params: SetTrainingParticipantsParams, options?: RequestOptions): Promise<TrainingCourse> {
+		return this.#client.request({ method: "POST", path: `/v1/training_courses/${encodeURIComponent(id)}/participants`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Calificar un curso
+	 *
+	 * El resultado de cada quien: pending, passed, failed o sufficiency (aprobó el examen de suficiencia, artículo 24, fracción III, inciso b), con su calificación. A quien ya tiene su constancia no se le puede poner failed.
+	 *
+	 * POST /v1/training_courses/{id}/results
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/set-training-results
+	 */
+	setResults(id: string, params: SetTrainingResultsParams, options?: RequestOptions): Promise<TrainingCourse> {
+		return this.#client.request({ method: "POST", path: `/v1/training_courses/${encodeURIComponent(id)}/results`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Emitir constancias DC-3
+	 *
+	 * Emite la constancia de quienes aprobaron (o de los que mande en employees), cada una con el folio siguiente del emisor. Pide que el curso haya terminado (salvo el examen de suficiencia), el CURP y la ocupación de cada quien y quién firma; lo que falte se lee en blocker de cada participante.
+	 *
+	 * POST /v1/training_courses/{id}/issue
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/issue-training-certificates
+	 */
+	issue(id: string, params?: IssueTrainingCertificatesParams, options?: RequestOptions): Promise<TrainingCourse> {
+		return this.#client.request({ method: "POST", path: `/v1/training_courses/${encodeURIComponent(id)}/issue`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Marcar constancias como entregadas
+	 *
+	 * Anota que se entregaron (en papel, por correo o en el portal del empleado) y el día. Por omisión todas las emitidas sin entregar.
+	 *
+	 * POST /v1/training_courses/{id}/deliver
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/deliver-training-certificates
+	 */
+	deliver(id: string, params?: DeliverTrainingCertificatesParams, options?: RequestOptions): Promise<TrainingCourse> {
+		return this.#client.request({ method: "POST", path: `/v1/training_courses/${encodeURIComponent(id)}/deliver`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Descargar constancias DC-3
+	 *
+	 * Las constancias emitidas del curso en el formato DC-3 de la STPS, una página cada una con su reverso de catálogos, listas para firmar. El logo de la empresa va si lo tiene (artículo 25: solo logotipos).
+	 *
+	 * GET /v1/training_courses/{id}/pdf
+	 * @see https://fiscalisto.com/docs/api/referencia/nomina/get-training-certificates-pdf
+	 */
+	pdf(id: string, params?: GetTrainingCertificatesPdfParams, options?: RequestOptions): Promise<Uint8Array> {
+		return this.#client.request({ method: "GET", path: `/v1/training_courses/${encodeURIComponent(id)}/pdf`, query: params, as: "bytes" }, options);
 	}
 }
 
@@ -24262,6 +24923,8 @@ export class FiscalistoApi extends Core {
 	readonly payrollOrgChart = new PayrollOrgChartResource(this);
 	readonly hiring = new HiringResource(this);
 	readonly candidates = new CandidatesResource(this);
+	readonly training = new TrainingResource(this);
+	readonly trainingCourses = new TrainingCoursesResource(this);
 	readonly invoiceBatches = new InvoiceBatchesResource(this);
 	readonly taxIds = new TaxIdsResource(this);
 	readonly branches = new BranchesResource(this);
