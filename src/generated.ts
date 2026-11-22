@@ -270,6 +270,38 @@ export interface Usage {
 	over_allowance: "refused" | "slowed";
 }
 
+/** Lo que manda una regla con la acción webhook: qué regla, con qué registro y todos sus campos. */
+export interface RuleMatch {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "rule_match";
+	/** Siempre true: las reglas son de producción. */
+	livemode: boolean;
+	/** La regla que se cumplió. */
+	rule: {
+		/** La regla (rul_…). */
+		id: string | null;
+		/** Nombre. */
+		name: string;
+	};
+	/** Su momento (trigger), como en /v1/rules. */
+	trigger: string;
+	/** true: sus condiciones no se cumplieron y esto es lo que hace «Si no» (else_actions). */
+	else: boolean;
+	/** El registro con que se cumplió. */
+	record: {
+		/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
+		type: "invoice" | "purchase_order" | "bank_movement";
+		/** Cómo lo dice la app: «Factura A-120 de ACME». */
+		label: string;
+		/** El folio fiscal, en facturas. */
+		uuid: string | null;
+		/** Dónde se abre en la app. */
+		app_url: string;
+	};
+	/** Cada campo de sus condiciones con su valor en ese registro (los de conditions en /v1/rules: total, supplier, age…). */
+	fields: Record<string, unknown>;
+}
+
 /** Un emisor: un RFC que timbra desde su cuenta API. */
 export interface Issuer {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
@@ -3829,9 +3861,13 @@ export interface Rule {
 	/** Entonces: lo que hace, en este orden. */
 	actions: {
 		/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
-		type: "tag" | "cost_center" | "category" | "stage" | "close" | "ask_approval" | "notify" | "lote" | "hold_payment" | "email_supplier" | "review_findings" | "extra_signature" | "account";
+		type: "tag" | "cost_center" | "category" | "stage" | "close" | "ask_approval" | "notify" | "lote" | "hold_payment" | "email_supplier" | "review_findings" | "extra_signature" | "account" | "webhook";
 		/** tag: la etiqueta (tag_…, GET /v1/tags). */
 		tag?: string;
+		/** webhook: la dirección a la que manda rule.matched. */
+		url?: string;
+		/** webhook: el webhook de Desarrolladores › Webhooks con esa dirección (we_…), donde están su secreto y sus envíos. */
+		webhook_endpoint?: string | null;
 		/** account: el número de cuenta del catálogo en que se registra la factura, en vez de la de su categoría (no cambia la que eligió una persona). */
 		account?: string;
 		/** category: la categoría de gasto (facturas recibidas). */
@@ -3881,9 +3917,13 @@ export interface Rule {
 	/** Si no: lo que hace cuando sus condiciones no se cumplen ([]: nada). */
 	else_actions: {
 		/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
-		type: "tag" | "cost_center" | "category" | "stage" | "close" | "ask_approval" | "notify" | "lote" | "hold_payment" | "email_supplier" | "review_findings" | "extra_signature" | "account";
+		type: "tag" | "cost_center" | "category" | "stage" | "close" | "ask_approval" | "notify" | "lote" | "hold_payment" | "email_supplier" | "review_findings" | "extra_signature" | "account" | "webhook";
 		/** tag: la etiqueta (tag_…, GET /v1/tags). */
 		tag?: string;
+		/** webhook: la dirección a la que manda rule.matched. */
+		url?: string;
+		/** webhook: el webhook de Desarrolladores › Webhooks con esa dirección (we_…), donde están su secreto y sus envíos. */
+		webhook_endpoint?: string | null;
 		/** account: el número de cuenta del catálogo en que se registra la factura, en vez de la de su categoría (no cambia la que eligió una persona). */
 		account?: string;
 		/** category: la categoría de gasto (facturas recibidas). */
@@ -9418,7 +9458,7 @@ export interface CfdiVerification {
 }
 
 /** Lo que puede pasar: el tipo de cada evento. */
-export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "payout.approved" | "payout.paid" | "payout.partially_paid" | "payout.failed" | "payout.canceled" | "payout_transfer.succeeded" | "payout_transfer.failed" | "payout_transfer.returned" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready";
+export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "payout.approved" | "payout.paid" | "payout.partially_paid" | "payout.failed" | "payout.canceled" | "payout_transfer.succeeded" | "payout_transfer.failed" | "payout_transfer.returned" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready" | "rule.matched";
 
 /** Algo que pasó en su cuenta: el objeto completo como quedó. Se manda a sus webhooks firmado (Standard Webhooks). */
 export interface EventBase<T extends EventType = EventType, O = unknown> {
@@ -9426,7 +9466,7 @@ export interface EventBase<T extends EventType = EventType, O = unknown> {
 	id: string;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "event";
-	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, invoice.cancellation_failed, invoice.paid, invoice.partially_paid, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, payroll_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, sat_declaration.created, sat_declaration.updated, sat_refresh.completed, sat_refresh.failed, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, quote.withdrawn, sales_order.confirmed, sales_order.customer_confirmed, sales_order.delivered, sales_order.paid, sales_order.canceled, supplier_invoice.received, supplier_invoice.approved, supplier_invoice.rejected, supplier_invoice.scheduled, supplier_invoice.paid, portal_supplier.approved, payout.approved, payout.paid, payout.partially_paid, payout.failed, payout.canceled, payout_transfer.succeeded, payout_transfer.failed, payout_transfer.returned, issuer.ready, balance.low, usage.high o test_clock.ready. */
+	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, invoice.cancellation_failed, invoice.paid, invoice.partially_paid, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, payroll_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, sat_declaration.created, sat_declaration.updated, sat_refresh.completed, sat_refresh.failed, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, quote.withdrawn, sales_order.confirmed, sales_order.customer_confirmed, sales_order.delivered, sales_order.paid, sales_order.canceled, supplier_invoice.received, supplier_invoice.approved, supplier_invoice.rejected, supplier_invoice.scheduled, supplier_invoice.paid, portal_supplier.approved, payout.approved, payout.paid, payout.partially_paid, payout.failed, payout.canceled, payout_transfer.succeeded, payout_transfer.failed, payout_transfer.returned, issuer.ready, balance.low, usage.high, test_clock.ready o rule.matched. */
 	type: T;
 	/** Versión de la API con que se armó el objeto. */
 	api_version: string;
@@ -9492,7 +9532,8 @@ export type Event =
 	| EventBase<"issuer.ready", Issuer>
 	| EventBase<"balance.low", Balance>
 	| EventBase<"usage.high", Usage>
-	| EventBase<"test_clock.ready", TestClock>;
+	| EventBase<"test_clock.ready", TestClock>
+	| EventBase<"rule.matched", RuleMatch>;
 
 /** Confirmación de que se borró. */
 export interface Deleted {
@@ -13584,8 +13625,10 @@ export interface CreateRuleParams {
 	};
 	/** Entonces: de 1 a 8, en este orden. */
 	actions: {
-		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; account (facturas): registrar su ingreso o gasto en la cuenta `account` del catálogo en vez de la de su categoría, nunca sobre la que eligió una persona ni en un mes cerrado; en bank.movement, registrar el movimiento con su póliza de ingresos o egresos contra esa cuenta (otra cuenta de banco de la empresa es un traspaso), si no tiene una ni es un mes cerrado; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…); lote (invoice.received e invoice.approved): agregar la factura al lote de pagos abierto `lote_name` que paga `pay_on`, o crear uno, preparado como quien hizo la regla; hold_payment (facturas recibidas): retener su pago hasta que alguien lo suelte, con `note`; email_supplier (facturas recibidas): escribirle al proveedor a los correos de su tema `topic`, con `subject` y `message`; review_findings: dar por revisados los hallazgos `findings` de la factura; extra_signature (payout.submitted): el pago necesita `signatures` firmas más que las de Configurar pagos, con `reason` para quien firma (nunca las baja; no cambia un pago que ya salió). */
-		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category" | "account" | "lote" | "hold_payment" | "email_supplier" | "review_findings" | "extra_signature";
+		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; account (facturas): registrar su ingreso o gasto en la cuenta `account` del catálogo en vez de la de su categoría, nunca sobre la que eligió una persona ni en un mes cerrado; en bank.movement, registrar el movimiento con su póliza de ingresos o egresos contra esa cuenta (otra cuenta de banco de la empresa es un traspaso), si no tiene una ni es un mes cerrado; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…); lote (invoice.received e invoice.approved): agregar la factura al lote de pagos abierto `lote_name` que paga `pay_on`, o crear uno, preparado como quien hizo la regla; hold_payment (facturas recibidas): retener su pago hasta que alguien lo suelte, con `note`; email_supplier (facturas recibidas): escribirle al proveedor a los correos de su tema `topic`, con `subject` y `message`; review_findings: dar por revisados los hallazgos `findings` de la factura; extra_signature (payout.submitted): el pago necesita `signatures` firmas más que las de Configurar pagos, con `reason` para quien firma (nunca las baja; no cambia un pago que ya salió); webhook: mandar el evento rule.matched, con el registro y todos los campos de sus condiciones, a `url` (Zapier, Make, n8n o su sistema), firmado y con reintentos como los demás webhooks; al guardar se usa o se crea el webhook de esa dirección en Desarrolladores › Webhooks. Pide permiso de administrar la API. */
+		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category" | "account" | "lote" | "hold_payment" | "email_supplier" | "review_findings" | "extra_signature" | "webhook";
+		/** webhook: la dirección https a la que manda rule.matched. */
+		url?: string;
 		/** tag: la etiqueta (tag_…, GET /v1/tags). Un número, el id de antes, también se acepta. */
 		tag?: string | number;
 		/** category: la categoría de gasto, como la app la nombra («Combustible»). */
@@ -13636,8 +13679,10 @@ export interface CreateRuleParams {
 	}[];
 	/** Si no: de 0 a 8 acciones, las mismas de actions, que hace cuando sus condiciones no se cumplen. Solo con condiciones; [] las quita. */
 	else_actions?: {
-		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; account (facturas): registrar su ingreso o gasto en la cuenta `account` del catálogo en vez de la de su categoría, nunca sobre la que eligió una persona ni en un mes cerrado; en bank.movement, registrar el movimiento con su póliza de ingresos o egresos contra esa cuenta (otra cuenta de banco de la empresa es un traspaso), si no tiene una ni es un mes cerrado; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…); lote (invoice.received e invoice.approved): agregar la factura al lote de pagos abierto `lote_name` que paga `pay_on`, o crear uno, preparado como quien hizo la regla; hold_payment (facturas recibidas): retener su pago hasta que alguien lo suelte, con `note`; email_supplier (facturas recibidas): escribirle al proveedor a los correos de su tema `topic`, con `subject` y `message`; review_findings: dar por revisados los hallazgos `findings` de la factura; extra_signature (payout.submitted): el pago necesita `signatures` firmas más que las de Configurar pagos, con `reason` para quien firma (nunca las baja; no cambia un pago que ya salió). */
-		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category" | "account" | "lote" | "hold_payment" | "email_supplier" | "review_findings" | "extra_signature";
+		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; account (facturas): registrar su ingreso o gasto en la cuenta `account` del catálogo en vez de la de su categoría, nunca sobre la que eligió una persona ni en un mes cerrado; en bank.movement, registrar el movimiento con su póliza de ingresos o egresos contra esa cuenta (otra cuenta de banco de la empresa es un traspaso), si no tiene una ni es un mes cerrado; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…); lote (invoice.received e invoice.approved): agregar la factura al lote de pagos abierto `lote_name` que paga `pay_on`, o crear uno, preparado como quien hizo la regla; hold_payment (facturas recibidas): retener su pago hasta que alguien lo suelte, con `note`; email_supplier (facturas recibidas): escribirle al proveedor a los correos de su tema `topic`, con `subject` y `message`; review_findings: dar por revisados los hallazgos `findings` de la factura; extra_signature (payout.submitted): el pago necesita `signatures` firmas más que las de Configurar pagos, con `reason` para quien firma (nunca las baja; no cambia un pago que ya salió); webhook: mandar el evento rule.matched, con el registro y todos los campos de sus condiciones, a `url` (Zapier, Make, n8n o su sistema), firmado y con reintentos como los demás webhooks; al guardar se usa o se crea el webhook de esa dirección en Desarrolladores › Webhooks. Pide permiso de administrar la API. */
+		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category" | "account" | "lote" | "hold_payment" | "email_supplier" | "review_findings" | "extra_signature" | "webhook";
+		/** webhook: la dirección https a la que manda rule.matched. */
+		url?: string;
 		/** tag: la etiqueta (tag_…, GET /v1/tags). Un número, el id de antes, también se acepta. */
 		tag?: string | number;
 		/** category: la categoría de gasto, como la app la nombra («Combustible»). */
@@ -13762,8 +13807,10 @@ export interface UpdateRuleParams {
 	};
 	/** Entonces: de 1 a 8, en este orden. */
 	actions?: {
-		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; account (facturas): registrar su ingreso o gasto en la cuenta `account` del catálogo en vez de la de su categoría, nunca sobre la que eligió una persona ni en un mes cerrado; en bank.movement, registrar el movimiento con su póliza de ingresos o egresos contra esa cuenta (otra cuenta de banco de la empresa es un traspaso), si no tiene una ni es un mes cerrado; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…); lote (invoice.received e invoice.approved): agregar la factura al lote de pagos abierto `lote_name` que paga `pay_on`, o crear uno, preparado como quien hizo la regla; hold_payment (facturas recibidas): retener su pago hasta que alguien lo suelte, con `note`; email_supplier (facturas recibidas): escribirle al proveedor a los correos de su tema `topic`, con `subject` y `message`; review_findings: dar por revisados los hallazgos `findings` de la factura; extra_signature (payout.submitted): el pago necesita `signatures` firmas más que las de Configurar pagos, con `reason` para quien firma (nunca las baja; no cambia un pago que ya salió). */
-		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category" | "account" | "lote" | "hold_payment" | "email_supplier" | "review_findings" | "extra_signature";
+		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; account (facturas): registrar su ingreso o gasto en la cuenta `account` del catálogo en vez de la de su categoría, nunca sobre la que eligió una persona ni en un mes cerrado; en bank.movement, registrar el movimiento con su póliza de ingresos o egresos contra esa cuenta (otra cuenta de banco de la empresa es un traspaso), si no tiene una ni es un mes cerrado; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…); lote (invoice.received e invoice.approved): agregar la factura al lote de pagos abierto `lote_name` que paga `pay_on`, o crear uno, preparado como quien hizo la regla; hold_payment (facturas recibidas): retener su pago hasta que alguien lo suelte, con `note`; email_supplier (facturas recibidas): escribirle al proveedor a los correos de su tema `topic`, con `subject` y `message`; review_findings: dar por revisados los hallazgos `findings` de la factura; extra_signature (payout.submitted): el pago necesita `signatures` firmas más que las de Configurar pagos, con `reason` para quien firma (nunca las baja; no cambia un pago que ya salió); webhook: mandar el evento rule.matched, con el registro y todos los campos de sus condiciones, a `url` (Zapier, Make, n8n o su sistema), firmado y con reintentos como los demás webhooks; al guardar se usa o se crea el webhook de esa dirección en Desarrolladores › Webhooks. Pide permiso de administrar la API. */
+		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category" | "account" | "lote" | "hold_payment" | "email_supplier" | "review_findings" | "extra_signature" | "webhook";
+		/** webhook: la dirección https a la que manda rule.matched. */
+		url?: string;
 		/** tag: la etiqueta (tag_…, GET /v1/tags). Un número, el id de antes, también se acepta. */
 		tag?: string | number;
 		/** category: la categoría de gasto, como la app la nombra («Combustible»). */
@@ -13814,8 +13861,10 @@ export interface UpdateRuleParams {
 	}[];
 	/** Si no: de 0 a 8 acciones, las mismas de actions, que hace cuando sus condiciones no se cumplen. Solo con condiciones; [] las quita. */
 	else_actions?: {
-		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; account (facturas): registrar su ingreso o gasto en la cuenta `account` del catálogo en vez de la de su categoría, nunca sobre la que eligió una persona ni en un mes cerrado; en bank.movement, registrar el movimiento con su póliza de ingresos o egresos contra esa cuenta (otra cuenta de banco de la empresa es un traspaso), si no tiene una ni es un mes cerrado; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…); lote (invoice.received e invoice.approved): agregar la factura al lote de pagos abierto `lote_name` que paga `pay_on`, o crear uno, preparado como quien hizo la regla; hold_payment (facturas recibidas): retener su pago hasta que alguien lo suelte, con `note`; email_supplier (facturas recibidas): escribirle al proveedor a los correos de su tema `topic`, con `subject` y `message`; review_findings: dar por revisados los hallazgos `findings` de la factura; extra_signature (payout.submitted): el pago necesita `signatures` firmas más que las de Configurar pagos, con `reason` para quien firma (nunca las baja; no cambia un pago que ya salió). */
-		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category" | "account" | "lote" | "hold_payment" | "email_supplier" | "review_findings" | "extra_signature";
+		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; account (facturas): registrar su ingreso o gasto en la cuenta `account` del catálogo en vez de la de su categoría, nunca sobre la que eligió una persona ni en un mes cerrado; en bank.movement, registrar el movimiento con su póliza de ingresos o egresos contra esa cuenta (otra cuenta de banco de la empresa es un traspaso), si no tiene una ni es un mes cerrado; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…); lote (invoice.received e invoice.approved): agregar la factura al lote de pagos abierto `lote_name` que paga `pay_on`, o crear uno, preparado como quien hizo la regla; hold_payment (facturas recibidas): retener su pago hasta que alguien lo suelte, con `note`; email_supplier (facturas recibidas): escribirle al proveedor a los correos de su tema `topic`, con `subject` y `message`; review_findings: dar por revisados los hallazgos `findings` de la factura; extra_signature (payout.submitted): el pago necesita `signatures` firmas más que las de Configurar pagos, con `reason` para quien firma (nunca las baja; no cambia un pago que ya salió); webhook: mandar el evento rule.matched, con el registro y todos los campos de sus condiciones, a `url` (Zapier, Make, n8n o su sistema), firmado y con reintentos como los demás webhooks; al guardar se usa o se crea el webhook de esa dirección en Desarrolladores › Webhooks. Pide permiso de administrar la API. */
+		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category" | "account" | "lote" | "hold_payment" | "email_supplier" | "review_findings" | "extra_signature" | "webhook";
+		/** webhook: la dirección https a la que manda rule.matched. */
+		url?: string;
 		/** tag: la etiqueta (tag_…, GET /v1/tags). Un número, el id de antes, también se acepta. */
 		tag?: string | number;
 		/** category: la categoría de gasto, como la app la nombra («Combustible»). */
@@ -17523,7 +17572,7 @@ export interface RollWebhookSecretParams {
 
 export interface TestWebhookEndpointParams {
 	/** El evento a mandar. Por omisión invoice.stamped. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "payout.approved" | "payout.paid" | "payout.partially_paid" | "payout.failed" | "payout.canceled" | "payout_transfer.succeeded" | "payout_transfer.failed" | "payout_transfer.returned" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "payout.approved" | "payout.paid" | "payout.partially_paid" | "payout.failed" | "payout.canceled" | "payout_transfer.succeeded" | "payout_transfer.failed" | "payout_transfer.returned" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready" | "rule.matched";
 }
 
 /** Los parámetros de GET /v1/webhook_endpoints/{id}/deliveries. */
@@ -17548,7 +17597,7 @@ export interface ListEventsParams {
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
 	/** Solo de este tipo (invoice.stamped), o todos los de un recurso con un comodín (invoice.*). */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "payout.approved" | "payout.paid" | "payout.partially_paid" | "payout.failed" | "payout.canceled" | "payout_transfer.succeeded" | "payout_transfer.failed" | "payout_transfer.returned" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready" | "invoice.*" | "invoice_batch.*" | "payroll_batch.*" | "recurring_invoice.*" | "quote.*" | "sales_order.*" | "supplier_invoice.*" | "portal_supplier.*" | "payout.*" | "payout_transfer.*" | "ticket.*" | "retention.*" | "customer_data_request.*" | "sat_download.*" | "sat_declaration.*" | "sat_refresh.*" | "issuer.*" | "balance.*" | "usage.*" | "test_clock.*";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "payout.approved" | "payout.paid" | "payout.partially_paid" | "payout.failed" | "payout.canceled" | "payout_transfer.succeeded" | "payout_transfer.failed" | "payout_transfer.returned" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready" | "rule.matched" | "invoice.*" | "invoice_batch.*" | "payroll_batch.*" | "recurring_invoice.*" | "quote.*" | "sales_order.*" | "supplier_invoice.*" | "portal_supplier.*" | "payout.*" | "payout_transfer.*" | "ticket.*" | "retention.*" | "customer_data_request.*" | "sat_download.*" | "sat_declaration.*" | "sat_refresh.*" | "issuer.*" | "balance.*" | "usage.*" | "test_clock.*" | "rule.*";
 	/** Solo los de este objeto (inv_…, ret_…, bat_…). */
 	object?: string;
 	/** false: los que algún webhook no recibió (su último intento falló). true: los que recibieron todos los webhooks a los que se mandaron. */
