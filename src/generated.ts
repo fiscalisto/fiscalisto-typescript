@@ -5004,13 +5004,13 @@ export interface Finding {
 	object: "finding";
 	/** El emisor (iss_…). */
 	issuer: string;
-	/** purchase_orders (órdenes de compra), payouts (pagos a proveedores), suppliers (proveedores), accounting (contabilidad), bank (movimientos del banco), expense_reports (comprobaciones de viáticos) o purchase_receipts (tickets de compra). */
-	area: "purchase_orders" | "payouts" | "suppliers" | "accounting" | "bank" | "expense_reports" | "purchase_receipts" | null;
+	/** purchase_orders (órdenes de compra), payouts (pagos a proveedores), suppliers (proveedores), accounting (contabilidad), bank (movimientos del banco), expense_reports (comprobaciones de viáticos), purchase_receipts (tickets de compra) o inventory (inventario). */
+	area: "purchase_orders" | "payouts" | "suppliers" | "accounting" | "bank" | "expense_reports" | "purchase_receipts" | "inventory" | null;
 	/** En qué registro está. */
 	record: {
-		/** purchase_order, payout, supplier, poliza (la contabilidad de un mes), account (una cuenta en un mes), bank_movement, expense_report (una comprobación de viáticos) o expense_ticket (un ticket de compra). */
-		type: "purchase_order" | "payout" | "supplier" | "poliza" | "account" | "bank_movement" | "expense_report" | "expense_ticket";
-		/** Su id en la API: el pago (pyo_…), la comprobación (exr_…), el ticket (rct_…) o el RFC del proveedor; null si no tiene. */
+		/** purchase_order, payout, supplier, poliza (la contabilidad de un mes), account (una cuenta en un mes), bank_movement, expense_report (una comprobación de viáticos), expense_ticket (un ticket de compra) o product (la existencia de un producto). */
+		type: "purchase_order" | "payout" | "supplier" | "poliza" | "account" | "bank_movement" | "expense_report" | "expense_ticket" | "product";
+		/** Su id en la API: el pago (pyo_…), la comprobación (exr_…), el ticket (rct_…), el producto (prd_…) o el RFC del proveedor; null si no tiene. */
 		id: string | null;
 		/** Cómo lo nombra Fiscalisto: el número de la orden, el RFC, «RFC:AAAA-MM» un mes de contabilidad, «RFC:AAAA-MM:cuenta» una cuenta. */
 		reference: string;
@@ -9991,7 +9991,7 @@ export interface PayableInvoice {
 		/** Lo del descuento que su nota de crédito aún no cubre. Ya está fuera de amount_due. */
 		discount_pending: number;
 	} | null;
-	/** El pago abierto (pyo_…) en el que ya está, o null. */
+	/** El pago abierto (pyo_…) en el que ya está, o null. Si se dividió en varios pagos, el primero: un pago nuevo solo toma lo que esos no cubren. */
 	in_payout: string | null;
 	/** Si una regla de Ajustes › Reglas retuvo su pago: no se paga hasta que alguien con permiso lo suelte en la app («Soltar el pago»). null: no está retenido. */
 	payment_hold: {
@@ -16312,8 +16312,8 @@ export interface ListFindingsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** Solo los de un área: purchase_orders, payouts, suppliers, accounting, bank, expense_reports o purchase_receipts. */
-	area?: "purchase_orders" | "payouts" | "suppliers" | "accounting" | "bank" | "expense_reports" | "purchase_receipts";
+	/** Solo los de un área: purchase_orders, payouts, suppliers, accounting, bank, expense_reports, purchase_receipts o inventory. */
+	area?: "purchase_orders" | "payouts" | "suppliers" | "accounting" | "bank" | "expense_reports" | "purchase_receipts" | "inventory";
 	/** open (por omisión: sin revisar), reviewed (revisados), resolved (ya no aplican) o all. */
 	status?: "open" | "reviewed" | "resolved" | "all";
 	/** Solo los de esta gravedad: critical, warning o info. */
@@ -23439,7 +23439,7 @@ export class FindingsResource {
 	/**
 	 * Listar hallazgos
 	 *
-	 * Lo que Fiscalisto encontró en las órdenes de compra, pagos, proveedores, contabilidad, viáticos y tickets de compra del emisor, el más reciente primero: una factura que no coincide con su orden, un proveedor en la lista 69-B, un documento vencido, Caja con saldo acreedor, una comprobación vencida, un ticket sin factura. Sin status, los que nadie ha revisado. Los de facturas están en GET /v1/sat_findings. No usa timbres.
+	 * Lo que Fiscalisto encontró en las órdenes de compra, pagos, proveedores, contabilidad, viáticos, tickets de compra e inventario del emisor, el más reciente primero: una factura que no coincide con su orden, un proveedor en la lista 69-B, un documento vencido, Caja con saldo acreedor, una comprobación vencida, un ticket sin factura, una existencia negativa. Sin status, los que nadie ha revisado. Los de facturas están en GET /v1/sat_findings. No usa timbres.
 	 *
 	 * GET /v1/findings
 	 * @see https://fiscalisto.com/docs/api/referencia/hallazgos/list-findings
