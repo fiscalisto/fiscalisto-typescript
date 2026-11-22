@@ -1983,6 +1983,13 @@ export interface ImssMovement {
 	status: "pending" | "reported";
 	/** Cuándo se marcó como presentado, o null. */
 	reported_at: string | null;
+	/** El IMSS lo rechazó en el acuse del IDSE (sigue pending para corregirlo y enviarlo otra vez); null si no. */
+	imss_rejection: {
+		/** Lo que dijo el IMSS, como en su acuse. */
+		reason: string;
+		/** Cuándo lo anotó (el acuse que se subió o la llamada que lo mandó en rejected). */
+		rejected_at: string;
+	} | null;
 	/** Lo que el IMSS rechazaría en su renglón (vacío: listo para el archivo). */
 	problems: string[];
 }
@@ -4056,6 +4063,10 @@ export interface Branch {
 	pdf_color: string | null;
 	/** Estilo de su PDF; null: el del emisor. */
 	pdf_style: "clasico" | "moderno" | "compacto" | "minimalista" | null;
+	/** La zona horaria (IANA) en que cuenta su día: la elegida o, si no eligió, la de su código postal (Ley de los Husos Horarios). La fecha de sus facturas siempre es la hora local de su código postal. */
+	time_zone: string;
+	/** true: time_zone se eligió; false: sigue la de su código postal. */
+	time_zone_chosen: boolean;
 	/** true si está archivada: ya no se factura desde ella. */
 	archived: boolean;
 	/** Cuándo se creó. */
@@ -13402,9 +13413,16 @@ export interface ReportImssMovementsParams {
 	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
 	issuer?: string;
 	/** Los movimientos (imv_…) que el IMSS ya recibió, hasta 1,000. */
-	movements: string[];
+	movements?: string[];
 	/** true (por omisión): marcarlos como presentados; false: devolverlos a pendientes (si los marcó por error). */
 	reported?: boolean;
+	/** Los que el IMSS rechazó en el acuse del IDSE, cada uno con su razón: vuelven a pendientes con imss_rejection, para corregirlos y enviarlos otra vez. */
+	rejected?: {
+		/** El movimiento (imv_…). */
+		movement: string;
+		/** Lo que dice el IMSS, como en su acuse del IDSE. */
+		reason: string;
+	}[];
 }
 
 export interface UpdateImssMovementParams {
@@ -14099,6 +14117,8 @@ export interface CreateBranchParams {
 	pdf_color?: string | null;
 	/** Estilo del PDF de sus facturas: clasico, moderno, compacto o minimalista. null toma el del emisor. */
 	pdf_style?: "clasico" | "moderno" | "compacto" | "minimalista" | null;
+	/** Su zona horaria (IANA), cuando no es la de su código postal: cuándo empieza su día para «hoy», los límites por día y los avisos. null sigue la de su código postal. La fecha de sus facturas siempre es la hora local de su código postal (Anexo 20). */
+	time_zone?: "America/Mexico_City" | "America/Cancun" | "America/Mazatlan" | "America/Hermosillo" | "America/Tijuana" | "America/Matamoros" | "America/Ciudad_Juarez" | null;
 }
 
 /** Los parámetros de GET /v1/branches. */
@@ -14156,6 +14176,8 @@ export interface UpdateBranchParams {
 	pdf_color?: string | null;
 	/** Estilo del PDF de sus facturas: clasico, moderno, compacto o minimalista. null toma el del emisor. */
 	pdf_style?: "clasico" | "moderno" | "compacto" | "minimalista" | null;
+	/** Su zona horaria (IANA), cuando no es la de su código postal: cuándo empieza su día para «hoy», los límites por día y los avisos. null sigue la de su código postal. La fecha de sus facturas siempre es la hora local de su código postal (Anexo 20). */
+	time_zone?: "America/Mexico_City" | "America/Cancun" | "America/Mazatlan" | "America/Hermosillo" | "America/Tijuana" | "America/Matamoros" | "America/Ciudad_Juarez" | null;
 	/** true la archiva: ya no se puede facturar desde ella, y sus facturas la siguen nombrando. false la restaura. */
 	archived?: boolean;
 }
@@ -19925,12 +19947,12 @@ export class ImssMovementsResource {
 	/**
 	 * Marcar movimientos como presentados
 	 *
-	 * Cuando el IMSS ya los recibió (el acuse de IDSE o la importación en SUA): pasan a reported y ya no cambian ni se borran. Con reported false vuelven a pendientes. Devuelve los movimientos como quedaron.
+	 * Cuando el IMSS ya los recibió (el acuse de IDSE o la importación en SUA): pasan a reported y ya no cambian ni se borran. Con reported false vuelven a pendientes. Los que el IMSS rechazó van en rejected con su razón: quedan pending con imss_rejection hasta que los corrija. Devuelve los movimientos como quedaron.
 	 *
 	 * POST /v1/imss_movements/report
 	 * @see https://fiscalisto.com/docs/api/referencia/nomina/report-imss-movements
 	 */
-	report(params: ReportImssMovementsParams, options?: RequestOptions): Promise<ImssMovementList> {
+	report(params?: ReportImssMovementsParams, options?: RequestOptions): Promise<ImssMovementList> {
 		return this.#client.request({ method: "POST", path: "/v1/imss_movements/report", body: params, idempotent: true }, options);
 	}
 
