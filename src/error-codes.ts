@@ -27,7 +27,7 @@ export const ErrorCode = {
 	AssetNotDisposed: "asset_not_disposed",
 	/** Asistencia no lo permite: el mensaje dice por qué (una hora en el futuro o de hace más de 400 días, un empleado con fecha de baja, un periodo de más de 92 días, una marca ya quitada). */
 	AttendanceInvalid: "attendance_invalid",
-	/** Ese movimiento no va a la contabilidad así: un depósito tiene que estar clasificado en la conciliación como préstamo, traspaso o devolución (los demás los explica su factura), y un retiro marcado como pago de facturas o sin registrar vuelve primero a pending. */
+	/** Ese movimiento no va a la contabilidad así: un depósito tiene que estar clasificado en la conciliación como préstamo, traspaso, devolución o intereses (los demás los explica su factura), y un retiro marcado como pago de facturas o sin registrar vuelve primero a pending. */
 	BankMovementNotBookable: "bank_movement_not_bookable",
 	/** Ese movimiento de banco no tiene póliza: no hay nada que quitar. */
 	BankMovementNotPosted: "bank_movement_not_posted",
