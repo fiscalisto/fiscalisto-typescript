@@ -2633,8 +2633,8 @@ export interface PayrollTaxSettings {
 export interface PayrollCalendarEvent {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "payroll_calendar_event";
-	/** pago (una nómina, en su fecha de pago), imss (cuotas del mes, LSS art. 39), rcv_infonavit (bimestrales), isn (impuesto sobre nómina de un estado), aguinaldo (LFT art. 87), ptu (LFT art. 122), prima_riesgo (determinación anual, RACERF art. 32), ajuste_anual (LISR art. 97), icsoe (informativa cuatrimestral al IMSS de un contratista REPSE, LSS art. 15-A) o sisub (la del Infonavit, Ley del Infonavit art. 29 Bis). */
-	obligation: "pago" | "imss" | "rcv_infonavit" | "isn" | "aguinaldo" | "ptu" | "prima_riesgo" | "ajuste_anual" | "icsoe" | "sisub";
+	/** pago (una nómina, en su fecha de pago), imss (cuotas del mes, LSS art. 39), rcv_infonavit (bimestrales), isn (impuesto sobre nómina de un estado), aguinaldo (LFT art. 87), ptu (LFT art. 122), prima_riesgo (determinación anual, RACERF art. 32), ajuste_anual (LISR art. 97), icsoe (informativa cuatrimestral al IMSS de un contratista REPSE, LSS art. 15-A), sisub (la del Infonavit, Ley del Infonavit art. 29 Bis) o renovacion_repse (la renovación del registro en el REPSE cada tres años, LFT art. 15). */
+	obligation: "pago" | "imss" | "rcv_infonavit" | "isn" | "aguinaldo" | "ptu" | "prima_riesgo" | "ajuste_anual" | "icsoe" | "sisub" | "renovacion_repse";
 	/** Lo identifica junto con obligation: 2026-11 (mes), 2026-B6 (bimestre), 2026 (año), 2026-11:CMX (ISN de un estado) o 2026-11-16/2026-11-30:04 (una nómina). */
 	key: string;
 	/** Qué es, como lo dice la app. */
@@ -6284,7 +6284,7 @@ export interface RecurringInvoice {
 		day_of_month: number | "last" | null;
 		/** La hora (0 a 23) en que se timbra, en time_zone. */
 		hour: number;
-		/** La zona de esa hora (America/Mexico_City, America/Cancun…). */
+		/** La zona de esa hora (America/Mexico_City, America/Cancun…); sin ella, la de la empresa emisora. */
 		time_zone: string;
 	};
 	/** La fecha (AAAA-MM-DD) de la siguiente factura. */
@@ -6911,6 +6911,15 @@ export interface RepseProfile {
 	issuer: string;
 	/** Folio de su registro en el REPSE que dio la STPS. */
 	stps_folio: string | null;
+	/** Fecha en que la STPS otorgó el registro o su última renovación. */
+	stps_registration_date: string | null;
+	/** Cuándo renovar el registro; null sin fecha de registro. */
+	renewal: {
+		/** Primer día para pedir la renovación (tres meses antes del vencimiento). */
+		opens_on: string;
+		/** Último día de vigencia del registro: tres años desde que se otorgó (LFT art. 15). */
+		last_day: string;
+	} | null;
 	/** Correo del sujeto obligado. */
 	email: string | null;
 	/** Teléfono, 10 dígitos. */
@@ -14270,8 +14279,8 @@ export interface GetPayrollCalendarParams {
 export interface MarkPayrollCalendarEventParams {
 	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
 	issuer?: string;
-	/** imss, rcv_infonavit, isn, aguinaldo, ptu, prima_riesgo, ajuste_anual, icsoe o sisub. */
-	obligation: "imss" | "rcv_infonavit" | "isn" | "aguinaldo" | "ptu" | "prima_riesgo" | "ajuste_anual" | "icsoe" | "sisub";
+	/** imss, rcv_infonavit, isn, aguinaldo, ptu, prima_riesgo, ajuste_anual, icsoe, sisub o renovacion_repse. */
+	obligation: "imss" | "rcv_infonavit" | "isn" | "aguinaldo" | "ptu" | "prima_riesgo" | "ajuste_anual" | "icsoe" | "sisub" | "renovacion_repse";
 	/** Como lo da GET /v1/payroll_calendar: 2026-11, 2026-B6, 2026-C3, 2026, 2026-11:CMX. */
 	key: string;
 	/** true lo marca pagado; false lo desmarca. */
@@ -14437,6 +14446,8 @@ export interface UpdateRepseProfileParams {
 	issuer?: string;
 	/** Folio de su registro en el REPSE que dio la STPS (AR65000). */
 	stps_folio?: string;
+	/** Fecha en que la STPS otorgó el registro o su última renovación (YYYY-MM-DD). Se renueva cada tres años (LFT art. 15). */
+	stps_registration_date?: string | "";
 	/** Correo del sujeto obligado. */
 	email?: string;
 	/** Teléfono, 10 dígitos. */
@@ -18499,7 +18510,7 @@ export interface CreateRecurringInvoiceParams {
 		start_date?: string;
 		/** La hora (0 a 23) en que se timbra, en time_zone. Por omisión 7. */
 		hour?: number;
-		/** La zona de esa hora. Por omisión America/Mexico_City. */
+		/** La zona de esa hora. Por omisión, la de la empresa emisora (su «Zona horaria»). */
 		time_zone?: "America/Mexico_City" | "America/Cancun" | "America/Mazatlan" | "America/Hermosillo" | "America/Tijuana" | "America/Matamoros" | "America/Ciudad_Juarez";
 	};
 	/** La factura que se repite: el cuerpo de POST /v1/invoices, sin issuer, folio, date, global ni metadata. En description puede usar {mes}, {mes anterior}, {mes siguiente}, {año}, {año anterior}, {año siguiente} y {periodo}: cada factura los llena con su fecha. Como se escriben es como salen: {mes} «noviembre», {Mes} «Noviembre», {MES} «NOVIEMBRE». */
@@ -18537,7 +18548,7 @@ export interface UpdateRecurringInvoiceParams {
 		start_date?: string;
 		/** La hora (0 a 23) en que se timbra, en time_zone. Por omisión 7. */
 		hour?: number;
-		/** La zona de esa hora. Por omisión America/Mexico_City. */
+		/** La zona de esa hora. Por omisión, la de la empresa emisora (su «Zona horaria»). */
 		time_zone?: "America/Mexico_City" | "America/Cancun" | "America/Mazatlan" | "America/Hermosillo" | "America/Tijuana" | "America/Matamoros" | "America/Ciudad_Juarez";
 	};
 	/** La factura completa que se repite desde la siguiente vez (reemplaza la anterior). */
@@ -21351,7 +21362,7 @@ export class PayrollCalendarResource {
 	/**
 	 * Marcar un pago de nómina como pagado
 	 *
-	 * Marca (paid true) o desmarca (false) un pago del calendario de nómina: imss, rcv_infonavit, isn, aguinaldo, ptu, prima_riesgo, ajuste_anual, icsoe o sisub, con su key como lo da GET /v1/payroll_calendar. Una nómina (pago) queda hecha al timbrar sus recibos.
+	 * Marca (paid true) o desmarca (false) un pago del calendario de nómina: imss, rcv_infonavit, isn, aguinaldo, ptu, prima_riesgo, ajuste_anual, icsoe, sisub o renovacion_repse, con su key como lo da GET /v1/payroll_calendar. Una nómina (pago) queda hecha al timbrar sus recibos.
 	 *
 	 * POST /v1/payroll_calendar/mark
 	 * @see https://fiscalisto.com/docs/api/referencia/nomina/mark-payroll-calendar-event
