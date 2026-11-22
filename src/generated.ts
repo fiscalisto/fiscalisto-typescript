@@ -4952,6 +4952,48 @@ export interface RuleRun {
 	created_at: string;
 }
 
+/** Lo que la regla habría hecho en los últimos días, contado (sin cambiar nada). */
+export interface RuleBacktest {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "rule_backtest";
+	/** La regla (rul_…). */
+	rule: string;
+	/** Cuántos días hacia atrás revisó. */
+	days: number;
+	/** Desde qué día (YYYY-MM-DD, hora de México). */
+	since: string;
+	/** Cuántas facturas, órdenes, movimientos o avisos de su trigger revisó. */
+	records: number;
+	/** En cuántos se habrían cumplido sus condiciones. */
+	matches: number;
+	/** Lo que suman los que cumplen, en pesos; null para los avisos del SAT o si ninguno cumple. */
+	amount: number | null;
+	/** true: revisó los 2,000 más recientes y se detuvo ahí. */
+	capped: boolean;
+	/** Lo que habría hecho con cada uno que cumple, en palabras. */
+	would_do: string[];
+	/** Lo que habría hecho con los demás («Si no se cumple»), en palabras. */
+	else_would_do: string[];
+	/** Días que espera y vuelve a revisar antes de actuar (0: actúa en seguida). */
+	wait_days: number;
+}
+
+/** Un cambio a una regla, con la regla como quedó. Se guardan las últimas 50 de cada regla; las de una regla borrada, 90 días. */
+export interface RuleVersion {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "rule_version";
+	/** Qué cambió: created, edited, paused (en pausa), resumed (activada), deleted o restored (regresó a una versión anterior). */
+	change: "created" | "edited" | "paused" | "resumed" | "deleted" | "restored";
+	/** El miembro (mem_…) que la cambió; null si fue la API o Fiscalisto. */
+	changed_by: string | null;
+	/** La regla como quedó después de este cambio. */
+	rule: Rule;
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string;
+}
+
 /** Un hallazgo en una orden de compra, un pago, un proveedor o la contabilidad: lo que Fiscalisto encontró y conviene revisar. Los de facturas están en SatFinding. */
 export interface Finding {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
@@ -11169,6 +11211,17 @@ export interface RuleRunList {
 	url: string;
 }
 
+export interface RuleVersionList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: RuleVersion[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
 export interface SupplierGroupList {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "list";
@@ -16176,6 +16229,11 @@ export interface ListRuleRunsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
+}
+
+export interface BacktestRuleParams {
+	/** Cuántos días hacia atrás (90 por omisión, hasta 90). */
+	days?: number;
 }
 
 export interface CreateSupplierGroupParams {
@@ -23200,6 +23258,42 @@ export class RulesResource {
 	 */
 	listRuns(id: string, params?: ListRuleRunsParams, options?: RequestOptions): List<RuleRun> {
 		return this.#client.list({ path: `/v1/rules/${encodeURIComponent(id)}/runs`, query: params }, options);
+	}
+
+	/**
+	 * Probar una regla en los últimos días
+	 *
+	 * Con todos los registros de su trigger de los últimos days días (90 por omisión, hasta 2,000): en cuántos se cumple, cuánto suman y qué habría hecho. No cambia nada.
+	 *
+	 * POST /v1/rules/{id}/backtest
+	 * @see https://fiscalisto.com/docs/api/referencia/reglas/backtest-rule
+	 */
+	backtest(id: string, params?: BacktestRuleParams, options?: RequestOptions): Promise<RuleBacktest> {
+		return this.#client.request({ method: "POST", path: `/v1/rules/${encodeURIComponent(id)}/backtest`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Cambios de una regla
+	 *
+	 * Cada cambio, el más reciente primero, con quién lo hizo y la regla como quedó. También de una regla borrada (90 días).
+	 *
+	 * GET /v1/rules/{id}/versions
+	 * @see https://fiscalisto.com/docs/api/referencia/reglas/list-rule-versions
+	 */
+	listVersions(id: string, options?: RequestOptions): Promise<RuleVersionList> {
+		return this.#client.request({ method: "GET", path: `/v1/rules/${encodeURIComponent(id)}/versions` }, options);
+	}
+
+	/**
+	 * Regresar una regla a una versión
+	 *
+	 * La regla vuelve a como quedó en esa versión; una borrada vuelve a existir. Se revisa como cualquier cambio y queda como una versión más.
+	 *
+	 * POST /v1/rules/{id}/versions/{version}/restore
+	 * @see https://fiscalisto.com/docs/api/referencia/reglas/restore-rule-version
+	 */
+	restoreVersion(id: string, version: string, options?: RequestOptions): Promise<Rule> {
+		return this.#client.request({ method: "POST", path: `/v1/rules/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}/restore`, idempotent: true }, options);
 	}
 }
 
