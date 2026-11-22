@@ -1009,6 +1009,8 @@ export interface Customer {
 	ieps_taxpayer: boolean;
 	/** Días de crédito que se le dan, de 0 a 365, o null para no cambiar los del cliente. */
 	credit_days: number | null;
+	/** Días que vale una cotización nueva (1 a 366). En un cliente o grupo, null usa los de su grupo o los de la empresa (Ajustes › Horarios). */
+	quote_valid_days: number | null;
 	/** Condiciones de pago (CondicionesDePago), hasta 1,000 caracteres sin «|»: «Crédito a 30 días», «50 % anticipo». Van en el XML y en el PDF; solo en ingresos y egresos. No cambian cuándo vence (due_date usa los días de crédito del cliente). */
 	payment_terms: string | null;
 	/** Su grupo de clientes (cgr_…), o null si no está en ninguno. */
@@ -4840,6 +4842,8 @@ export interface CustomerGroup {
 	discount_percent: number;
 	/** Días de crédito que se le dan, de 0 a 365, o null para no cambiar los del cliente. */
 	credit_days: number | null;
+	/** Días que vale una cotización nueva (1 a 366). En un cliente o grupo, null usa los de su grupo o los de la empresa (Ajustes › Horarios). */
+	quote_valid_days: number | null;
 	/** Pedido mínimo, sin IVA, para pedir desde el Portal del cliente, o null sin mínimo. */
 	min_order: number | null;
 	/** true si sus clientes pueden hacer pedidos desde su Portal del cliente. */
@@ -10384,6 +10388,28 @@ export interface IssuerBranding {
 	logo_url: string | null;
 }
 
+/** Los horarios de la empresa (Ajustes › Horarios): cuánto vale una cotización nueva y a qué hora vence, y a qué hora corren las reglas «Cada mañana», los hallazgos diarios y el resumen semanal, en su zona horaria. */
+export interface ScheduleSettings {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "schedule_settings";
+	/** El emisor (iss_…) con que se leyeron; valen para toda la empresa. */
+	issuer: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** La zona horaria de la empresa (Ajustes › Datos fiscales), en la que van todas las horas. */
+	time_zone: string;
+	/** Días que vale una cotización nueva cuando el cliente y su grupo no tienen los suyos. */
+	quote_valid_days: number;
+	/** A qué hora (0 a 23) vence una cotización su último día; null: al terminar ese día. */
+	quote_expiry_hour: number | null;
+	/** A qué hora (0 a 23) corren las reglas «Cada mañana». */
+	rules_hour: number;
+	/** A qué hora (0 a 23) corre la revisión diaria de hallazgos. */
+	findings_hour: number;
+	/** A qué hora (0 a 23) del lunes sale el resumen semanal. */
+	digest_hour: number;
+}
+
 /** Lo que pasó con un evento en un webhook: su último intento, cuántos lleva y cuándo va el siguiente. */
 export interface WebhookDelivery {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -12681,6 +12707,27 @@ export interface UpdateIssuerBrandingParams {
 	pdf_style?: "clasico" | "moderno" | "compacto" | "minimalista" | null;
 	/** Color del PDF, como #2563EB. null: el de Fiscalisto (#5B48EE). */
 	pdf_color?: string | null;
+}
+
+/** Los parámetros de GET /v1/schedule_settings. */
+export interface GetScheduleSettingsParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface UpdateScheduleSettingsParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** Días que vale una cotización nueva, de 1 a 366. Un cliente o su grupo pueden tener los suyos (quote_valid_days en /v1/customers y /v1/customer_groups). */
+	quote_valid_days?: number;
+	/** A qué hora (0 a 23) vence una cotización su último día; null: al terminar ese día, a medianoche. */
+	quote_expiry_hour?: number | null;
+	/** A qué hora (0 a 23) corren las reglas «Cada mañana» (triggers invoice.daily y purchase_order.daily). */
+	rules_hour?: number;
+	/** A qué hora (0 a 23) corre la revisión diaria de hallazgos. */
+	findings_hour?: number;
+	/** A qué hora (0 a 23) del lunes sale el resumen semanal por correo. */
+	digest_hour?: number;
 }
 
 export interface UploadIssuerLogoParams {
@@ -15881,6 +15928,8 @@ export interface CreateCustomerGroupParams {
 	discount_percent?: number;
 	/** Días de crédito que se le dan, de 0 a 365, o null para no cambiar los del cliente. */
 	credit_days?: number | null;
+	/** Días que vale una cotización nueva para sus clientes; null: los de la empresa (Ajustes › Horarios). Un cliente con los suyos los usa antes. */
+	quote_valid_days?: number | null;
 	/** El pedido mínimo antes de IVA desde el Portal del cliente. */
 	min_order?: number | null;
 	/** Sus clientes pueden hacer pedidos desde su Portal del cliente (true por omisión). */
@@ -15916,6 +15965,8 @@ export interface UpdateCustomerGroupParams {
 	discount_percent?: number;
 	/** Días de crédito que se le dan, de 0 a 365, o null para no cambiar los del cliente. */
 	credit_days?: number | null;
+	/** Días que vale una cotización nueva para sus clientes; null: los de la empresa (Ajustes › Horarios). Un cliente con los suyos los usa antes. */
+	quote_valid_days?: number | null;
 	/** El pedido mínimo antes de IVA desde el Portal del cliente. */
 	min_order?: number | null;
 	/** Sus clientes pueden hacer pedidos desde su Portal del cliente (true por omisión). */
@@ -16233,6 +16284,8 @@ export interface CreateCustomerParams {
 	ieps_taxpayer?: boolean;
 	/** Sus días de crédito: sus facturas vencen estos días después de su fecha (due_date, cobranza); null: los de su grupo o los de la empresa. */
 	credit_days?: number | null;
+	/** Días que vale una cotización nueva para este cliente (valid_until); null: los de su grupo o los de la empresa (Ajustes › Horarios). */
+	quote_valid_days?: number | null;
 	/** Sus condiciones de pago («Crédito a 30 días»): las facturas nuevas en la app empiezan con ellas; null: las de la empresa. POST /v1/invoices no las pone solas: mándelas en payment_terms. */
 	payment_terms?: string | null;
 }
@@ -16279,6 +16332,8 @@ export interface UpdateCustomerParams {
 	ieps_taxpayer?: boolean;
 	/** Sus días de crédito: sus facturas vencen estos días después de su fecha (due_date, cobranza); null: los de su grupo o los de la empresa. */
 	credit_days?: number | null;
+	/** Días que vale una cotización nueva para este cliente (valid_until); null: los de su grupo o los de la empresa (Ajustes › Horarios). */
+	quote_valid_days?: number | null;
 	/** Sus condiciones de pago («Crédito a 30 días»): las facturas nuevas en la app empiezan con ellas; null: las de la empresa. POST /v1/invoices no las pone solas: mándelas en payment_terms. */
 	payment_terms?: string | null;
 }
@@ -19861,6 +19916,38 @@ export class IssuersResource {
 	 */
 	updateSelfInvoicing(id: string, params?: UpdateSelfInvoicingParams, options?: RequestOptions): Promise<SelfInvoicing> {
 		return this.#client.request({ method: "POST", path: `/v1/issuers/${encodeURIComponent(id)}/self_invoicing`, body: params, idempotent: true }, options);
+	}
+}
+
+/** Emisores: fiscalisto.scheduleSettings. */
+export class ScheduleSettingsResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ver los horarios
+	 *
+	 * Los horarios de la empresa, como Ajustes › Horarios en la app: cuántos días vale una cotización nueva y a qué hora vence, y a qué hora corren las reglas «Cada mañana», la revisión diaria de hallazgos y el resumen semanal de los lunes, todo en su zona horaria (time_zone). Valen para toda la empresa: cualquiera de sus emisores lee los mismos.
+	 *
+	 * GET /v1/schedule_settings
+	 * @see https://fiscalisto.com/docs/api/referencia/emisores/get-schedule-settings
+	 */
+	get(params?: GetScheduleSettingsParams, options?: RequestOptions): Promise<ScheduleSettings> {
+		return this.#client.request({ method: "GET", path: "/v1/schedule_settings", query: params }, options);
+	}
+
+	/**
+	 * Cambiar los horarios
+	 *
+	 * Cambia los horarios de la empresa (para todos sus emisores). Lo que no mande se queda como está. Un cliente o su grupo pueden tener su propia vigencia de cotizaciones (quote_valid_days), que gana a la de la empresa.
+	 *
+	 * POST /v1/schedule_settings
+	 * @see https://fiscalisto.com/docs/api/referencia/emisores/update-schedule-settings
+	 */
+	update(params?: UpdateScheduleSettingsParams, options?: RequestOptions): Promise<ScheduleSettings> {
+		return this.#client.request({ method: "POST", path: "/v1/schedule_settings", body: params, idempotent: true }, options);
 	}
 }
 
@@ -26620,6 +26707,7 @@ export class FiscalistoApi extends Core {
 	readonly testClocks = new TestClocksResource(this);
 	readonly balance = new BalanceResource(this);
 	readonly issuers = new IssuersResource(this);
+	readonly scheduleSettings = new ScheduleSettingsResource(this);
 	readonly invoices = new InvoicesResource(this);
 	readonly receivables = new ReceivablesResource(this);
 	readonly customers = new CustomersResource(this);
