@@ -9298,6 +9298,38 @@ export interface Diot {
 	warnings: string[];
 }
 
+/** Los clientes a los que se les trasladó el IEPS por separado, por trimestre (artículo 19, fracción II de la Ley del IEPS). */
+export interface IepsCustomers {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "ieps_customers";
+	/** false en modo de prueba. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** El año. */
+	year: number;
+	/** Cada trimestre pedido, también los que no tienen clientes. */
+	quarters: {
+		/** El trimestre, 1 a 4. */
+		quarter: number;
+		/** El mes (AAAA-MM) en que se presenta en el MULTI-IEPS: el siguiente al trimestre. */
+		due_month: string;
+		/** Los clientes, el de más IEPS primero. */
+		customers: {
+			/** El RFC del cliente. */
+			tax_id: string;
+			/** Su nombre como viene en sus facturas. */
+			name: string | null;
+			/** Cuántas facturas del trimestre llevan ese IEPS. */
+			invoices: number;
+			/** El IEPS que se le trasladó en el trimestre, en pesos. */
+			ieps: number;
+		}[];
+		/** El IEPS de todos, en pesos. */
+		total: number;
+	}[];
+}
+
 /** El IVA a favor del emisor mes por mes, qué pasó con cada saldo y, con un mes, la revisión antes de pedir su devolución. */
 export interface VatRefund {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -19025,6 +19057,26 @@ export interface GetDiotFileParams {
 	issuer?: string;
 }
 
+/** Los parámetros de GET /v1/accounting/ieps_customers. */
+export interface GetIepsCustomersParams {
+	/** El año (AAAA), de 2015 al actual. */
+	year: string;
+	/** Solo ese trimestre (1 a 4); por omisión, los cuatro. */
+	quarter?: "1" | "2" | "3" | "4";
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+/** Los parámetros de GET /v1/accounting/ieps_customers/file. */
+export interface GetIepsCustomersFileParams {
+	/** El año (AAAA), de 2015 al actual. */
+	year: string;
+	/** El trimestre (1 a 4). */
+	quarter: "1" | "2" | "3" | "4";
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
 export interface CreateStoreConnectionParams {
 	/** El emisor (iss_…) dueño de la tienda. Por omisión, su único emisor. */
 	issuer?: string;
@@ -25830,6 +25882,30 @@ export class AccountingResource {
 	 */
 	diotFile(params: GetDiotFileParams, options?: RequestOptions): Promise<string> {
 		return this.#client.request({ method: "GET", path: "/v1/accounting/diot/file", query: params, as: "text" }, options);
+	}
+
+	/**
+	 * Ver los clientes con IEPS desglosado
+	 *
+	 * La relación trimestral de los clientes a los que el emisor les trasladó el IEPS por separado (artículo 19, fracción II, tercer párrafo de la Ley del IEPS): bebidas alcohólicas, bebidas energetizantes, bebidas saborizadas y alimentos de alta densidad calórica, de sus facturas de ingreso no canceladas. Público en general y extranjeros no van. Se presenta cada trimestre en el MULTI-IEPS, Anexo 1 (regla 5.2.2 de la RMF 2026), en el mes siguiente al trimestre.
+	 *
+	 * GET /v1/accounting/ieps_customers
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-ieps-customers
+	 */
+	iepsCustomers(params: GetIepsCustomersParams, options?: RequestOptions): Promise<IepsCustomers> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/ieps_customers", query: params }, options);
+	}
+
+	/**
+	 * Descargar los clientes con IEPS desglosado
+	 *
+	 * La relación de un trimestre en CSV (UTF-8): RFC, nombre, facturas e IEPS trasladado de cada cliente, y el total; la misma que descarga la app en Impuestos.
+	 *
+	 * GET /v1/accounting/ieps_customers/file
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-ieps-customers-file
+	 */
+	iepsCustomersFile(params: GetIepsCustomersFileParams, options?: RequestOptions): Promise<string> {
+		return this.#client.request({ method: "GET", path: "/v1/accounting/ieps_customers/file", query: params, as: "text" }, options);
 	}
 }
 
