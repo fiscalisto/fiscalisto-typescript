@@ -3878,6 +3878,58 @@ export interface Rule {
 		/** lote con pay_on in_days: cuántos días. */
 		days?: number;
 	}[];
+	/** Si no: lo que hace cuando sus condiciones no se cumplen ([]: nada). */
+	else_actions: {
+		/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
+		type: "tag" | "cost_center" | "category" | "stage" | "close" | "ask_approval" | "notify" | "lote" | "hold_payment" | "email_supplier" | "review_findings" | "extra_signature" | "account";
+		/** tag: la etiqueta (tag_…, GET /v1/tags). */
+		tag?: string;
+		/** account: el número de cuenta del catálogo en que se registra la factura, en vez de la de su categoría (no cambia la que eligió una persona). */
+		account?: string;
+		/** category: la categoría de gasto (facturas recibidas). */
+		category?: string;
+		/** tag: se quita si la orden deja de cumplir. */
+		remove_when_unmet?: boolean;
+		/** Su centro de costo (ccn_…): la obra, proyecto, sucursal o área a la que pertenece, para ver ingresos y gastos por centro en Reportes. No cambia el CFDI. Sus notas de crédito lo toman solas. */
+		cost_center?: string;
+		/** stage: la etapa. */
+		stage?: number;
+		/** notify: a quién (mem_…). */
+		members?: string[];
+		/** notify: lo que dice el aviso. hold_payment: por qué se retiene. */
+		note?: string | null;
+		/** email_supplier: el tema de los correos del proveedor a los que va. */
+		topic?: "ordenes" | "pagos" | "facturas" | "complementos" | "documentos" | "precios";
+		/** email_supplier: el asunto. */
+		subject?: string;
+		/** email_supplier: el mensaje. */
+		message?: string;
+		/** email_supplier en los disparadores de pagos: payout, un correo por pago y proveedor; invoice, uno por factura. */
+		per?: "payout" | "invoice";
+		/** email_supplier: las columnas de cada tabla del mensaje; null: las de siempre. */
+		columns?: {
+			/** Columnas de {tabla_facturas}, en su orden. */
+			tabla_facturas?: string[];
+			/** Columnas de {tabla_conceptos}, en su orden. */
+			tabla_conceptos?: string[];
+			/** Columnas de {tabla_productos}, en su orden. */
+			tabla_productos?: string[];
+		} | null;
+		/** email_supplier: personas del equipo con copia (mem_…). */
+		cc?: string[];
+		/** review_findings: los hallazgos que da por revisados (sus códigos). */
+		findings?: string[];
+		/** extra_signature: cuántas firmas más pide (1 a 3). */
+		signatures?: number;
+		/** extra_signature: por qué, para quien firma. */
+		reason?: string | null;
+		/** lote: el nombre del lote; null: «Lote del jueves 27 nov». */
+		lote_name?: string | null;
+		/** lote: el día que paga (siguiente día de la semana, a los días, o el del contrarecibo). */
+		pay_on?: "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "in_days" | "due";
+		/** lote con pay_on in_days: cuántos días. */
+		days?: number;
+	}[];
 	/** true: corre una sola vez por factura u orden. */
 	once_per_record: boolean;
 	/** Esperar y volver a revisar: los días que espera antes de actuar, revisando de nuevo el registro (0: actúa al momento). */
@@ -13582,6 +13634,58 @@ export interface CreateRuleParams {
 		/** review_findings: los hallazgos que da por revisados (sus códigos, `code` en GET /v1/sat_findings). No los que cambian impuestos o la lista negra: cancelado, efos_definitivo, efos_presunto, lista_69b_bis, lista_69. */
 		findings?: string[];
 	}[];
+	/** Si no: de 0 a 8 acciones, las mismas de actions, que hace cuando sus condiciones no se cumplen. Solo con condiciones; [] las quita. */
+	else_actions?: {
+		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; account (facturas): registrar su ingreso o gasto en la cuenta `account` del catálogo en vez de la de su categoría, nunca sobre la que eligió una persona ni en un mes cerrado; en bank.movement, registrar el movimiento con su póliza de ingresos o egresos contra esa cuenta (otra cuenta de banco de la empresa es un traspaso), si no tiene una ni es un mes cerrado; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…); lote (invoice.received e invoice.approved): agregar la factura al lote de pagos abierto `lote_name` que paga `pay_on`, o crear uno, preparado como quien hizo la regla; hold_payment (facturas recibidas): retener su pago hasta que alguien lo suelte, con `note`; email_supplier (facturas recibidas): escribirle al proveedor a los correos de su tema `topic`, con `subject` y `message`; review_findings: dar por revisados los hallazgos `findings` de la factura; extra_signature (payout.submitted): el pago necesita `signatures` firmas más que las de Configurar pagos, con `reason` para quien firma (nunca las baja; no cambia un pago que ya salió). */
+		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category" | "account" | "lote" | "hold_payment" | "email_supplier" | "review_findings" | "extra_signature";
+		/** tag: la etiqueta (tag_…, GET /v1/tags). Un número, el id de antes, también se acepta. */
+		tag?: string | number;
+		/** category: la categoría de gasto, como la app la nombra («Combustible»). */
+		category?: "Renta y arrendamiento" | "Servicios profesionales" | "Nómina y personal" | "Transporte y fletes" | "Combustible" | "Viáticos y viajes" | "Alimentos y representación" | "Telecomunicaciones e internet" | "Energía y agua" | "Software y suscripciones" | "Equipo de cómputo" | "Papelería y oficina" | "Mantenimiento y reparaciones" | "Publicidad y marketing" | "Seguros y fianzas" | "Comisiones bancarias y financieras" | "Impuestos y derechos" | "Compras de mercancía e inventario" | "Materias primas y producción" | "Activo fijo y mobiliario" | "Vehículos" | "Capacitación" | "Donativos" | "Otros gastos";
+		/** account: el número de la cuenta del catálogo («601-84-002», GET /v1/accounting/accounts). No una de Caja o Bancos. */
+		account?: string;
+		/** tag: quitarla si la orden deja de cumplir. */
+		remove_when_unmet?: boolean;
+		/** lote: el nombre del lote («Fletes»); vacío o null: «Lote del jueves 27 nov». */
+		lote_name?: string | null;
+		/** lote: el día que paga: el siguiente lunes … viernes (hoy incluido), a los `days` días, o `due`, la fecha de pago del contrarecibo del portal. Un día inhábil pasa al siguiente hábil. Por omisión, friday. */
+		pay_on?: "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "in_days" | "due";
+		/** lote con pay_on in_days: cuántos días después. */
+		days?: number;
+		/** Su centro de costo (ccn_…): la obra, proyecto, sucursal o área a la que pertenece, para ver ingresos y gastos por centro en Reportes. No cambia el CFDI. Sus notas de crédito lo toman solas. */
+		cost_center?: string;
+		/** stage: la etapa. */
+		stage?: number;
+		/** notify: a quién (mem_…, GET /v1/members). */
+		members?: string[];
+		/** notify: lo que dice el aviso. hold_payment: por qué se retiene (hasta 200). Puede llevar las variables de `message`, menos las tablas. */
+		note?: string | null;
+		/** email_supplier: el tema de los correos del proveedor a los que va (ordenes, pagos, facturas, complementos, documentos, precios; Ajustes › Correos a proveedores). Sin correos de ese tema, va a sus correos generales. Por omisión, facturas. */
+		topic?: "ordenes" | "pagos" | "facturas" | "complementos" | "documentos" | "precios";
+		/** email_supplier: el asunto. Lleva las variables de `message`, menos las tablas. */
+		subject?: string;
+		/** email_supplier: el mensaje. Variables: {folio}, {total}, {fecha}, {empresa}, {rfc_empresa}, {proveedor}, {rfc_proveedor}, {subtotal}, {iva}, {retenciones} y {moneda}; de una factura también {uuid}, {metodo_pago}, {forma_pago}, {uso_cfdi}, {conceptos}, {categoria}, {saldo}, {orden}, {contrarecibo}, {fecha_promesa}, {hallazgos} y la tabla {tabla_conceptos}; de una orden {entrega}, {almacen}, {credito}, {comprador}, {nota}, {enlace} y la tabla {tabla_productos}; en invoice.rejected y purchase_order.rejected, {motivo_rechazo}; en los momentos de pagos {facturas}, la tabla {tabla_facturas}, {pagado}, {fecha_pago}, {pago}, {cuenta}, {banco} y {referencia}, en payout.paid {rastreo} y {cep}, en payout.failed {motivo}. Un correo por pago (per payout) no lleva las de una sola factura. Cada {tabla_…} se dibuja como tabla, con las columnas de `columns`; un dato que el registro no tiene queda en blanco. */
+		message?: string;
+		/** email_supplier en payout.submitted, payout.paid y payout.failed: payout manda un correo por pago y proveedor con todas sus facturas ({folio} es la lista de folios, {total} lo que se le paga y {fecha} la fecha del pago); invoice, uno por factura. Por omisión, payout. */
+		per?: "payout" | "invoice";
+		/** email_supplier: las columnas de cada tabla del mensaje, en su orden. tabla_facturas: folio, uuid, fecha, total, retenido, pagado; tabla_conceptos: clave, descripcion, cantidad, unidad, precio, importe; tabla_productos: producto, codigo, cantidad, recibido, pendiente, precio, importe. Sin columnas, las de siempre. */
+		columns?: {
+			/** Columnas de {tabla_facturas}, en su orden. */
+			tabla_facturas?: ("folio" | "uuid" | "fecha" | "total" | "retenido" | "pagado")[];
+			/** Columnas de {tabla_conceptos}, en su orden. */
+			tabla_conceptos?: ("clave" | "descripcion" | "cantidad" | "unidad" | "precio" | "importe")[];
+			/** Columnas de {tabla_productos}, en su orden. */
+			tabla_productos?: ("producto" | "codigo" | "cantidad" | "recibido" | "pendiente" | "precio" | "importe")[];
+		} | null;
+		/** email_supplier: personas del equipo que reciben copia (mem_…, GET /v1/members). */
+		cc?: string[] | null;
+		/** extra_signature: cuántas firmas más pide (1 a 3). Por omisión, 1. */
+		signatures?: number;
+		/** extra_signature: por qué, para quien firma («Proveedor nuevo»). Puede llevar las variables de `message`, menos las tablas. */
+		reason?: string | null;
+		/** review_findings: los hallazgos que da por revisados (sus códigos, `code` en GET /v1/sat_findings). No los que cambian impuestos o la lista negra: cancelado, efos_definitivo, efos_presunto, lista_69b_bis, lista_69. */
+		findings?: string[];
+	}[];
 	/** true: corre una sola vez por factura, orden o movimiento. Por omisión true, salvo purchase_order.saved. */
 	once_per_record?: boolean;
 	/** Esperar y volver a revisar: si se cumple, espera estos días (1 a 90) y revisa de nuevo el registro como esté entonces; solo actúa si aún se cumple. 0 (por omisión): actúa al momento. */
@@ -13658,6 +13762,58 @@ export interface UpdateRuleParams {
 	};
 	/** Entonces: de 1 a 8, en este orden. */
 	actions?: {
+		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; account (facturas): registrar su ingreso o gasto en la cuenta `account` del catálogo en vez de la de su categoría, nunca sobre la que eligió una persona ni en un mes cerrado; en bank.movement, registrar el movimiento con su póliza de ingresos o egresos contra esa cuenta (otra cuenta de banco de la empresa es un traspaso), si no tiene una ni es un mes cerrado; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…); lote (invoice.received e invoice.approved): agregar la factura al lote de pagos abierto `lote_name` que paga `pay_on`, o crear uno, preparado como quien hizo la regla; hold_payment (facturas recibidas): retener su pago hasta que alguien lo suelte, con `note`; email_supplier (facturas recibidas): escribirle al proveedor a los correos de su tema `topic`, con `subject` y `message`; review_findings: dar por revisados los hallazgos `findings` de la factura; extra_signature (payout.submitted): el pago necesita `signatures` firmas más que las de Configurar pagos, con `reason` para quien firma (nunca las baja; no cambia un pago que ya salió). */
+		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category" | "account" | "lote" | "hold_payment" | "email_supplier" | "review_findings" | "extra_signature";
+		/** tag: la etiqueta (tag_…, GET /v1/tags). Un número, el id de antes, también se acepta. */
+		tag?: string | number;
+		/** category: la categoría de gasto, como la app la nombra («Combustible»). */
+		category?: "Renta y arrendamiento" | "Servicios profesionales" | "Nómina y personal" | "Transporte y fletes" | "Combustible" | "Viáticos y viajes" | "Alimentos y representación" | "Telecomunicaciones e internet" | "Energía y agua" | "Software y suscripciones" | "Equipo de cómputo" | "Papelería y oficina" | "Mantenimiento y reparaciones" | "Publicidad y marketing" | "Seguros y fianzas" | "Comisiones bancarias y financieras" | "Impuestos y derechos" | "Compras de mercancía e inventario" | "Materias primas y producción" | "Activo fijo y mobiliario" | "Vehículos" | "Capacitación" | "Donativos" | "Otros gastos";
+		/** account: el número de la cuenta del catálogo («601-84-002», GET /v1/accounting/accounts). No una de Caja o Bancos. */
+		account?: string;
+		/** tag: quitarla si la orden deja de cumplir. */
+		remove_when_unmet?: boolean;
+		/** lote: el nombre del lote («Fletes»); vacío o null: «Lote del jueves 27 nov». */
+		lote_name?: string | null;
+		/** lote: el día que paga: el siguiente lunes … viernes (hoy incluido), a los `days` días, o `due`, la fecha de pago del contrarecibo del portal. Un día inhábil pasa al siguiente hábil. Por omisión, friday. */
+		pay_on?: "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "in_days" | "due";
+		/** lote con pay_on in_days: cuántos días después. */
+		days?: number;
+		/** Su centro de costo (ccn_…): la obra, proyecto, sucursal o área a la que pertenece, para ver ingresos y gastos por centro en Reportes. No cambia el CFDI. Sus notas de crédito lo toman solas. */
+		cost_center?: string;
+		/** stage: la etapa. */
+		stage?: number;
+		/** notify: a quién (mem_…, GET /v1/members). */
+		members?: string[];
+		/** notify: lo que dice el aviso. hold_payment: por qué se retiene (hasta 200). Puede llevar las variables de `message`, menos las tablas. */
+		note?: string | null;
+		/** email_supplier: el tema de los correos del proveedor a los que va (ordenes, pagos, facturas, complementos, documentos, precios; Ajustes › Correos a proveedores). Sin correos de ese tema, va a sus correos generales. Por omisión, facturas. */
+		topic?: "ordenes" | "pagos" | "facturas" | "complementos" | "documentos" | "precios";
+		/** email_supplier: el asunto. Lleva las variables de `message`, menos las tablas. */
+		subject?: string;
+		/** email_supplier: el mensaje. Variables: {folio}, {total}, {fecha}, {empresa}, {rfc_empresa}, {proveedor}, {rfc_proveedor}, {subtotal}, {iva}, {retenciones} y {moneda}; de una factura también {uuid}, {metodo_pago}, {forma_pago}, {uso_cfdi}, {conceptos}, {categoria}, {saldo}, {orden}, {contrarecibo}, {fecha_promesa}, {hallazgos} y la tabla {tabla_conceptos}; de una orden {entrega}, {almacen}, {credito}, {comprador}, {nota}, {enlace} y la tabla {tabla_productos}; en invoice.rejected y purchase_order.rejected, {motivo_rechazo}; en los momentos de pagos {facturas}, la tabla {tabla_facturas}, {pagado}, {fecha_pago}, {pago}, {cuenta}, {banco} y {referencia}, en payout.paid {rastreo} y {cep}, en payout.failed {motivo}. Un correo por pago (per payout) no lleva las de una sola factura. Cada {tabla_…} se dibuja como tabla, con las columnas de `columns`; un dato que el registro no tiene queda en blanco. */
+		message?: string;
+		/** email_supplier en payout.submitted, payout.paid y payout.failed: payout manda un correo por pago y proveedor con todas sus facturas ({folio} es la lista de folios, {total} lo que se le paga y {fecha} la fecha del pago); invoice, uno por factura. Por omisión, payout. */
+		per?: "payout" | "invoice";
+		/** email_supplier: las columnas de cada tabla del mensaje, en su orden. tabla_facturas: folio, uuid, fecha, total, retenido, pagado; tabla_conceptos: clave, descripcion, cantidad, unidad, precio, importe; tabla_productos: producto, codigo, cantidad, recibido, pendiente, precio, importe. Sin columnas, las de siempre. */
+		columns?: {
+			/** Columnas de {tabla_facturas}, en su orden. */
+			tabla_facturas?: ("folio" | "uuid" | "fecha" | "total" | "retenido" | "pagado")[];
+			/** Columnas de {tabla_conceptos}, en su orden. */
+			tabla_conceptos?: ("clave" | "descripcion" | "cantidad" | "unidad" | "precio" | "importe")[];
+			/** Columnas de {tabla_productos}, en su orden. */
+			tabla_productos?: ("producto" | "codigo" | "cantidad" | "recibido" | "pendiente" | "precio" | "importe")[];
+		} | null;
+		/** email_supplier: personas del equipo que reciben copia (mem_…, GET /v1/members). */
+		cc?: string[] | null;
+		/** extra_signature: cuántas firmas más pide (1 a 3). Por omisión, 1. */
+		signatures?: number;
+		/** extra_signature: por qué, para quien firma («Proveedor nuevo»). Puede llevar las variables de `message`, menos las tablas. */
+		reason?: string | null;
+		/** review_findings: los hallazgos que da por revisados (sus códigos, `code` en GET /v1/sat_findings). No los que cambian impuestos o la lista negra: cancelado, efos_definitivo, efos_presunto, lista_69b_bis, lista_69. */
+		findings?: string[];
+	}[];
+	/** Si no: de 0 a 8 acciones, las mismas de actions, que hace cuando sus condiciones no se cumplen. Solo con condiciones; [] las quita. */
+	else_actions?: {
 		/** tag (facturas y órdenes): poner la etiqueta `tag`; category (facturas recibidas): poner la categoría de gasto `category`, nunca sobre la que eligió una persona; account (facturas): registrar su ingreso o gasto en la cuenta `account` del catálogo en vez de la de su categoría, nunca sobre la que eligió una persona ni en un mes cerrado; en bank.movement, registrar el movimiento con su póliza de ingresos o egresos contra esa cuenta (otra cuenta de banco de la empresa es un traspaso), si no tiene una ni es un mes cerrado; cost_center (facturas): poner `cost_center` (ccn_…), nunca sobre lo que puso una persona; stage (órdenes): pasar a la etapa `stage`; close (órdenes): cerrarla si ya llegó todo; ask_approval (órdenes en borrador): pedir aprobación por sus pasos de aprobación; notify: avisar a `members` (mem_…); lote (invoice.received e invoice.approved): agregar la factura al lote de pagos abierto `lote_name` que paga `pay_on`, o crear uno, preparado como quien hizo la regla; hold_payment (facturas recibidas): retener su pago hasta que alguien lo suelte, con `note`; email_supplier (facturas recibidas): escribirle al proveedor a los correos de su tema `topic`, con `subject` y `message`; review_findings: dar por revisados los hallazgos `findings` de la factura; extra_signature (payout.submitted): el pago necesita `signatures` firmas más que las de Configurar pagos, con `reason` para quien firma (nunca las baja; no cambia un pago que ya salió). */
 		type: "tag" | "cost_center" | "stage" | "close" | "ask_approval" | "notify" | "category" | "account" | "lote" | "hold_payment" | "email_supplier" | "review_findings" | "extra_signature";
 		/** tag: la etiqueta (tag_…, GET /v1/tags). Un número, el id de antes, también se acepta. */
