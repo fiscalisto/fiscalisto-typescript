@@ -18402,6 +18402,8 @@ export interface GetGeneralLedgerParams {
 	to_month?: string;
 	/** Solo esta cuenta, por su número en el catálogo. */
 	account?: string;
+	/** Solo las cuentas de este código agrupador del SAT (102 trae 102.01, 102.02…), como el renglón de un estado financiero. Con account no se usa. */
+	grouping_code?: string;
 	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
 	issuer?: string;
 }
@@ -25888,7 +25890,7 @@ export class AccountingResource {
 	/**
 	 * Ver el auxiliar de cuentas
 	 *
-	 * El libro mayor de un periodo de hasta 12 meses: el saldo inicial de cada cuenta, cada cargo y abono con su póliza (journal_entry, el mismo id de journal_entries), su CFDI y el saldo que deja, y el saldo final. Solo las cuentas que se movieron, o la que pida con account aunque no tenga movimientos. Una cuenta que no está en el catálogo contesta account_missing.
+	 * El libro mayor de un periodo de hasta 12 meses: el saldo inicial de cada cuenta, cada cargo y abono con su póliza (journal_entry, el mismo id de journal_entries), su CFDI y el saldo que deja, y el saldo final. Solo las cuentas que se movieron, o la que pida con account aunque no tenga movimientos; grouping_code lo limita a las de un código agrupador. Una cuenta que no está en el catálogo contesta account_missing.
 	 *
 	 * GET /v1/accounting/general_ledger
 	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-general-ledger
