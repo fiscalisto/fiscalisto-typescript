@@ -251,6 +251,8 @@ export const ErrorCode = {
 	SatRequestRejected: "sat_request_rejected",
 	/** El SAT no contestó o no dejó entrar con la e.firma del emisor. El mensaje trae lo que dijo; no se usó ningún timbre. Reintente en 10 minutos. */
 	SatUnavailable: "sat_unavailable",
+	/** Ese cambio ya no se puede deshacer: ya se deshizo, el ajuste cambió otra vez después (deshaga primero el más reciente) o ya no tiene el valor que dejó ese cambio. */
+	SettingChangeNotUndoable: "setting_change_not_undoable",
 	/** Demasiados timbres seguidos del mismo emisor. Espere lo que dice Retry-After; para muchas facturas use POST /v1/invoice_batches, y para una nómina POST /v1/payroll_batches. */
 	StampRateLimit: "stamp_rate_limit",
 	/** Esa tienda ya está conectada a este emisor. */

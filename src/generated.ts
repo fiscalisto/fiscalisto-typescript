@@ -11044,6 +11044,36 @@ export interface ScheduleSettings {
 	digest_hour: number;
 }
 
+/** Un cambio a un ajuste de la empresa (Ajustes › Cambios): cuál (setting, su id, y name, su nombre en la app), de qué a qué como lo escribe la app (before, after), quién (changed_by: su nombre; null si fue con la API o su cuenta ya no existe) y por dónde (source: app, api o mcp), cuándo, si ya se deshizo (undone) y si todavía se puede deshacer (undoable: es el cambio más reciente de ese ajuste). */
+export interface SettingChange {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "setting_change";
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El ajuste que cambió, por su id (cobranza.dias-credito, horarios.vigencia-cotizaciones…). */
+	setting: string;
+	/** Nombre. */
+	name: string;
+	/** Lo que tenía antes, como lo escribe la app («30 días», «Encendido»). */
+	before: string;
+	/** Lo que quedó, como lo escribe la app. */
+	after: string;
+	/** Quién lo cambió, por su nombre; «La API» si fue con una llave, null si su cuenta ya no existe. */
+	changed_by: string | null;
+	/** Por dónde: app (la app), api (la API) o mcp (un asistente como ChatGPT o Claude). */
+	source: "app" | "api" | "mcp";
+	/** Cuándo se cambió. */
+	created: string;
+	/** Cuándo se deshizo; null si no. */
+	undone: string | null;
+	/** Si todavía se puede deshacer (POST /v1/setting_changes/{id}/undo): es el cambio más reciente de ese ajuste y no se ha deshecho. */
+	undoable: boolean;
+}
+
 /** Lo que pasó con un evento en un webhook: su último intento, cuántos lleva y cuándo va el siguiente. */
 export interface WebhookDelivery {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
@@ -11269,6 +11299,17 @@ export interface IssuerList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: Issuer[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface SettingChangeList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: SettingChange[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -13406,6 +13447,18 @@ export interface UpdateScheduleSettingsParams {
 	findings_hour?: number;
 	/** A qué hora (0 a 23) del lunes sale el resumen semanal por correo. */
 	digest_hour?: number;
+}
+
+/** Los parámetros de GET /v1/setting_changes. */
+export interface ListSettingChangesParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Solo los de este ajuste, por ejemplo cobranza.dias-credito. */
+	setting?: string;
 }
 
 export interface UploadIssuerLogoParams {
@@ -21127,6 +21180,38 @@ export class ScheduleSettingsResource {
 	}
 }
 
+/** Emisores: fiscalisto.settingChanges. */
+export class SettingChangesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Listar los cambios a los ajustes
+	 *
+	 * Como Ajustes › Cambios en la app: cada ajuste de la empresa que alguien cambió (por ahora la cobranza automática y los horarios), de qué a qué, quién, por dónde y cuándo, del más reciente al más antiguo. Valen para toda la empresa: cualquiera de sus emisores lee los mismos.
+	 *
+	 * GET /v1/setting_changes
+	 * @see https://fiscalisto.com/docs/api/referencia/emisores/list-setting-changes
+	 */
+	list(params?: ListSettingChangesParams, options?: RequestOptions): List<SettingChange> {
+		return this.#client.list({ path: "/v1/setting_changes", query: params }, options);
+	}
+
+	/**
+	 * Deshacer un cambio a un ajuste
+	 *
+	 * Regresa el ajuste al valor que tenía antes de ese cambio, como «Deshacer» en la app, y devuelve el cambio nuevo que eso hizo (que también se puede deshacer). Solo el cambio más reciente de cada ajuste y mientras conserve el valor que dejó: si no, 400 setting_change_not_undoable.
+	 *
+	 * POST /v1/setting_changes/{id}/undo
+	 * @see https://fiscalisto.com/docs/api/referencia/emisores/undo-setting-change
+	 */
+	undo(id: string, options?: RequestOptions): Promise<SettingChange> {
+		return this.#client.request({ method: "POST", path: `/v1/setting_changes/${encodeURIComponent(id)}/undo`, idempotent: true }, options);
+	}
+}
+
 /** Facturas: fiscalisto.invoices. */
 export class InvoicesResource {
 	readonly #client: Client;
@@ -28268,6 +28353,7 @@ export class FiscalistoApi extends Core {
 	readonly balance = new BalanceResource(this);
 	readonly issuers = new IssuersResource(this);
 	readonly scheduleSettings = new ScheduleSettingsResource(this);
+	readonly settingChanges = new SettingChangesResource(this);
 	readonly invoices = new InvoicesResource(this);
 	readonly receivables = new ReceivablesResource(this);
 	readonly customers = new CustomersResource(this);
