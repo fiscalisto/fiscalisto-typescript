@@ -129,6 +129,8 @@ export const ErrorCode = {
 	InvoiceNotStamped: "invoice_not_stamped",
 	/** El PAC o el SAT no la aceptaron. sat_code trae su código (CFDI40xxx), message qué corregir y doc_url su explicación en [Rechazos del SAT](/docs/api/rechazos-del-sat). La factura queda como rejected; no se usó ningún timbre. */
 	InvoiceRejected: "invoice_rejected",
+	/** La llave solo funciona desde algunas IP (Solo desde estas IP, en Desarrolladores › Llaves) y la solicitud llegó desde otra. El mensaje dice desde cuál. */
+	IpNotAllowed: "ip_not_allowed",
 	/** El emisor está archivado: ya no timbra. Sus comprobantes se pueden consultar y cancelar. */
 	IssuerArchived: "issuer_archived",
 	/** Se crearon 500 emisores en 24 horas. Mañana puede crear más. */
@@ -153,6 +155,8 @@ export const ErrorCode = {
 	KeyInSandbox: "key_in_sandbox",
 	/** La llave es de solo lectura: puede hacer GET, validar RFC, revisar listas del SAT y calcular recibos de nómina, pero nada que timbre, cancele, envíe o cambie datos. */
 	KeyReadOnly: "key_read_only",
+	/** La llave tiene permisos por recurso y no tiene el que pide la ruta: lectura para un GET (o un POST que solo revisa), escritura para lo que cambia algo. El mensaje dice qué recurso y qué permiso. */
+	KeyResourceDenied: "key_resource_denied",
 	/** La llave está limitada a algunos emisores y la solicitud toca otro (o crea uno nuevo, o usa algo de toda la cuenta como webhooks). */
 	KeyRestricted: "key_restricted",
 	/** El objeto es del otro modo: una llave fk_test_ solo ve lo de pruebas y una fk_live_ lo de producción. */
@@ -251,6 +255,8 @@ export const ErrorCode = {
 	SatRequestRejected: "sat_request_rejected",
 	/** El SAT no contestó o no dejó entrar con la e.firma del emisor. El mensaje trae lo que dijo; no se usó ningún timbre. Reintente en 10 minutos. */
 	SatUnavailable: "sat_unavailable",
+	/** La búsqueda de query no se entiende: un campo por el que no se busca, un operador que no va con ese campo, una comilla sin cerrar, AND y OR juntos o más de 10 cláusulas. El mensaje dice dónde. */
+	SearchQueryInvalid: "search_query_invalid",
 	/** Ese cambio ya no se puede deshacer: ya se deshizo, el ajuste cambió otra vez después (deshaga primero el más reciente) o ya no tiene el valor que dejó ese cambio. */
 	SettingChangeNotUndoable: "setting_change_not_undoable",
 	/** Demasiados timbres seguidos del mismo emisor. Espere lo que dice Retry-After; para muchas facturas use POST /v1/invoice_batches, y para una nómina POST /v1/payroll_batches. */

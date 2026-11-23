@@ -26,6 +26,10 @@ export interface Account {
 		issuers: string[] | null;
 		/** true si la llave solo consulta (key_read_only en lo demás). */
 		read_only: boolean;
+		/** Una llave con permisos por recurso: read (consulta) o write (consulta y cambia) en cada recurso (invoices, customers, payouts…, uno por sección de la referencia); uno que no aparece no tiene acceso (key_resource_denied). null si tiene todos los permisos. */
+		permissions: Record<string, "read" | "write"> | null;
+		/** Las IP o rangos (CIDR, IPv4 o IPv6) desde los que funciona la llave; desde otra responde ip_not_allowed. null si funciona desde cualquiera. */
+		allowed_ips: string[] | null;
 		/** Cuándo deja de funcionar: la vigencia elegida al crearla, o el fin del traslape al cambiarla. null si no vence. */
 		expires_at: string | null;
 		/** El entorno de prueba (sbx_…) de la llave: solo ve sus emisores, webhooks y eventos. null si es de la cuenta. */
@@ -7037,6 +7041,8 @@ export interface AutomaticJournalEntry {
 		credit: number;
 		/** Su centro de costo (ccn_…), o null. */
 		cost_center: string | null;
+		/** Por qué este renglón va a esa cuenta, con el artículo de la ley que lo decide (la categoría y quién la puso, PUE o PPD, la tasa del IVA, una retención…). null en los renglones de una edición a mano y en los de un recibo de nómina. */
+		reason: string | null;
 	}[];
 	/** true si se editó a mano. */
 	edited: boolean;
@@ -7056,6 +7062,8 @@ export interface AutomaticJournalEntry {
 		credit: number;
 		/** Su centro de costo (ccn_…), o null. */
 		cost_center: string | null;
+		/** Por qué este renglón va a esa cuenta, con el artículo de la ley que lo decide (la categoría y quién la puso, PUE o PPD, la tasa del IVA, una retención…). null en los renglones de una edición a mano y en los de un recibo de nómina. */
+		reason: string | null;
 	}[] | null;
 	/** Editada: true si la póliza que arma su CFDI cambió desde que se editó (su cuenta o su categoría), para revisar que la edición siga bien. */
 	original_changed: boolean | null;
@@ -11175,7 +11183,7 @@ export interface CfdiVerification {
 }
 
 /** Lo que puede pasar: el tipo de cada evento. */
-export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "payout.approved" | "payout.paid" | "payout.partially_paid" | "payout.failed" | "payout.canceled" | "payout_transfer.succeeded" | "payout_transfer.failed" | "payout_transfer.returned" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready" | "rule.matched";
+export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer.created" | "customer.updated" | "customer.deleted" | "product.created" | "product.updated" | "product.deleted" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "payout.approved" | "payout.paid" | "payout.partially_paid" | "payout.failed" | "payout.canceled" | "payout_transfer.succeeded" | "payout_transfer.failed" | "payout_transfer.returned" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready" | "rule.matched";
 
 /** Algo que pasó en su cuenta: el objeto completo como quedó. Se manda a sus webhooks firmado (Standard Webhooks). */
 export interface EventBase<T extends EventType = EventType, O = unknown> {
@@ -11183,7 +11191,7 @@ export interface EventBase<T extends EventType = EventType, O = unknown> {
 	id: string;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "event";
-	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, invoice.cancellation_failed, invoice.paid, invoice.partially_paid, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, payroll_batch.completed, customer_data_request.completed, sat_download.completed, sat_download.failed, sat_declaration.created, sat_declaration.updated, sat_refresh.completed, sat_refresh.failed, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, quote.withdrawn, sales_order.confirmed, sales_order.customer_confirmed, sales_order.delivered, sales_order.paid, sales_order.canceled, supplier_invoice.received, supplier_invoice.approved, supplier_invoice.rejected, supplier_invoice.scheduled, supplier_invoice.paid, portal_supplier.approved, payout.approved, payout.paid, payout.partially_paid, payout.failed, payout.canceled, payout_transfer.succeeded, payout_transfer.failed, payout_transfer.returned, issuer.ready, balance.low, usage.high, test_clock.ready o rule.matched. */
+	/** Qué pasó: invoice.stamped, invoice.failed, invoice.canceled, invoice.cancellation_pending, invoice.cancellation_rejected, invoice.cancellation_failed, invoice.paid, invoice.partially_paid, retention.stamped, retention.failed, retention.canceled, invoice_batch.completed, payroll_batch.completed, customer.created, customer.updated, customer.deleted, product.created, product.updated, product.deleted, customer_data_request.completed, sat_download.completed, sat_download.failed, sat_declaration.created, sat_declaration.updated, sat_refresh.completed, sat_refresh.failed, ticket.invoiced, ticket.included_in_global, recurring_invoice.failed, quote.viewed, quote.accepted, quote.changes_requested, quote.rejected, quote.withdrawn, sales_order.confirmed, sales_order.customer_confirmed, sales_order.delivered, sales_order.paid, sales_order.canceled, supplier_invoice.received, supplier_invoice.approved, supplier_invoice.rejected, supplier_invoice.scheduled, supplier_invoice.paid, portal_supplier.approved, payout.approved, payout.paid, payout.partially_paid, payout.failed, payout.canceled, payout_transfer.succeeded, payout_transfer.failed, payout_transfer.returned, issuer.ready, balance.low, usage.high, test_clock.ready o rule.matched. */
 	type: T;
 	/** Versión de la API con que se armó el objeto. */
 	api_version: string;
@@ -11191,7 +11199,7 @@ export interface EventBase<T extends EventType = EventType, O = unknown> {
 	livemode: boolean;
 	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
 	created_at: string;
-	/** Lo que cambió, en data.object: el comprobante (o el lote) completo, como lo contesta su GET. */
+	/** Lo que cambió, en data.object: el comprobante (o el lote, el cliente…) completo, como lo contesta su GET. En customer.updated y product.updated, data.previous_attributes trae lo que tenían antes los campos que cambiaron. */
 	data: { object: O };
 }
 
@@ -11212,6 +11220,12 @@ export type Event =
 	| EventBase<"retention.canceled", Retention>
 	| EventBase<"invoice_batch.completed", InvoiceBatch>
 	| EventBase<"payroll_batch.completed", PayrollBatch>
+	| EventBase<"customer.created", Customer>
+	| EventBase<"customer.updated", Customer>
+	| EventBase<"customer.deleted", Customer>
+	| EventBase<"product.created", Product>
+	| EventBase<"product.updated", Product>
+	| EventBase<"product.deleted", Product>
 	| EventBase<"customer_data_request.completed", CustomerDataRequest>
 	| EventBase<"sat_download.completed", SatDownload>
 	| EventBase<"sat_download.failed", SatDownload>
@@ -13514,6 +13528,18 @@ export interface ListInvoicesParams {
 	created_lte?: string;
 	/** Solo las de este centro de costo (ccn_…), o none para las que no tienen. */
 	cost_center?: string;
+}
+
+/** Los parámetros de GET /v1/invoices/search. */
+export interface SearchInvoicesParams {
+	/** La búsqueda, por ejemplo customer:'URE180429TM6' AND total>1000 AND created>'2026-11-01'. */
+	query: string;
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
 }
 
 /** Los parámetros de GET /v1/invoices/{id}. */
@@ -17474,6 +17500,18 @@ export interface ListCustomersParams {
 	tax_id?: string;
 }
 
+/** Los parámetros de GET /v1/customers/search. */
+export interface SearchCustomersParams {
+	/** La búsqueda, por ejemplo legal_name~'robotica' AND zip:'86991'. */
+	query: string;
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
 export interface UpdateCustomerParams {
 	/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
 	tax_id?: string;
@@ -17612,6 +17650,18 @@ export interface ListProductsParams {
 	product_key?: string;
 	/** Solo los de esta categoría y sus subcategorías: «Ferretería» o «Ferretería › Tornillos». */
 	category?: string;
+}
+
+/** Los parámetros de GET /v1/products/search. */
+export interface SearchProductsParams {
+	/** La búsqueda, por ejemplo description~'tornillo' AND unit_price<10. */
+	query: string;
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
 }
 
 export interface UpdateProductParams {
@@ -20663,7 +20713,7 @@ export interface RollWebhookSecretParams {
 
 export interface TestWebhookEndpointParams {
 	/** El evento a mandar. Por omisión invoice.stamped. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "payout.approved" | "payout.paid" | "payout.partially_paid" | "payout.failed" | "payout.canceled" | "payout_transfer.succeeded" | "payout_transfer.failed" | "payout_transfer.returned" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready" | "rule.matched";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer.created" | "customer.updated" | "customer.deleted" | "product.created" | "product.updated" | "product.deleted" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "payout.approved" | "payout.paid" | "payout.partially_paid" | "payout.failed" | "payout.canceled" | "payout_transfer.succeeded" | "payout_transfer.failed" | "payout_transfer.returned" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready" | "rule.matched";
 }
 
 /** Los parámetros de GET /v1/webhook_endpoints/{id}/deliveries. */
@@ -20688,7 +20738,7 @@ export interface ListEventsParams {
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
 	/** Solo de este tipo (invoice.stamped), o todos los de un recurso con un comodín (invoice.*). */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "payout.approved" | "payout.paid" | "payout.partially_paid" | "payout.failed" | "payout.canceled" | "payout_transfer.succeeded" | "payout_transfer.failed" | "payout_transfer.returned" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready" | "rule.matched" | "invoice.*" | "invoice_batch.*" | "payroll_batch.*" | "recurring_invoice.*" | "quote.*" | "sales_order.*" | "supplier_invoice.*" | "portal_supplier.*" | "payout.*" | "payout_transfer.*" | "ticket.*" | "retention.*" | "customer_data_request.*" | "sat_download.*" | "sat_declaration.*" | "sat_refresh.*" | "issuer.*" | "balance.*" | "usage.*" | "test_clock.*" | "rule.*";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer.created" | "customer.updated" | "customer.deleted" | "product.created" | "product.updated" | "product.deleted" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "payout.approved" | "payout.paid" | "payout.partially_paid" | "payout.failed" | "payout.canceled" | "payout_transfer.succeeded" | "payout_transfer.failed" | "payout_transfer.returned" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready" | "rule.matched" | "invoice.*" | "invoice_batch.*" | "payroll_batch.*" | "recurring_invoice.*" | "quote.*" | "sales_order.*" | "supplier_invoice.*" | "portal_supplier.*" | "payout.*" | "payout_transfer.*" | "ticket.*" | "retention.*" | "customer.*" | "product.*" | "customer_data_request.*" | "sat_download.*" | "sat_declaration.*" | "sat_refresh.*" | "issuer.*" | "balance.*" | "usage.*" | "test_clock.*" | "rule.*";
 	/** Solo los de este objeto (inv_…, ret_…, bat_…). */
 	object?: string;
 	/** false: los que algún webhook no recibió (su último intento falló). true: los que recibieron todos los webhooks a los que se mandaron. */
@@ -21264,6 +21314,18 @@ export class InvoicesResource {
 	}
 
 	/**
+	 * Buscar facturas
+	 *
+	 * Con un lenguaje de búsqueda, como el de Stripe: campo:'valor' (igual, sin importar mayúsculas), campo~'valor' (contiene, 3 caracteres o más), >, >=, < y <= en números y fechas, -campo:'valor' (no) y campo:null; hasta 10 cláusulas unidas con AND o con OR. Se busca por customer (RFC), customer_name, uuid, series, folio, total, status (valid, pending, canceled, rejected o processing) y created. Los más recientes primero, por páginas como las listas. Una búsqueda que no se entiende responde search_query_invalid diciendo dónde.
+	 *
+	 * GET /v1/invoices/search
+	 * @see https://fiscalisto.com/docs/api/referencia/facturas/search-invoices
+	 */
+	search(params: SearchInvoicesParams, options?: RequestOptions): List<Invoice> {
+		return this.#client.list({ path: "/v1/invoices/search", query: params }, options);
+	}
+
+	/**
 	 * Ver una factura
 	 *
 	 * Por su id (inv_…) o por su folio fiscal (UUID).
@@ -21445,6 +21507,18 @@ export class CustomersResource {
 	 */
 	list(params?: ListCustomersParams, options?: RequestOptions): List<Customer> {
 		return this.#client.list({ path: "/v1/customers", query: params }, options);
+	}
+
+	/**
+	 * Buscar clientes
+	 *
+	 * Con un lenguaje de búsqueda, como el de Stripe: campo:'valor' (igual, sin importar mayúsculas), campo~'valor' (contiene, 3 caracteres o más), >, >=, < y <= en números y fechas, -campo:'valor' (no) y campo:null; hasta 10 cláusulas unidas con AND o con OR. Se busca por tax_id, legal_name, email, zip, tax_system, use y created. Los más recientes primero, por páginas como las listas. Una búsqueda que no se entiende responde search_query_invalid diciendo dónde.
+	 *
+	 * GET /v1/customers/search
+	 * @see https://fiscalisto.com/docs/api/referencia/clientes/search-customers
+	 */
+	search(params: SearchCustomersParams, options?: RequestOptions): List<Customer> {
+		return this.#client.list({ path: "/v1/customers/search", query: params }, options);
 	}
 
 	/**
@@ -24985,6 +25059,18 @@ export class ProductsResource {
 	 */
 	list(params?: ListProductsParams, options?: RequestOptions): List<Product> {
 		return this.#client.list({ path: "/v1/products", query: params }, options);
+	}
+
+	/**
+	 * Buscar productos
+	 *
+	 * Con un lenguaje de búsqueda, como el de Stripe: campo:'valor' (igual, sin importar mayúsculas), campo~'valor' (contiene, 3 caracteres o más), >, >=, < y <= en números y fechas, -campo:'valor' (no) y campo:null; hasta 10 cláusulas unidas con AND o con OR. Se busca por name, description, sku, product_key, unit_key, unit_price y created. Los más recientes primero, por páginas como las listas. Una búsqueda que no se entiende responde search_query_invalid diciendo dónde.
+	 *
+	 * GET /v1/products/search
+	 * @see https://fiscalisto.com/docs/api/referencia/productos/search-products
+	 */
+	search(params: SearchProductsParams, options?: RequestOptions): List<Product> {
+		return this.#client.list({ path: "/v1/products/search", query: params }, options);
 	}
 
 	/**
