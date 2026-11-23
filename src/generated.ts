@@ -57,8 +57,8 @@ export interface AttendanceMark {
 	place: string | null;
 	/** A cuántos metros del lugar estaba, si dio su ubicación; si no, null. */
 	distance_m: number | null;
-	/** Notas para revisar (la marca nunca se rechaza por ellas): no_location (no dio su ubicación), far (lejos del lugar), imprecise (ubicación imprecisa), remote (fuera de la sucursal), new_device (un celular nuevo). */
-	flags: ("no_location" | "far" | "imprecise" | "remote" | "new_device")[];
+	/** Notas para revisar (la marca nunca se rechaza por ellas): no_location (no dio su ubicación), far (lejos del lugar), imprecise (ubicación imprecisa), remote (fuera de la sucursal), new_device (un celular nuevo), offline (se hizo sin conexión y llegó después; at es la hora en que se hizo, corregida por el reloj del celular), code_time (sin conexión, con un código del checador de otra hora). */
+	flags: ("no_location" | "far" | "imprecise" | "remote" | "new_device" | "offline" | "code_time")[];
 	/** Por qué se agregó, en una corrección o desde la API (el empleado lo ve); null si la hizo él. */
 	reason: string | null;
 	/** Quién la agregó, en una corrección; null si la hizo él. */
@@ -93,6 +93,8 @@ export interface AttendanceReport {
 	ordinary_week_hours: number;
 	/** La jornada semanal que fijó la empresa en Horario y reglas, o null si sigue la de la ley. */
 	weekly_hours: number | null;
+	/** Desde cuándo un día da horas extra: agreed, al pasar el horario acordado de cada quien (LFT art. 58); law, al pasar la jornada de la ley para su turno (art. 61). */
+	daily_jornada: "agreed" | "law";
 	/** Cada empleado del emisor en el periodo. */
 	employees: {
 		/** El empleado (emp_…). */
@@ -160,7 +162,20 @@ export interface AttendanceReport {
 				end: string;
 				/** Minutos de comida que no se pagan. */
 				break_minutes: number;
+				/** Sus tramos: uno, o dos o tres en un turno partido. */
+				segments: {
+					/** Entrada del tramo, HH:MM. */
+					start: string;
+					/** Salida del tramo, HH:MM (antes de la entrada: al día siguiente). */
+					end: string;
+				}[];
+				/** true: el descanso cuenta como jornada porque no puede salir del lugar (LFT art. 64). */
+				break_paid: boolean;
+				/** El turno (ats_…) de ese día, de su rol o del calendario; null: su horario. */
+				shift: string | null;
 			} | null;
+			/** La jornada de ese día por ley, o null si descansa. */
+			jornada: "diurna" | "nocturna" | "mixta" | null;
 			/** Minutos trabajados ese día. */
 			worked_minutes: number;
 			/** Minutos de retardo, pasada la tolerancia. */
@@ -199,6 +214,136 @@ export interface AttendanceOvertime {
 	rejected: boolean;
 	/** Por qué, o null. */
 	comment: string | null;
+}
+
+/** Un turno de Asistencia › Turnos: a qué hora se entra y se sale, en uno a tres tramos, y su jornada por ley. */
+export interface AttendanceShift {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "attendance_shift";
+	/** Su nombre. */
+	name: string;
+	/** Su color en el calendario. */
+	color: "teal" | "blue" | "violet" | "amber" | "rose" | "slate";
+	/** Sus tramos: uno, o dos o tres en un turno partido. */
+	segments: {
+		/** Entrada del tramo, HH:MM. */
+		start: string;
+		/** Salida del tramo, HH:MM (antes de la entrada: al día siguiente). */
+		end: string;
+	}[];
+	/** Minutos de descanso dentro del turno. */
+	break_minutes: number;
+	/** true: el descanso cuenta como jornada (LFT art. 64). */
+	break_paid: boolean;
+	/** Minutos de jornada del turno. */
+	minutes: number;
+	/** La jornada por ley (LFT art. 60): diurna (entre 6:00 y 20:00), nocturna (entre 20:00 y 6:00) o mixta (con menos de 3 h 30 min de noche; con más es nocturna). Su máximo es de 8 h, 7 h y 7 h 30 min (art. 61). */
+	jornada: "diurna" | "nocturna" | "mixta";
+	/** true: termina al día siguiente. */
+	overnight: boolean;
+	/** Lo que dice la ley de este turno: pasa de la jornada del art. 61, o le falta la media hora de descanso del art. 63. */
+	warnings: string[];
+	/** true: archivado, ya no se pone en días ni roles nuevos. */
+	archived: boolean;
+}
+
+/** Un rol de turnos: turnos y descansos que se repiten en un ciclo (4×4, semana y semana). */
+export interface AttendanceRotation {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "attendance_rotation";
+	/** Su nombre. */
+	name: string;
+	/** El ciclo en orden: cada día un turno (ats_…) o null para descanso. */
+	days: (string | null)[];
+	/** Minutos a la semana en promedio en el ciclo. */
+	week_minutes: number;
+	/** Si pasan más de seis días de trabajo seguidos sin descanso (LFT art. 69), lo dice; si no, null. */
+	warning: string | null;
+	/** true: archivado, ya no se le pone a nadie más. */
+	archived: boolean;
+}
+
+/** El calendario de turnos de un mes, como Nómina › Asistencia › Turnos: el turno de cada empleado cada día y de dónde sale. */
+export interface AttendanceCalendar {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "attendance_calendar";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** El mes, AAAA-MM. */
+	month: string;
+	/** Primer día, AAAA-MM-DD. */
+	from: string;
+	/** Último día, AAAA-MM-DD. */
+	to: string;
+	/** Desde cuándo un día da horas extra: agreed, al pasar el horario acordado de cada quien (LFT art. 58); law, al pasar la jornada de la ley para su turno (art. 61). */
+	daily_jornada: "agreed" | "law";
+	/** Cada empleado del emisor que registra asistencia. */
+	employees: {
+		/** El empleado (emp_…). */
+		employee: string;
+		/** Su nombre. */
+		name: string;
+		/** Su número de empleado, o null. */
+		number: string | null;
+		/** Su rol de turnos (atr_…), o null. */
+		rotation: string | null;
+		/** Más de seis días de trabajo seguidos sin descanso en el mes (LFT art. 69). */
+		warning: string | null;
+		/** Cada día del mes. */
+		days: {
+			/** AAAA-MM-DD. */
+			date: string;
+			/** De dónde sale: calendar (un cambio puesto en el calendario), rotation (su rol de turnos) o week (su horario de la semana). */
+			source: "calendar" | "rotation" | "week";
+			/** El turno (ats_…), o null. */
+			shift: string | null;
+			/** Hora de entrada, HH:MM; null si descansa. */
+			start: string | null;
+			/** Hora de salida, HH:MM, o null. */
+			end: string | null;
+			/** Sus tramos, o null si descansa. */
+			segments: {
+				/** Entrada del tramo, HH:MM. */
+				start: string;
+				/** Salida del tramo, HH:MM (antes de la entrada: al día siguiente). */
+				end: string;
+			}[] | null;
+			/** Minutos de jornada. */
+			minutes: number;
+			/** Su jornada por ley (LFT art. 60): diurna, nocturna o mixta; null si descansa. */
+			jornada: "diurna" | "nocturna" | "mixta" | null;
+			/** La nota del día que puso la empresa, o null. */
+			note: "vacaciones" | "incapacidad" | "permiso_con_goce" | "permiso_sin_goce" | "descanso" | "festivo" | "falta" | null;
+		}[];
+	}[];
+}
+
+/** Lo que cambió en el calendario de turnos. */
+export interface AttendanceCalendarChange {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "attendance_calendar_change";
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** A cuántos empleados. */
+	employees: number;
+	/** Cuántos días a cada uno. */
+	days: number;
+	/** El turno que se puso (ats_…), o null: descanso o quitado. */
+	shift: string | null;
+	/** true: se quitó lo del calendario y esos días vuelven a su rol u horario. */
+	cleared: boolean;
 }
 
 /** Timbres de producción de la cuenta, por paquete, el que vence antes primero. */
@@ -6751,7 +6896,7 @@ export interface JournalEntry {
 	/** El emisor. */
 	issuer: string;
 	/** De qué es: invoice (un CFDI de ingreso o egreso), payment_received o payment_made (un pago de un complemento), payroll (un recibo de nómina), employee_expenses (un anticipo, reembolso, devolución o comprobación de viáticos, contra 107.01 «Funcionarios y empleados»), depreciation (la depreciación del mes de los activos fijos), manual (una póliza capturada a mano, o la reversión de una provisión) o asset_disposal (la venta o baja de un activo fijo). */
-	type: "invoice" | "payment_received" | "payment_made" | "payroll" | "employee_expenses" | "depreciation" | "manual" | "asset_disposal" | "bank_identification" | "foreign_supplier_operations";
+	type: "invoice" | "payment_received" | "payment_made" | "payroll" | "employee_expenses" | "depreciation" | "manual" | "asset_disposal" | "bank_identification" | "foreign_supplier_operations" | "prepaid_amortization";
 	/** Con type manual: la póliza capturada (mje_…), también en su reversión; null en las demás. */
 	manual_entry: string | null;
 	/** La fecha del CFDI o del pago; en la depreciación, el último día del mes. */
@@ -6914,6 +7059,47 @@ export interface AutomaticJournalEntry {
 	}[] | null;
 	/** Editada: true si la póliza que arma su CFDI cambió desde que se editó (su cuenta o su categoría), para revisar que la edición siga bien. */
 	original_changed: boolean | null;
+}
+
+/** Un gasto pagado por anticipado (NIF C-5): una factura recibida de un seguro, una renta adelantada o una licencia que cubre varios meses. Queda en pagos anticipados y pasa a su gasto al final de cada mes que cubre. Impuestos no cambia. */
+export interface PrepaidExpense {
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "prepaid_expense";
+	/** El emisor (iss_…). */
+	issuer: string;
+	/** El UUID de la factura recibida. */
+	uuid: string;
+	/** true si se amortiza; false si se registra como gasto del mes. */
+	active: boolean;
+	/** Qué pagó: insurance (seguros y fianzas), rent (rentas) u other. */
+	kind: "insurance" | "rent" | "other" | null;
+	/** La cuenta de pagos anticipados (código agrupador 109) a la que va su póliza. */
+	account: string | null;
+	/** La cuenta de costos o gastos a la que se amortiza. */
+	expense_account: string | null;
+	/** Su nombre en el catálogo. */
+	expense_account_name: string | null;
+	/** Primer mes que cubre, AAAA-MM. */
+	start_month: string | null;
+	/** Cuántos meses cubre, de 1 a 120: una póliza de amortización por mes. */
+	months: number | null;
+	/** Pesos que se amortizan en total: lo que su póliza carga a la cuenta 109 (sin el IVA acreditable). */
+	amount: number | null;
+	/** Lo que queda en la cuenta 109: las pólizas de los meses que no han terminado. */
+	pending: number | null;
+	/** Una póliza de amortización por mes: cargo a su gasto, abono a la cuenta 109. Todas iguales al centavo; la última lleva el redondeo. */
+	schedule: {
+		/** Un solo mes, del 1 al 12 (MesIni y MesFin iguales). */
+		month: number;
+		/** El último día del mes, AAAA-MM-DD. */
+		date: string;
+		/** Importe. */
+		amount: number;
+		/** true si su fecha ya pasó. */
+		posted: boolean;
+	}[];
 }
 
 /** Un activo fijo del emisor en su contabilidad al cierre de un mes: su monto original, su depreciación en línea recta (tasas del artículo 34 de la LISR) y su valor en libros. */
@@ -8332,7 +8518,7 @@ export interface BooksLogEntry {
 	/** Cuándo se hizo el cambio. */
 	created_at: string;
 	/** Qué cambió: una póliza a mano (manual_journal_entry), los saldos iniciales, una cuenta, el catálogo completo (una importación o una renumeración), el cierre del mes (period_close), una eliminación de consolidación, una póliza modelo o la baja de un activo fijo. */
-	subject: "manual_journal_entry" | "opening_balances" | "account" | "chart_of_accounts" | "period_close" | "consolidation_elimination" | "entry_template" | "fixed_asset" | "invoice_account" | "automatic_journal_entry";
+	subject: "manual_journal_entry" | "opening_balances" | "account" | "chart_of_accounts" | "period_close" | "consolidation_elimination" | "entry_template" | "fixed_asset" | "invoice_account" | "automatic_journal_entry" | "prepaid_expense";
 	/** El id de lo que cambió cuando tiene uno en la API (mje_, cel_, mjt_); null en los demás. */
 	subject_id: string | null;
 	/** created, updated, deleted, restored (deshecho), imported, closed (se cerró el mes) o reopened (se reabrió). */
@@ -8991,7 +9177,7 @@ export interface GeneralLedger {
 			/** La póliza (el mismo id de GET /v1/accounting/journal_entries). */
 			journal_entry: string;
 			/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
-			type: "invoice" | "payment_received" | "payment_made" | "payroll" | "employee_expenses" | "depreciation" | "manual" | "asset_disposal" | "bank_identification" | "foreign_supplier_operations";
+			type: "invoice" | "payment_received" | "payment_made" | "payroll" | "employee_expenses" | "depreciation" | "manual" | "asset_disposal" | "bank_identification" | "foreign_supplier_operations" | "prepaid_amortization";
 			/** Descripción. */
 			description: string;
 			/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
@@ -11446,6 +11632,28 @@ export interface CustomerGroupList {
 	object: "list";
 	/** Los objetos de esta página. */
 	data: CustomerGroup[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface AttendanceShiftList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: AttendanceShift[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
+export interface AttendanceRotationList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: AttendanceRotation[];
 	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
 	has_more: boolean;
 	/** La ruta de esta lista. */
@@ -16844,6 +17052,107 @@ export interface ApproveAttendanceOvertimeParams {
 	comment?: string;
 }
 
+/** Los parámetros de GET /v1/attendance/shifts. */
+export interface ListAttendanceShiftsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface CreateAttendanceShiftParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Su nombre, como «Nocturno». */
+	name: string;
+	/** Sus tramos: uno, o dos o tres para un turno partido (el tiempo entre tramos no es jornada). Un tramo puede pasar de la medianoche (22:00 a 06:00). */
+	segments: {
+		/** Entrada del tramo, HH:MM. */
+		start: string;
+		/** Salida del tramo, HH:MM. Antes de la entrada: termina al día siguiente. */
+		end: string;
+	}[];
+	/** Minutos de descanso dentro de un turno de un tramo. Por omisión 0. */
+	break_minutes?: number;
+	/** El descanso cuenta como jornada: el trabajador no puede salir del lugar (LFT art. 64). */
+	break_paid?: boolean;
+	/** Su color en el calendario. Por omisión teal. */
+	color?: "teal" | "blue" | "violet" | "amber" | "rose" | "slate";
+}
+
+export interface UpdateAttendanceShiftParams {
+	/** Su nombre, como «Nocturno». */
+	name?: string;
+	/** Sus tramos: uno, o dos o tres para un turno partido (el tiempo entre tramos no es jornada). Un tramo puede pasar de la medianoche (22:00 a 06:00). */
+	segments?: {
+		/** Entrada del tramo, HH:MM. */
+		start: string;
+		/** Salida del tramo, HH:MM. Antes de la entrada: termina al día siguiente. */
+		end: string;
+	}[];
+	/** Minutos de descanso dentro de un turno de un tramo. Por omisión 0. */
+	break_minutes?: number;
+	/** El descanso cuenta como jornada: el trabajador no puede salir del lugar (LFT art. 64). */
+	break_paid?: boolean;
+	/** Su color en el calendario. Por omisión teal. */
+	color?: "teal" | "blue" | "violet" | "amber" | "rose" | "slate";
+	/** true lo archiva: ya no se puede poner en días ni roles nuevos; los días que ya lo tienen lo conservan. */
+	archived?: boolean;
+}
+
+/** Los parámetros de GET /v1/attendance/rotations. */
+export interface ListAttendanceRotationsParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface CreateAttendanceRotationParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** Su nombre, como «4×4». */
+	name: string;
+	/** El ciclo en orden, de 1 a 56 días: cada uno un turno (ats_…) o null para descanso. Al terminar vuelve a empezar. */
+	days: (string | null)[];
+}
+
+export interface UpdateAttendanceRotationParams {
+	/** Su nombre, como «4×4». */
+	name?: string;
+	/** El ciclo en orden, de 1 a 56 días: cada uno un turno (ats_…) o null para descanso. Al terminar vuelve a empezar. */
+	days?: (string | null)[];
+	/** true lo archiva: quien lo tiene lo sigue usando; ya no se le puede poner a nadie más. */
+	archived?: boolean;
+}
+
+/** Los parámetros de GET /v1/attendance/calendar. */
+export interface GetAttendanceCalendarParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+	/** El mes, AAAA-MM. */
+	month: string;
+	/** Solo este empleado (emp_…). */
+	employee?: string;
+}
+
+export interface SetAttendanceCalendarParams {
+	/** Los empleados (emp_…), todos del mismo emisor. */
+	employees: string[];
+	/** Los días, AAAA-MM-DD (hasta 62). */
+	dates: string[];
+	/** El turno (ats_…) que tienen esos días, o null para descanso. Gana sobre su rol y su horario. */
+	shift: string | null;
+	/** true quita lo que se puso en el calendario: esos días vuelven a su rol de turnos o a su horario de la semana (shift se ignora). */
+	clear?: boolean;
+	/** Por qué (un cambio de turno, un descanso extra). */
+	comment?: string;
+}
+
 export interface CreateExpensePersonParams {
 	/** El emisor (iss_…). Por omisión, su único emisor. */
 	issuer?: string;
@@ -18692,6 +19001,31 @@ export interface RevertAutomaticEntryParams {
 	issuer?: string;
 }
 
+/** Los parámetros de GET /v1/accounting/prepaid_expenses/{uuid}. */
+export interface GetPrepaidExpenseParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
+export interface UpdatePrepaidExpenseParams {
+	/** El emisor (iss_…). Por omisión, su único emisor. */
+	issuer?: string;
+	/** Qué pagó: insurance (109.01 Seguros y fianzas), rent (109.05 Rentas) u other (109.23 Otros pagos anticipados). Sin él, el que tiene, o el que sugiere su categoría. */
+	kind?: "insurance" | "rent" | "other";
+	/** Meses que cubre, de 1 a 120. */
+	months: number;
+	/** Primer mes que cubre, AAAA-MM: el de la factura o después. Sin él, el que tiene, o el de la factura. */
+	start_month?: string;
+	/** Número de la cuenta de costos o gastos (500, 600 o 700) a la que se amortiza. Sin él, la que tiene, o la de su categoría. */
+	expense_account?: string;
+}
+
+/** Los parámetros de DELETE /v1/accounting/prepaid_expenses/{uuid}. */
+export interface RemovePrepaidExpenseParams {
+	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	issuer?: string;
+}
+
 export interface ImportManualEntriesParams {
 	/** El emisor (iss_…). Por omisión, su único emisor. */
 	issuer?: string;
@@ -19039,7 +19373,7 @@ export interface RenumberAccountsParams {
 /** Los parámetros de GET /v1/accounting/books_log. */
 export interface ListBooksLogParams {
 	/** Solo los cambios de una cosa: manual_journal_entry, opening_balances, account, chart_of_accounts, period_close, consolidation_elimination, entry_template, fixed_asset, invoice_account (la cuenta de una factura) o automatic_journal_entry (una póliza automática editada). */
-	subject?: "manual_journal_entry" | "opening_balances" | "account" | "chart_of_accounts" | "period_close" | "consolidation_elimination" | "entry_template" | "fixed_asset" | "invoice_account" | "automatic_journal_entry";
+	subject?: "manual_journal_entry" | "opening_balances" | "account" | "chart_of_accounts" | "period_close" | "consolidation_elimination" | "entry_template" | "fixed_asset" | "invoice_account" | "automatic_journal_entry" | "prepaid_expense";
 	/** Desde este día (AAAA-MM-DD, hora de la Ciudad de México). */
 	from?: string;
 	/** Hasta este día, incluido. */
@@ -24087,6 +24421,102 @@ export class AttendanceResource {
 	approveOvertime(params: ApproveAttendanceOvertimeParams, options?: RequestOptions): Promise<AttendanceOvertime> {
 		return this.#client.request({ method: "POST", path: "/v1/attendance/overtime", body: params, idempotent: true }, options);
 	}
+
+	/**
+	 * Listar los turnos
+	 *
+	 * Los turnos de Asistencia › Turnos (ats_…), los archivados también: sus tramos, sus minutos y su jornada por ley (diurna, nocturna o mixta, LFT art. 60) con lo que dice la ley de ellos.
+	 *
+	 * GET /v1/attendance/shifts
+	 * @see https://fiscalisto.com/docs/api/referencia/asistencia/list-attendance-shifts
+	 */
+	listShifts(params?: ListAttendanceShiftsParams, options?: RequestOptions): List<AttendanceShift> {
+		return this.#client.list({ path: "/v1/attendance/shifts", query: params }, options);
+	}
+
+	/**
+	 * Crear un turno
+	 *
+	 * Un turno con uno a tres tramos (con dos o tres es partido: el tiempo entre tramos no es jornada); un tramo puede pasar de la medianoche. Se guarda aunque pase de la jornada del art. 61 (con el acuerdo del trabajador, art. 58) y lo dice en warnings.
+	 *
+	 * POST /v1/attendance/shifts
+	 * @see https://fiscalisto.com/docs/api/referencia/asistencia/create-attendance-shift
+	 */
+	createShift(params: CreateAttendanceShiftParams, options?: RequestOptions): Promise<AttendanceShift> {
+		return this.#client.request({ method: "POST", path: "/v1/attendance/shifts", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Cambiar un turno
+	 *
+	 * Cambia lo que mande y deja lo demás. Cambiar sus horas cambia los días que lo tienen desde hoy; archived: true lo archiva.
+	 *
+	 * POST /v1/attendance/shifts/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/asistencia/update-attendance-shift
+	 */
+	updateShift(id: string, params?: UpdateAttendanceShiftParams, options?: RequestOptions): Promise<AttendanceShift> {
+		return this.#client.request({ method: "POST", path: `/v1/attendance/shifts/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar los roles de turnos
+	 *
+	 * Los roles de turnos (atr_…), los archivados también: el ciclo de turnos y descansos, el promedio a la semana y el aviso del art. 69 si pasan más de seis días de trabajo sin descanso.
+	 *
+	 * GET /v1/attendance/rotations
+	 * @see https://fiscalisto.com/docs/api/referencia/asistencia/list-attendance-rotations
+	 */
+	listRotations(params?: ListAttendanceRotationsParams, options?: RequestOptions): List<AttendanceRotation> {
+		return this.#client.list({ path: "/v1/attendance/rotations", query: params }, options);
+	}
+
+	/**
+	 * Crear un rol de turnos
+	 *
+	 * Un ciclo de turnos y descansos en orden que vuelve a empezar al terminar (4×4: cuatro días un turno y cuatro null). A cada empleado se le pone en la app, en Asistencia › Personas, con el día en que cae su día 1.
+	 *
+	 * POST /v1/attendance/rotations
+	 * @see https://fiscalisto.com/docs/api/referencia/asistencia/create-attendance-rotation
+	 */
+	createRotation(params: CreateAttendanceRotationParams, options?: RequestOptions): Promise<AttendanceRotation> {
+		return this.#client.request({ method: "POST", path: "/v1/attendance/rotations", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Cambiar un rol de turnos
+	 *
+	 * Cambia su nombre o su ciclo; archived: true lo archiva.
+	 *
+	 * POST /v1/attendance/rotations/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/asistencia/update-attendance-rotation
+	 */
+	updateRotation(id: string, params?: UpdateAttendanceRotationParams, options?: RequestOptions): Promise<AttendanceRotation> {
+		return this.#client.request({ method: "POST", path: `/v1/attendance/rotations/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Ver el calendario de turnos
+	 *
+	 * El turno de cada empleado cada día de un mes y de dónde sale: un cambio puesto en el calendario, su rol de turnos o su horario de la semana.
+	 *
+	 * GET /v1/attendance/calendar
+	 * @see https://fiscalisto.com/docs/api/referencia/asistencia/get-attendance-calendar
+	 */
+	getCalendar(params: GetAttendanceCalendarParams, options?: RequestOptions): Promise<AttendanceCalendar> {
+		return this.#client.request({ method: "GET", path: "/v1/attendance/calendar", query: params }, options);
+	}
+
+	/**
+	 * Poner turnos en el calendario
+	 *
+	 * Pone un turno (o descanso, shift null) en unos días de unos empleados, y gana sobre su rol y su horario: un cambio de turno, un descanso extra. clear: true lo quita y esos días vuelven a su rol u horario. Hasta 62 días y 500 empleados a la vez.
+	 *
+	 * POST /v1/attendance/calendar
+	 * @see https://fiscalisto.com/docs/api/referencia/asistencia/set-attendance-calendar
+	 */
+	setCalendar(params: SetAttendanceCalendarParams, options?: RequestOptions): Promise<AttendanceCalendarChange> {
+		return this.#client.request({ method: "POST", path: "/v1/attendance/calendar", body: params, idempotent: true }, options);
+	}
 }
 
 /** Viáticos y gastos: fiscalisto.expensePeople. */
@@ -26301,6 +26731,50 @@ export class AutomaticEntriesResource {
 	}
 }
 
+/** Contabilidad: fiscalisto.prepaidExpenses. */
+export class PrepaidExpensesResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Ver si una factura se amortiza
+	 *
+	 * Si una factura recibida (por su UUID) es un gasto pagado por anticipado y su calendario: una póliza de amortización al final de cada mes que cubre.
+	 *
+	 * GET /v1/accounting/prepaid_expenses/{uuid}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-prepaid-expense
+	 */
+	get(uuid: string, params?: GetPrepaidExpenseParams, options?: RequestOptions): Promise<PrepaidExpense> {
+		return this.#client.request({ method: "GET", path: `/v1/accounting/prepaid_expenses/${encodeURIComponent(uuid)}`, query: params }, options);
+	}
+
+	/**
+	 * Amortizar una factura pagada por anticipado
+	 *
+	 * Su póliza va a pagos anticipados (109.01, 109.05 o 109.23) y los libros la pasan a su gasto al final de cada mes que cubre (NIF C-5). Solo una factura de ingreso recibida que se registra como gasto: un activo fijo, un movimiento o una por aclarar no se amortiza, ni una cuya póliza se editó a mano. Un mes cerrado contesta period_closed. Impuestos no cambia.
+	 *
+	 * POST /v1/accounting/prepaid_expenses/{uuid}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/update-prepaid-expense
+	 */
+	update(uuid: string, params: UpdatePrepaidExpenseParams, options?: RequestOptions): Promise<PrepaidExpense> {
+		return this.#client.request({ method: "POST", path: `/v1/accounting/prepaid_expenses/${encodeURIComponent(uuid)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Dejar de amortizar una factura
+	 *
+	 * Vuelve a registrarse como gasto del mes en la cuenta a la que se amortizaba, y sus pólizas de amortización salen de los libros. Un mes cerrado contesta period_closed.
+	 *
+	 * DELETE /v1/accounting/prepaid_expenses/{uuid}
+	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/remove-prepaid-expense
+	 */
+	remove(uuid: string, params?: RemovePrepaidExpenseParams, options?: RequestOptions): Promise<PrepaidExpense> {
+		return this.#client.request({ method: "DELETE", path: `/v1/accounting/prepaid_expenses/${encodeURIComponent(uuid)}`, query: params }, options);
+	}
+}
+
 /** Contabilidad: fiscalisto.openingBalances. */
 export class OpeningBalancesResource {
 	readonly #client: Client;
@@ -27887,6 +28361,7 @@ export class FiscalistoApi extends Core {
 	readonly accounting = new AccountingResource(this);
 	readonly manualEntries = new ManualEntriesResource(this);
 	readonly automaticEntries = new AutomaticEntriesResource(this);
+	readonly prepaidExpenses = new PrepaidExpensesResource(this);
 	readonly openingBalances = new OpeningBalancesResource(this);
 	readonly fixedAssets = new FixedAssetsResource(this);
 	readonly accountingSettings = new AccountingSettingsResource(this);
