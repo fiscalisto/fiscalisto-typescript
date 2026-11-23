@@ -209,11 +209,14 @@ export interface Balance {
 	livemode: boolean;
 	/** Timbres de sus paquetes, en total: un solo saldo para la API y la app, comprados en Desarrolladores o en Plan y pagos. */
 	available: number;
-	/** true si la cuenta timbra sin usar timbres. */
+	/**
+	 * Obsoleto: siempre false. Solo las cuentas internas de Fiscalisto timbran sin usar timbres. Se conserva por compatibilidad; no lo use.
+	 * @deprecated Se conserva por compatibilidad.
+	 */
 	unlimited: boolean;
 	/** Con esta cantidad o menos llega balance.low (y otra vez al acabarse). Se elige en Desarrolladores › Timbres y pagos. */
 	low_balance_at: number;
-	/** La recarga automática con la tarjeta guardada, o null si está apagada. */
+	/** La recarga automática con la tarjeta guardada, o null si está apagada (se enciende en Desarrolladores › Timbres y pagos). */
 	auto_recharge: {
 		/** Timbres del paquete que se compra. */
 		timbres: number;
@@ -222,9 +225,12 @@ export interface Balance {
 		/** Como máximo tantas compras al mes. */
 		max_per_month: number;
 	} | null;
-	/** Siempre true: los RFC de la empresa (type own) timbran primero con los timbres del mes de su plan y después con `available`, los paquetes de su único saldo (comprados en Desarrolladores o en Plan y pagos). Los emisores conectados usan solo `available`. Se conserva por compatibilidad. */
+	/**
+	 * Obsoleto: siempre true. Los RFC de la empresa (type own) timbran primero con los timbres del mes de su plan y después con `available`, los paquetes de su único saldo (comprados en Desarrolladores o en Plan y pagos). Los emisores conectados usan solo `available`. Se conserva por compatibilidad.
+	 * @deprecated Se conserva por compatibilidad.
+	 */
 	use_plan_timbres: boolean;
-	/** Los timbres del mes del plan de su empresa, que los RFC de la empresa (type own) usan antes que `available`; no se suman a `available`. null si la empresa no tiene un plan de paga con timbres al mes (Gratis o una prueba sin pagar) o en modo de prueba. */
+	/** Los timbres del mes del plan de su empresa, que los RFC de la empresa (type own) usan antes que `available`; no se suman a `available`. null si la empresa no tiene un plan de paga con timbres al mes (Gratis o una prueba sin pagar). Con llaves de prueba trae los mismos que en producción, como `available`. */
 	plan_timbres: {
 		/** El plan de la empresa (despacho, negocio…). */
 		plan: string;
@@ -237,7 +243,7 @@ export interface Balance {
 	} | null;
 	/** Los paquetes con timbres, el que vence antes primero (en ese orden se usan). */
 	packs: {
-		/** welcome: los timbres de bienvenida (no vencen); purchase: un paquete comprado o una recarga automática; referral: los de una recomendación. */
+		/** welcome: los timbres de bienvenida (no vencen): los 10 de cada empresa y, en las cuentas abiertas antes del 15 de noviembre de 2026, los 20 de regalo de la API, en paquetes aparte; purchase: un paquete comprado o una recarga automática; referral: los de una recomendación. */
 		type: "welcome" | "purchase" | "referral";
 		/** Timbres del paquete. */
 		timbres: number;
