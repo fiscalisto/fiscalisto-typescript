@@ -1351,6 +1351,37 @@ export interface PayrollReceiptPreview {
 		/** Neto a pagar al empleado. */
 		net: number;
 	};
+	/** Cómo se calculó cada línea de ISR, subsidio para el empleo e IMSS: base, tasa o renglón de la tarifa, la operación y el artículo de la ley. Son las mismas cifras del recibo, no un recálculo. */
+	explanation: {
+		/** isr, subsidio, isr_ajuste (ajuste mensual del subsidio) o imss_eym_excedente, imss_eym_dinero, imss_gmp, imss_iv, imss_cv (cada cuota obrera del IMSS). */
+		id: string;
+		/** isr: el impuesto; subsidio: subsidio para el empleo; imss: una cuota obrera. */
+		kind: "isr" | "subsidio" | "imss";
+		/** La línea como la nombra el recibo. */
+		concept: string;
+		/** Lo que el recibo tiene en esa línea. */
+		amount: number;
+		/** Qué es la línea y por qué salió así, en una frase. */
+		summary: string;
+		/** La base, la tasa o el renglón de la tarifa y la operación, en orden; el último paso es el importe. */
+		steps: {
+			/** Qué cifra es: la base, la tasa, los días… */
+			label: string;
+			/** La cifra, en la unidad de unit. */
+			value: number;
+			/** mxn: pesos; pct: tasa (0.01125 es 1.125%); days: días. */
+			unit: "mxn" | "pct" | "days";
+			/** La operación con las cifras del recibo. */
+			formula?: string;
+		}[];
+		/** El fundamento de cada cifra. */
+		law: {
+			/** Ley y artículo: «LISR art. 96», «LSS art. 147». */
+			ref: string;
+			/** Lo que dice que importa aquí. */
+			says: string;
+		}[];
+	}[];
 }
 
 /** Un aguinaldo, PTU o finiquito como se timbraría (nómina extraordinaria): lo que paga, su parte exenta, el ISR y el neto. */
