@@ -10060,6 +10060,19 @@ export interface PayableInvoice {
 	} | null;
 	/** El pago abierto (pyo_…) en el que ya está, o null. Si se dividió en varios pagos, el primero: un pago nuevo solo toma lo que esos no cubren. */
 	in_payout: string | null;
+	/** Con «Notas de crédito relacionadas con la factura: Esperar a que alguien las acepte» en Configurar pagos: las notas que el proveedor relacionó con esta factura y que todavía no se restan de amount_due. Se aceptan en la app (**Aceptar nota de crédito**) o aplicándolas en un pago de esta factura (`credit_notes` de la línea). Vacío si la empresa las resta solas. */
+	credit_notes_to_review: {
+		/** Folio fiscal de la nota de crédito. */
+		uuid: string;
+		/** Serie y folio de la nota. */
+		series_folio: string;
+		/** Su fecha (AAAA-MM-DD). */
+		date: string;
+		/** Lo que descuenta, en la moneda de la factura. */
+		amount: number;
+		/** true: alguien eligió «No restarla» en la app (se le pide al proveedor que la cancele); false: espera a que alguien la acepte. */
+		declined: boolean;
+	}[];
 	/** Si una regla de Ajustes › Reglas retuvo su pago: no se paga hasta que alguien con permiso lo suelte en la app («Soltar el pago»). null: no está retenido. */
 	payment_hold: {
 		/** La regla que lo retuvo, por su nombre. */
