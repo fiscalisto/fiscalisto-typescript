@@ -4306,6 +4306,8 @@ export interface SatDownload {
 	new_invoices: number | null;
 	/** Por qué falló, como lo dijo el SAT. null si no falló. */
 	error: string | null;
+	/** De quién es la falla de error, para decidir sin leer el texto. sat_unavailable: el servicio del SAT no está disponible o no respondió (es del SAT; se vuelve a pedir solo). sat_refused: el SAT respondió que no, con su motivo en el mensaje. account: le toca a su cliente (e.firma vencida, sin autorización, su plan). internal: ni lo uno ni lo otro; se vuelve a intentar. null si no falló. */
+	error_cause: "sat_unavailable" | "sat_refused" | "account" | "internal" | null;
 	/** Cuándo se pidió. */
 	created_at: string | null;
 	/** Cuándo terminó, o null. */
@@ -4631,6 +4633,8 @@ export interface SatDeclaration {
 	};
 	/** Por qué falta un archivo, como lo dijo el SAT (por ejemplo «No se puede generar el archivo»). Se vuelve a pedir en la siguiente consulta. */
 	files_error: string | null;
+	/** De quién es la falla de files_error, para decidir sin leer el texto. sat_unavailable: el servicio del SAT no está disponible o no respondió (es del SAT; se vuelve a pedir solo). sat_refused: el SAT respondió que no, con su motivo en el mensaje. account: le toca a su cliente (e.firma vencida, sin autorización, su plan). internal: ni lo uno ni lo otro; se vuelve a intentar. null si no falló. */
+	files_error_cause: "sat_unavailable" | "sat_refused" | "account" | "internal" | null;
 	/** Cuándo se trajo por primera vez. */
 	created_at: string | null;
 	/** Cuándo cambió por última vez. */
@@ -5898,6 +5902,8 @@ export interface ComplianceOpinion {
 	checked_at: string | null;
 	/** Por qué falló la última consulta, o null. */
 	last_error: string | null;
+	/** De quién es la falla de last_error, para decidir sin leer el texto. sat_unavailable: el servicio del SAT no está disponible o no respondió (es del SAT; se vuelve a pedir solo). sat_refused: el SAT respondió que no, con su motivo en el mensaje. account: le toca a su cliente (e.firma vencida, sin autorización, su plan). internal: ni lo uno ni lo otro; se vuelve a intentar. null si no falló. */
+	last_error_cause: "sat_unavailable" | "sat_refused" | "account" | "internal" | null;
 }
 
 /** La constancia de situación fiscal más reciente del emisor, generada en el SAT con su e.firma. */
