@@ -4398,6 +4398,8 @@ export interface SatInvoice {
 	} | null;
 	/** Solo en una PUE recibida pagada en efectivo cuando la empresa pide confirmar estos pagos (Ajustes › Pagos en efectivo): pending hasta que alguien anote de dónde salió el dinero (mark_paid con money_source), confirmed después. Null en las demás. Sus impuestos no cambian. */
 	cash_confirmation: "pending" | "confirmed" | null;
+	/** Cuándo alguien confirmó el pago en efectivo (cash_confirmation confirmed), en hora del centro de México. Null en las demás. */
+	cash_confirmed_at: string | null;
 	/** Su centro de costo (ccn_…), o null. Póngalo o cámbielo con POST /v1/sat_invoices/{id}. */
 	cost_center: string | null;
 	/** El número de cuenta de su catálogo en que se registra su ingreso o gasto en vez de la de su categoría (en la app, en una regla de Ajustes › Reglas o con account). Null: la de su categoría. */
