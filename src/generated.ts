@@ -1210,15 +1210,15 @@ export interface Product {
 	open_price: boolean;
 	/** Objeto de impuesto (ObjetoImp), c_ObjetoImp: 01 no objeto, 02 sí objeto (por omisión), 03 sin desglose, 04 no causa… */
 	taxability: string;
-	/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
+	/** Tasa de IVA trasladado: "0.16" (por omisión), "0.08" (región fronteriza), "0" o "exento". También como número (0.16, 16), con seis decimales ("0.160000") o en por ciento ("16%"); la respuesta la da como "0.16". */
 	iva: string;
 	/** IEPS trasladado: tasa (0.265…) o cuota en pesos por unidad, según ieps_factor. */
 	ieps: number | null;
 	/** Tasa o Cuota (TipoFactor del IEPS). */
 	ieps_factor: string | null;
-	/** Tasa de IVA retenido (por ejemplo 0.106667, dos terceras partes del 16%). */
+	/** Tasa de IVA retenido, en fracción (por ejemplo 0.106667, dos terceras partes del 16%). */
 	iva_retention: number;
-	/** Tasa de ISR retenido (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
+	/** Tasa de ISR retenido, en fracción (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
 	isr_retention: number;
 	/** Impuestos locales (complemento implocal): traslados y retenciones estatales. */
 	local_taxes: {
@@ -1964,7 +1964,7 @@ export interface Advance {
 	amount: number;
 	/** Total en la moneda del comprobante (Total). */
 	total: number;
-	/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
+	/** Tasa de IVA trasladado: "0.16" (por omisión), "0.08" (región fronteriza), "0" o "exento". También como número (0.16, 16), con seis decimales ("0.160000") o en por ciento ("16%"); la respuesta la da como "0.16". */
 	iva: string;
 	/** Moneda, clave ISO 4217 de c_Moneda (MXN, USD, EUR…). Por omisión MXN. */
 	currency: string;
@@ -6614,7 +6614,7 @@ export interface Ticket {
 		product_key: string;
 		/** Clave de unidad (ClaveUnidad) de c_ClaveUnidad: E48 unidad de servicio, H87 pieza, ACT actividad… Por omisión H87 si la clave del producto es de un bien (segmentos 10 a 60) y E48 si es de un servicio. */
 		unit_key: string;
-		/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
+		/** Tasa de IVA trasladado: "0.16" (por omisión), "0.08" (región fronteriza), "0" o "exento". También como número (0.16, 16), con seis decimales ("0.160000") o en por ciento ("16%"); la respuesta la da como "0.16". */
 		iva: string | null;
 		/** Sus impuestos locales (los de su producto o los que mandó), incluidos en su total. */
 		local_taxes: {
@@ -12351,7 +12351,7 @@ export interface InvoiceCreate {
 		discount?: number;
 		/** Objeto de impuesto (ObjetoImp), c_ObjetoImp: 01 no objeto, 02 sí objeto (por omisión), 03 sin desglose, 04 no causa… */
 		taxability?: "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08";
-		/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
+		/** Tasa de IVA trasladado: "0.16" (por omisión), "0.08" (región fronteriza), "0" o "exento". También como número (0.16, 16), con seis decimales ("0.160000") o en por ciento ("16%"); la respuesta la da como "0.16". */
 		iva?: "0" | "0.16" | "0.08" | "exento";
 		/** IEPS trasladado: tasa (0.265…) o cuota en pesos por unidad, según ieps_factor. */
 		ieps?: number;
@@ -12359,9 +12359,9 @@ export interface InvoiceCreate {
 		ieps_factor?: "Tasa" | "Cuota";
 		/** Unidades de IEPS a cuota (litros, cigarros…), si no son la cantidad. */
 		ieps_units?: number;
-		/** Tasa de IVA retenido (por ejemplo 0.106667, dos terceras partes del 16%). */
+		/** Tasa de IVA retenido, en fracción (por ejemplo 0.106667, dos terceras partes del 16%). */
 		iva_retention?: number;
-		/** Tasa de ISR retenido (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
+		/** Tasa de ISR retenido, en fracción (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
 		isr_retention?: number;
 		/** Números de cuenta predial (CuentaPredial) en arrendamiento. */
 		predial?: string[];
@@ -13109,7 +13109,7 @@ export interface InvoiceCreate {
 	};
 	/** Tipo de cambio a pesos (TipoCambio). Obligatorio si la moneda no es MXN; use el del DOF del día anterior. */
 	exchange_rate?: number;
-	/** Folio (Folio). Fiscalisto asigna el siguiente de la serie; mande uno solo si debe ser ese. */
+	/** Folio (Folio) de esta factura en vez del siguiente de la serie: ese número toma su lugar en la numeración. También acepta un texto de hasta 40 caracteres sin «|» ("TIME002", "000120"), como lo acepta el SAT (Anexo 20): va solo en esta factura y la numeración no cambia; "120" es el folio 120. Si otro CFDI del RFC y la serie ya lo tiene, se rechaza. */
 	folio?: number;
 	/** Con un folio elegido: true para que los siguientes sigan desde ese número. */
 	continue_sequence?: boolean;
@@ -13919,7 +13919,7 @@ export interface CreateAdvanceParams {
 	use?: string;
 	/** Lo que pagó el cliente, con IVA incluido. */
 	amount: number;
-	/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
+	/** Tasa de IVA trasladado: "0.16" (por omisión), "0.08" (región fronteriza), "0" o "exento". También como número (0.16, 16), con seis decimales ("0.160000") o en por ciento ("16%"); la respuesta la da como "0.16". */
 	iva?: "0" | "0.16" | "0.08" | "exento";
 	/** Forma de pago (FormaPago), clave de c_FormaPago: 01 efectivo, 03 transferencia, 04 tarjeta de crédito, 28 débito, 99 por definir… Obligatoria con PUE; con PPD es 99. */
 	payment_form: string;
@@ -17596,15 +17596,15 @@ export interface CreateProductParams {
 	open_price?: boolean;
 	/** Objeto de impuesto (ObjetoImp), c_ObjetoImp: 01 no objeto, 02 sí objeto (por omisión), 03 sin desglose, 04 no causa… */
 	taxability?: "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08";
-	/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
+	/** Tasa de IVA trasladado: "0.16" (por omisión), "0.08" (región fronteriza), "0" o "exento". También como número (0.16, 16), con seis decimales ("0.160000") o en por ciento ("16%"); la respuesta la da como "0.16". */
 	iva?: "0" | "0.16" | "0.08" | "exento";
 	/** IEPS trasladado: tasa (0.265…) o cuota en pesos por unidad, según ieps_factor. */
 	ieps?: number | null;
 	/** Tasa o Cuota (TipoFactor del IEPS). */
 	ieps_factor?: "Tasa" | "Cuota";
-	/** Tasa de IVA retenido (por ejemplo 0.106667, dos terceras partes del 16%). */
+	/** Tasa de IVA retenido, en fracción (por ejemplo 0.106667, dos terceras partes del 16%). */
 	iva_retention?: number;
-	/** Tasa de ISR retenido (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
+	/** Tasa de ISR retenido, en fracción (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
 	isr_retention?: number;
 	/** Impuestos locales que lleva, como el ISH 3% de hospedaje: van en cada factura con él, sobre sus conceptos. */
 	local_taxes?: {
@@ -17689,15 +17689,15 @@ export interface UpdateProductParams {
 	open_price?: boolean;
 	/** Objeto de impuesto (ObjetoImp), c_ObjetoImp: 01 no objeto, 02 sí objeto (por omisión), 03 sin desglose, 04 no causa… */
 	taxability?: "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08";
-	/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
+	/** Tasa de IVA trasladado: "0.16" (por omisión), "0.08" (región fronteriza), "0" o "exento". También como número (0.16, 16), con seis decimales ("0.160000") o en por ciento ("16%"); la respuesta la da como "0.16". */
 	iva?: "0" | "0.16" | "0.08" | "exento";
 	/** IEPS trasladado: tasa (0.265…) o cuota en pesos por unidad, según ieps_factor. */
 	ieps?: number | null;
 	/** Tasa o Cuota (TipoFactor del IEPS). */
 	ieps_factor?: "Tasa" | "Cuota";
-	/** Tasa de IVA retenido (por ejemplo 0.106667, dos terceras partes del 16%). */
+	/** Tasa de IVA retenido, en fracción (por ejemplo 0.106667, dos terceras partes del 16%). */
 	iva_retention?: number;
-	/** Tasa de ISR retenido (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
+	/** Tasa de ISR retenido, en fracción (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
 	isr_retention?: number;
 	/** Impuestos locales que lleva, como el ISH 3% de hospedaje: van en cada factura con él, sobre sus conceptos. */
 	local_taxes?: {
@@ -18528,7 +18528,7 @@ export interface CreateTicketParams {
 	product_key?: string;
 	/** c_ClaveUnidad. Por omisión, la de la clave del producto. */
 	unit_key?: string;
-	/** Tasa de IVA incluida en el total. Por omisión 0.16. */
+	/** Tasa de IVA incluida en el total. Por omisión 0.16; también como número (0.16 o 16). */
 	iva?: "0" | "0.16" | "0.08" | "exento";
 	/** Impuestos locales incluidos en su total, como el ISH 3.5% de hospedaje, con `product_key` (un producto lleva los suyos). Cada uno se calcula sobre la base de este concepto y la factura los suma por nombre y tasa en el complemento de impuestos locales. */
 	local_taxes?: {
@@ -18562,7 +18562,7 @@ export interface CreateTicketParams {
 		product_key?: string;
 		/** c_ClaveUnidad. Por omisión, la de la clave del producto. */
 		unit_key?: string;
-		/** Tasa de IVA incluida en su total. Por omisión 0.16. */
+		/** Tasa de IVA incluida en su total. Por omisión 0.16; también como número (0.16 o 16). */
 		iva?: "0" | "0.16" | "0.08" | "exento";
 		/** Impuestos locales incluidos en su total, como el ISH 3.5% de hospedaje, con `product_key` (un producto lleva los suyos). Cada uno se calcula sobre la base de este concepto y la factura los suma por nombre y tasa en el complemento de impuestos locales. */
 		local_taxes?: {
@@ -19817,7 +19817,7 @@ export interface CreateStoreConnectionParams {
 		product_key?: string;
 		/** c_ClaveUnidad. Por omisión, la de la clave del producto. */
 		unit_key?: string;
-		/** Tasa de IVA incluida en los precios. Por omisión 0.16. */
+		/** Tasa de IVA incluida en los precios. Por omisión 0.16; también como número (0.16 o 16). */
 		iva?: "0" | "0.16" | "0.08" | "exento";
 		/** El concepto de cada ticket. Por omisión, el pedido y sus artículos («Pedido 1001: Playera (2), Gorra»). */
 		description?: string;
@@ -19851,7 +19851,7 @@ export interface UpdateStoreConnectionParams {
 		product_key?: string;
 		/** c_ClaveUnidad. Por omisión, la de la clave del producto. */
 		unit_key?: string;
-		/** Tasa de IVA incluida en los precios. Por omisión 0.16. */
+		/** Tasa de IVA incluida en los precios. Por omisión 0.16; también como número (0.16 o 16). */
 		iva?: "0" | "0.16" | "0.08" | "exento";
 		/** El concepto de cada ticket. Por omisión, el pedido y sus artículos («Pedido 1001: Playera (2), Gorra»). */
 		description?: string;
@@ -19993,7 +19993,7 @@ export interface CreateQuoteParams {
 		discount?: number;
 		/** Objeto de impuesto (ObjetoImp), c_ObjetoImp: 01 no objeto, 02 sí objeto (por omisión), 03 sin desglose, 04 no causa… */
 		taxability?: "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08";
-		/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
+		/** Tasa de IVA trasladado: "0.16" (por omisión), "0.08" (región fronteriza), "0" o "exento". También como número (0.16, 16), con seis decimales ("0.160000") o en por ciento ("16%"); la respuesta la da como "0.16". */
 		iva?: "0" | "0.16" | "0.08" | "exento";
 		/** IEPS trasladado: tasa (0.265…) o cuota en pesos por unidad, según ieps_factor. */
 		ieps?: number;
@@ -20001,9 +20001,9 @@ export interface CreateQuoteParams {
 		ieps_factor?: "Tasa" | "Cuota";
 		/** Unidades de IEPS a cuota (litros, cigarros…), si no son la cantidad. */
 		ieps_units?: number;
-		/** Tasa de IVA retenido (por ejemplo 0.106667, dos terceras partes del 16%). */
+		/** Tasa de IVA retenido, en fracción (por ejemplo 0.106667, dos terceras partes del 16%). */
 		iva_retention?: number;
-		/** Tasa de ISR retenido (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
+		/** Tasa de ISR retenido, en fracción (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
 		isr_retention?: number;
 		/** Números de cuenta predial (CuentaPredial) en arrendamiento. */
 		predial?: string[];
@@ -20159,7 +20159,7 @@ export interface UpdateQuoteParams {
 		discount?: number;
 		/** Objeto de impuesto (ObjetoImp), c_ObjetoImp: 01 no objeto, 02 sí objeto (por omisión), 03 sin desglose, 04 no causa… */
 		taxability?: "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08";
-		/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
+		/** Tasa de IVA trasladado: "0.16" (por omisión), "0.08" (región fronteriza), "0" o "exento". También como número (0.16, 16), con seis decimales ("0.160000") o en por ciento ("16%"); la respuesta la da como "0.16". */
 		iva?: "0" | "0.16" | "0.08" | "exento";
 		/** IEPS trasladado: tasa (0.265…) o cuota en pesos por unidad, según ieps_factor. */
 		ieps?: number;
@@ -20167,9 +20167,9 @@ export interface UpdateQuoteParams {
 		ieps_factor?: "Tasa" | "Cuota";
 		/** Unidades de IEPS a cuota (litros, cigarros…), si no son la cantidad. */
 		ieps_units?: number;
-		/** Tasa de IVA retenido (por ejemplo 0.106667, dos terceras partes del 16%). */
+		/** Tasa de IVA retenido, en fracción (por ejemplo 0.106667, dos terceras partes del 16%). */
 		iva_retention?: number;
-		/** Tasa de ISR retenido (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
+		/** Tasa de ISR retenido, en fracción (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
 		isr_retention?: number;
 		/** Números de cuenta predial (CuentaPredial) en arrendamiento. */
 		predial?: string[];
@@ -20333,7 +20333,7 @@ export interface CreateSalesOrderParams {
 		discount?: number;
 		/** Objeto de impuesto (ObjetoImp), c_ObjetoImp: 01 no objeto, 02 sí objeto (por omisión), 03 sin desglose, 04 no causa… */
 		taxability?: "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08";
-		/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
+		/** Tasa de IVA trasladado: "0.16" (por omisión), "0.08" (región fronteriza), "0" o "exento". También como número (0.16, 16), con seis decimales ("0.160000") o en por ciento ("16%"); la respuesta la da como "0.16". */
 		iva?: "0" | "0.16" | "0.08" | "exento";
 		/** IEPS trasladado: tasa (0.265…) o cuota en pesos por unidad, según ieps_factor. */
 		ieps?: number;
@@ -20341,9 +20341,9 @@ export interface CreateSalesOrderParams {
 		ieps_factor?: "Tasa" | "Cuota";
 		/** Unidades de IEPS a cuota (litros, cigarros…), si no son la cantidad. */
 		ieps_units?: number;
-		/** Tasa de IVA retenido (por ejemplo 0.106667, dos terceras partes del 16%). */
+		/** Tasa de IVA retenido, en fracción (por ejemplo 0.106667, dos terceras partes del 16%). */
 		iva_retention?: number;
-		/** Tasa de ISR retenido (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
+		/** Tasa de ISR retenido, en fracción (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
 		isr_retention?: number;
 		/** Números de cuenta predial (CuentaPredial) en arrendamiento. */
 		predial?: string[];
@@ -20508,7 +20508,7 @@ export interface UpdateSalesOrderParams {
 		discount?: number;
 		/** Objeto de impuesto (ObjetoImp), c_ObjetoImp: 01 no objeto, 02 sí objeto (por omisión), 03 sin desglose, 04 no causa… */
 		taxability?: "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08";
-		/** Tasa de IVA trasladado: 0.16 (por omisión), 0.08 (región fronteriza), 0 o exento. */
+		/** Tasa de IVA trasladado: "0.16" (por omisión), "0.08" (región fronteriza), "0" o "exento". También como número (0.16, 16), con seis decimales ("0.160000") o en por ciento ("16%"); la respuesta la da como "0.16". */
 		iva?: "0" | "0.16" | "0.08" | "exento";
 		/** IEPS trasladado: tasa (0.265…) o cuota en pesos por unidad, según ieps_factor. */
 		ieps?: number;
@@ -20516,9 +20516,9 @@ export interface UpdateSalesOrderParams {
 		ieps_factor?: "Tasa" | "Cuota";
 		/** Unidades de IEPS a cuota (litros, cigarros…), si no son la cantidad. */
 		ieps_units?: number;
-		/** Tasa de IVA retenido (por ejemplo 0.106667, dos terceras partes del 16%). */
+		/** Tasa de IVA retenido, en fracción (por ejemplo 0.106667, dos terceras partes del 16%). */
 		iva_retention?: number;
-		/** Tasa de ISR retenido (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
+		/** Tasa de ISR retenido, en fracción (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
 		isr_retention?: number;
 		/** Números de cuenta predial (CuentaPredial) en arrendamiento. */
 		predial?: string[];
