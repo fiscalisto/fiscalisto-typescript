@@ -6,12 +6,12 @@
 
 import type { ErrorCode } from "./error-codes.js";
 
-export const VERSION = "0.1.224";
+export const VERSION = "0.1.225";
 /**
  * La versión de la API para la que se hizo este SDK: la manda en cada solicitud
  * (Fiscalisto-Version), así actualizar la API no cambia lo que recibe hasta que actualice el SDK.
  */
-export const API_VERSION = "2026-10-24";
+export const API_VERSION = "2026-11-25";
 const DEFAULT_BASE_URL = "https://api.fiscalisto.com";
 
 /** Lo que el SDK necesita de fetch. */
@@ -132,14 +132,16 @@ export class FiscalistoError extends Error {
 
 /**
  * Una lista: `await` le da la primera página; `for await` recorre todos los objetos, página
- * por página.
+ * por página. Con `ending_before` avanza hacia los más recientes: del más antiguo al más nuevo.
  */
 export class List<T extends { id: string }> implements PromiseLike<Page<T>>, AsyncIterable<T> {
-	readonly #page: (startingAfter?: string) => Promise<Page<T>>;
+	readonly #page: (cursor?: string) => Promise<Page<T>>;
+	readonly #forward: boolean;
 	#first?: Promise<Page<T>>;
 
-	constructor(page: (startingAfter?: string) => Promise<Page<T>>) {
+	constructor(page: (cursor?: string) => Promise<Page<T>>, forward = false) {
 		this.#page = page;
+		this.#forward = forward;
 	}
 
 	#firstPage() {
@@ -158,8 +160,9 @@ export class List<T extends { id: string }> implements PromiseLike<Page<T>>, Asy
 	async *[Symbol.asyncIterator](): AsyncIterator<T> {
 		let page = await this.#firstPage();
 		while (true) {
-			yield* page.data;
-			const last = page.data.at(-1);
+			// ending_before: each page is newest first; read it oldest first, then the next newer.
+			yield* this.#forward ? [...page.data].reverse() : page.data;
+			const last = this.#forward ? page.data[0] : page.data.at(-1);
 			if (!page.has_more || !last) return;
 			page = await this.#page(last.id);
 		}
@@ -194,7 +197,25 @@ const invalidResponse = (status: number, text: string, requestId?: string) =>
 		requestId,
 	);
 
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * The key's end, when the API says it's near (Fiscalisto-Key-Expires-At within 7 days, or
+ * Fiscalisto-Warning: api_key_expires_soon): a message for the console, null otherwise.
+ */
+export function expiryWarning(headers: Headers, now = Date.now()): string | null {
+	const expiresAt = headers.get("fiscalisto-key-expires-at");
+	const at = expiresAt ? Date.parse(expiresAt) : Number.NaN;
+	const soon =
+		/\bapi_key_expires_soon\b/.test(headers.get("fiscalisto-warning") ?? "") ||
+		(at > now && at - now <= WEEK_MS);
+	if (!soon) return null;
+	const when = Number.isNaN(at) ? "en menos de 7 días" : `el ${new Date(at).toISOString()}`;
+	return `[fiscalisto] Su llave de la API vence ${when}. Cámbiela antes en Desarrolladores › Llaves (Cambiar llave) para que sus solicitudes no fallen con api_key_expired.`;
+}
+
 export class Core implements Client {
+	#warnedExpiry = false;
 	readonly #key: string;
 	readonly #baseUrl: string;
 	readonly #maxRetries: number;
@@ -232,8 +253,15 @@ export class Core implements Client {
 
 	async request<T>(spec: RequestSpec, options: RequestOptions = {}): Promise<T> {
 		const url = new URL(this.#baseUrl + spec.path);
-		for (const [k, v] of Object.entries(spec.query ?? {}))
-			if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
+		for (const [k, v] of Object.entries(spec.query ?? {})) {
+			if (v === undefined || v === null) continue;
+			// An object (metadata: { pedido: "A-1" }) goes as metadata[pedido]=A-1.
+			if (typeof v === "object" && !Array.isArray(v)) {
+				for (const [sub, x] of Object.entries(v))
+					if (x !== undefined && x !== null)
+						url.searchParams.set(`${k}[${sub}]`, String(x));
+			} else url.searchParams.set(k, String(v));
+		}
 		for (const e of options.expand ?? []) url.searchParams.append("expand[]", e);
 		const headers: Record<string, string> = {
 			authorization: `Bearer ${this.#key}`,
@@ -279,6 +307,13 @@ export class Core implements Client {
 				});
 			}
 			const requestId = response.headers.get("request-id") ?? undefined;
+			if (!this.#warnedExpiry) {
+				const warning = expiryWarning(response.headers);
+				if (warning) {
+					this.#warnedExpiry = true;
+					console.warn(warning);
+				}
+			}
 			if (response.ok) {
 				if (spec.as === "bytes") return new Uint8Array(await response.arrayBuffer()) as T;
 				if (spec.as === "text") return (await response.text()) as T;
@@ -293,7 +328,12 @@ export class Core implements Client {
 				.json()
 				.then((j) => (j as { error?: Record<string, unknown> }).error ?? {})
 				.catch(() => ({}) as Record<string, unknown>);
-			const retryAfter = Number(response.headers.get("retry-after"));
+			// Retry-After when the API sends it; otherwise RateLimit-Reset (seconds until the window
+			// starts again) on a 429.
+			const retryAfter = Number(
+				response.headers.get("retry-after") ??
+					(response.status === 429 ? response.headers.get("ratelimit-reset") : null),
+			);
 			const retryable =
 				response.status === 429 ||
 				raw.code === "request_in_progress" ||
@@ -310,17 +350,23 @@ export class Core implements Client {
 		spec: { path: string; query?: object },
 		options?: RequestOptions,
 	): List<T> {
-		return new List<T>((startingAfter) =>
-			this.request<Page<T>>(
-				{
-					method: "GET",
-					path: spec.path,
-					query: startingAfter
-						? { ...spec.query, starting_after: startingAfter }
-						: spec.query,
-				},
-				options,
-			),
+		const forward = !!(spec.query as { ending_before?: unknown } | undefined)?.ending_before;
+		return new List<T>(
+			(cursor) =>
+				this.request<Page<T>>(
+					{
+						method: "GET",
+						path: spec.path,
+						query: cursor
+							? {
+									...spec.query,
+									[forward ? "ending_before" : "starting_after"]: cursor,
+								}
+							: spec.query,
+					},
+					options,
+				),
+			forward,
 		);
 	}
 }

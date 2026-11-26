@@ -1341,8 +1341,9 @@ async function listen(args: string[], g: Globals) {
 			interval: { type: "string", default: "2" },
 		},
 	});
-	// Its polls say so: they don't fill Solicitudes and the usage chart with a line every 2 s.
-	const api = new Fiscalisto(await keyFor(g), {
+	// Its reads say so: they don't fill Solicitudes and the usage chart with a line every 2 s.
+	const key = await keyFor(g);
+	const api = new Fiscalisto(key, {
 		baseUrl: API_URL(),
 		fetch: (url, init) =>
 			fetch(url, { ...init, headers: { ...init?.headers, "fiscalisto-listen": "1" } }),
@@ -1371,7 +1372,7 @@ async function listen(args: string[], g: Globals) {
 		path: "/v1/events",
 		query: { limit: 1 },
 	});
-	let last = first.data[0]?.id;
+	let last: string | undefined = first.data[0]?.id;
 	let lastAt = (first.data[0] as { created_at?: string } | undefined)?.created_at;
 	if (json)
 		line(
@@ -1389,101 +1390,246 @@ async function listen(args: string[], g: Globals) {
 		note(`Secreto de firma de esta computadora: ${bold(secret)}`);
 		note(dim("Póngalo en FISCALISTO_WEBHOOK_SECRET de su app para verificar las firmas."));
 	}
-	const every = Math.max(1, Number(values.interval)) * 1000;
-	for (;;) {
-		await sleep(every);
-		let fresh: {
-			id: string;
-			type: string;
-			created_at: string;
-			data: { object: { id: string } };
-		}[] = [];
-		try {
-			// Newest first; take everything after `last`, oldest first.
-			const page = await api.request<{ data: typeof fresh }>({
-				method: "GET",
-				path: "/v1/events",
-				query: { limit: 100 },
-			});
-			const at = last ? page.data.findIndex((e) => e.id === last) : -1;
-			// The last one seen may be gone (test data reset): what came after it, by time, not
-			// the whole page again.
-			fresh = (
-				at !== -1
-					? page.data.slice(0, at)
-					: last && lastAt
-						? page.data.filter((e) => e.created_at > (lastAt as string))
-						: []
-			).reverse();
-			if (!last && page.data[0]) {
-				last = page.data[0].id;
-				lastAt = page.data[0].created_at;
+	const deliver = async (event: {
+		id: string;
+		type: string;
+		created_at: string;
+		data: { object: { id: string } };
+	}) => {
+		if (wanted && !wanted.includes(event.type)) return;
+		const body = JSON.stringify(event);
+		let result: { status: number | null; ms: number; error?: string } = {
+			status: null,
+			ms: 0,
+		};
+		// A server that isn't answering (restarting after a change) gets the event again, as
+		// a real delivery would, instead of losing it: up to a minute, then it moves on.
+		for (let tries = 0; target; tries++) {
+			const timestamp = Math.floor(Date.now() / 1000);
+			const started = Date.now();
+			try {
+				const r = await fetch(target, {
+					method: "POST",
+					headers: {
+						"content-type": "application/json",
+						"user-agent": `fiscalisto-cli/${VERSION}`,
+						"webhook-id": event.id,
+						"webhook-timestamp": String(timestamp),
+						"webhook-signature": sign(secret, event.id, timestamp, body),
+					},
+					body,
+					signal: AbortSignal.timeout(15_000),
+				});
+				result = { status: r.status, ms: Date.now() - started };
+			} catch (e) {
+				result = {
+					status: null,
+					ms: Date.now() - started,
+					error: e instanceof Error ? e.message : String(e),
+				};
 			}
-		} catch (e) {
-			note(
-				red(
-					`No se pudieron leer los eventos: ${e instanceof Error ? e.message : String(e)}`,
-				),
-			);
-			continue;
+			if (result.status !== null || tries >= 20) break;
+			if (tries === 0 && !json)
+				note(dim(`${event.type} ${event.id}: ${target} no contesta; reintento cada 3 s…`));
+			await sleep(3000);
 		}
-		for (const event of fresh) {
-			last = event.id;
-			lastAt = event.created_at;
-			if (wanted && !wanted.includes(event.type)) continue;
-			const body = JSON.stringify(event);
-			let result: { status: number | null; ms: number; error?: string } = {
-				status: null,
-				ms: 0,
-			};
-			// A server that isn't answering (restarting after a change) gets the event again, as
-			// a real delivery would, instead of losing it: up to a minute, then it moves on.
-			for (let tries = 0; target; tries++) {
-				const timestamp = Math.floor(Date.now() / 1000);
-				const started = Date.now();
-				try {
-					const r = await fetch(target, {
-						method: "POST",
-						headers: {
-							"content-type": "application/json",
-							"user-agent": `fiscalisto-cli/${VERSION}`,
-							"webhook-id": event.id,
-							"webhook-timestamp": String(timestamp),
-							"webhook-signature": sign(secret, event.id, timestamp, body),
-						},
-						body,
-						signal: AbortSignal.timeout(15_000),
+		if (json) line(JSON.stringify({ event, forwarded: target ? result : null }));
+		else {
+			const status = !target
+				? ""
+				: result.status === null
+					? red(` → sin respuesta (${result.error}); se perdió ${event.id}`)
+					: ` → ${result.status >= 200 && result.status < 300 ? green(String(result.status)) : red(String(result.status))} ${dim(`${result.ms} ms`)}`;
+			line(
+				`${dim(new Date().toLocaleTimeString("es-MX"))} ${bold(event.type)} ${event.data.object.id}${status}`,
+			);
+		}
+	};
+
+	const every = Math.max(1, Number(values.interval)) * 1000;
+	// An API without the stream: read the events every `--interval` seconds.
+	const poll = async () => {
+		for (;;) {
+			await sleep(every);
+			let fresh: {
+				id: string;
+				type: string;
+				created_at: string;
+				data: { object: { id: string } };
+			}[] = [];
+			try {
+				type Events = { data: typeof fresh; has_more: boolean };
+				if (last) {
+					// Forward from the last one delivered, page by page, so a burst (a batch of 1,000
+					// invoices) never skips any: ending_before gives the 100 right after it.
+					let cursor = last;
+					for (let pages = 0; pages < 50; pages++) {
+						let page: Events;
+						try {
+							page = await api.request<Events>({
+								method: "GET",
+								path: "/v1/events",
+								query: { limit: 100, ending_before: cursor },
+							});
+						} catch (e) {
+							// The last one seen is gone (test data reset), or an API without
+							// ending_before: what came after it by time, from the newest 100.
+							if (!(e instanceof FiscalistoError && e.param === "ending_before"))
+								throw e;
+							const newest = await api.request<Events>({
+								method: "GET",
+								path: "/v1/events",
+								query: { limit: 100 },
+							});
+							const at = newest.data.findIndex((x) => x.id === last);
+							fresh = (
+								at !== -1
+									? newest.data.slice(0, at)
+									: lastAt
+										? newest.data.filter(
+												(x) => x.created_at > (lastAt as string),
+											)
+										: []
+							).reverse();
+							break;
+						}
+						// Each page is newest first: deliver it oldest first.
+						fresh.push(...[...page.data].reverse());
+						if (!page.has_more || !page.data[0]) break;
+						cursor = page.data[0].id;
+					}
+				} else {
+					// There were none when it started: every event now is new, so deliver them all
+					// (the newest 100; later polls go forward from the newest of them).
+					const page = await api.request<Events>({
+						method: "GET",
+						path: "/v1/events",
+						query: { limit: 100 },
 					});
-					result = { status: r.status, ms: Date.now() - started };
-				} catch (e) {
-					result = {
-						status: null,
-						ms: Date.now() - started,
-						error: e instanceof Error ? e.message : String(e),
-					};
+					fresh = [...page.data].reverse();
 				}
-				if (result.status !== null || tries >= 20) break;
-				if (tries === 0 && !json)
-					note(
-						dim(
-							`${event.type} ${event.id}: ${target} no contesta; reintento cada 3 s…`,
-						),
-					);
-				await sleep(3000);
+			} catch (e) {
+				note(
+					red(
+						`No se pudieron leer los eventos: ${e instanceof Error ? e.message : String(e)}`,
+					),
+				);
+				continue;
 			}
-			if (json) line(JSON.stringify({ event, forwarded: target ? result : null }));
-			else {
-				const status = !target
-					? ""
-					: result.status === null
-						? red(` → sin respuesta (${result.error}); se perdió ${event.id}`)
-						: ` → ${result.status >= 200 && result.status < 300 ? green(String(result.status)) : red(String(result.status))} ${dim(`${result.ms} ms`)}`;
-				line(
-					`${dim(new Date().toLocaleTimeString("es-MX"))} ${bold(event.type)} ${event.data.object.id}${status}`,
+			for (const event of fresh) {
+				last = event.id;
+				lastAt = event.created_at;
+				await deliver(event);
+			}
+		}
+	};
+
+	/** GET /v1/events/stream (Server-Sent Events): each event as it happens. false: no stream. */
+	const stream = async (): Promise<false> => {
+		// The ids already delivered: after a reconnect the server may send one twice, never none.
+		const seen = new Set<string>();
+		let wait = 1000;
+		for (;;) {
+			let response: Response;
+			try {
+				response = await fetch(`${API_URL()}/v1/events/stream`, {
+					headers: {
+						authorization: `Bearer ${key}`,
+						accept: "text/event-stream",
+						"user-agent": `fiscalisto-cli/${VERSION}`,
+						"fiscalisto-listen": "1",
+						...(last ? { "last-event-id": last } : {}),
+					},
+				});
+			} catch (e) {
+				note(red(`No se pudo conectar: ${e instanceof Error ? e.message : String(e)}`));
+				await sleep(wait);
+				wait = Math.min(wait * 2, 30_000);
+				continue;
+			}
+			if (response.status === 404) {
+				await response.body?.cancel();
+				return false;
+			}
+			if (!response.ok || !response.body) {
+				const error = (await response.json().catch(() => null)) as {
+					error?: { message?: string; param?: string; [k: string]: unknown };
+				} | null;
+				// The last one seen is gone (test data reset): from what happens now.
+				if (response.status === 400 && error?.error?.param === "last_event_id") {
+					last = undefined;
+					continue;
+				}
+				// A key that can't read them won't later either: the same error as any command.
+				if (response.status === 401 || response.status === 403)
+					throw new FiscalistoError(
+						error?.error ?? { message: `HTTP ${response.status}` },
+						response.status,
+						response.headers.get("request-id") ?? undefined,
+					);
+				note(
+					red(
+						`No se pudieron leer los eventos: ${error?.error?.message ?? `HTTP ${response.status}`}`,
+					),
+				);
+				await sleep(
+					Math.max(wait, Number(response.headers.get("retry-after") ?? 0) * 1000),
+				);
+				wait = Math.min(wait * 2, 30_000);
+				continue;
+			}
+			wait = 1000;
+			const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+			let buffer = "";
+			let message: { id?: string; data: string[] } = { data: [] };
+			try {
+				for (;;) {
+					const { value, done } = await reader.read();
+					if (done) break;
+					buffer += value;
+					let nl = buffer.search(/\r\n|\r|\n/);
+					while (nl !== -1) {
+						const text = buffer.slice(0, nl);
+						buffer = buffer.slice(nl + (buffer.startsWith("\r\n", nl) ? 2 : 1));
+						nl = buffer.search(/\r\n|\r|\n/);
+						if (text === "") {
+							// A blank line ends a message; a comment-only one (: ping) has no data.
+							const { id, data } = message;
+							message = { data: [] };
+							if (!data.length) continue;
+							const event = JSON.parse(data.join("\n")) as Parameters<
+								typeof deliver
+							>[0];
+							if (id) last = id;
+							lastAt = event.created_at;
+							if (seen.has(event.id)) continue;
+							seen.add(event.id);
+							if (seen.size > 5000) seen.delete(seen.values().next().value as string);
+							await deliver(event);
+							continue;
+						}
+						if (text.startsWith(":")) continue;
+						const colon = text.indexOf(":");
+						const field = colon === -1 ? text : text.slice(0, colon);
+						const v = colon === -1 ? "" : text.slice(colon + 1).replace(/^ /, "");
+						if (field === "data") message.data.push(v);
+						else if (field === "id") message.id = v;
+						else if (field === "retry" && /^\d+$/.test(v)) wait = Number(v);
+					}
+				}
+			} catch (e) {
+				note(
+					dim(
+						`Se cortó la conexión (${e instanceof Error ? e.message : String(e)}); reconectando…`,
+					),
 				);
 			}
+			// The server closes it every few minutes: back right after the last one.
+			await sleep(wait);
 		}
-	}
+	};
+
+	if (values.interval !== "2" || !(await stream())) await poll();
 }
 
 // ── trigger ────────────────────────────────────────────────────────────────

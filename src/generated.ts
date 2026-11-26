@@ -37,6 +37,40 @@ export interface Account {
 	};
 }
 
+/** Una llave secreta de la API, con permisos por recurso. */
+export interface ApiKey {
+	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
+	id: string;
+	/** true en producción (llaves fk_live_), false en pruebas (fk_test_). Lo de pruebas no vale ante el SAT. */
+	livemode: boolean;
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "api_key";
+	/** Nombre. */
+	name: string | null;
+	/** El principio de la llave (fk_live_AbC…), para reconocerla. El secreto completo solo viene en secret. */
+	redacted: string;
+	/** read o write en cada recurso; uno que no está es sin acceso. */
+	permissions: Record<string, "read" | "write">;
+	/** Los emisores con que trabaja; vacío: todos los del modo. */
+	issuers: string[];
+	/** Solo funciona desde estas IP o rangos; vacío: desde cualquiera. */
+	allowed_ips: string[];
+	/** La duración que se le dio al crearla, en horas (la nueva al cambiarla dura lo mismo); null: no vence. */
+	lifetime_hours: number | null;
+	/** Cuándo deja de funcionar (su duración, o el plazo de una llave que se cambió); null: no vence. */
+	expires_at: string | null;
+	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
+	created_at: string | null;
+	/** Su última solicitud (al minuto), o null. */
+	last_used_at: string | null;
+	/** Ya se cambió por otra (POST /v1/api_keys/{id}/roll): funciona solo hasta expires_at. */
+	rolled: boolean;
+	/** El entorno de prueba (sbx_…) en que funciona, o null. */
+	sandbox: string | null;
+	/** La llave completa (fk_live_… o fk_test_…): solo en la respuesta que la crea o la cambia. Guárdela; no se vuelve a mostrar. */
+	secret?: string;
+}
+
 /** Una marca de entrada o salida de Asistencia (registro electrónico de jornada, LFT art. 132). */
 export interface AttendanceMark {
 	/** Identificador del objeto, con su prefijo (iss_, inv_, ret_, cus_, prd_, emp_, bat_, brn_, whs_, stm_, adj_, evt_, whe_). */
@@ -363,7 +397,7 @@ export interface Balance {
 	 * @deprecated Se conserva por compatibilidad.
 	 */
 	unlimited: boolean;
-	/** Con esta cantidad o menos llega balance.low (y otra vez al acabarse). Se elige en Desarrolladores › Timbres y pagos. */
+	/** Con esta cantidad o menos llega balance.low (y otra vez al acabarse). Se elige en Desarrolladores › Timbres y pagos. Si solo le quedan timbres de regalo, llega al quedar 2. */
 	low_balance_at: number;
 	/** La recarga automática con la tarjeta guardada, o null si está apagada (se enciende en Desarrolladores › Timbres y pagos). */
 	auto_recharge: {
@@ -773,8 +807,8 @@ export interface Invoice {
 	cost_center: string | null;
 	/** Tipo de comprobante (TipoDeComprobante): I ingreso, E egreso, P pago, T traslado, N nómina. */
 	type: "I" | "E" | "P" | "T" | "N";
-	/** processing: el PAC no ha contestado (se resuelve sola; escuche invoice.stamped). valid: timbrada. pending: timbrada, sin el UUID aún (se resuelve sola, como processing). Una cancelación en espera del cliente no cambia status: sigue valid, con cancellation.status pending. rejected: el SAT o el PAC no la aceptaron (ver error). canceled: cancelada. */
-	status: "processing" | "pending" | "valid" | "rejected" | "canceled";
+	/** draft: un borrador, sin timbrar (POST /v1/invoices con draft: true, o hecho en Fiscalisto): se cambia con POST /v1/invoices/{id}, se timbra con POST /v1/invoices/{id}/stamp y se borra con DELETE /v1/invoices/{id}. processing: el PAC no ha contestado (se resuelve sola; escuche invoice.stamped). valid: timbrada. pending: timbrada, sin el UUID aún (se resuelve sola, como processing). Una cancelación en espera del cliente no cambia status: sigue valid, con cancellation.status pending. rejected: el SAT o el PAC no la aceptaron (ver error). canceled: cancelada. */
+	status: "draft" | "processing" | "pending" | "valid" | "rejected" | "canceled";
 	/** Folio fiscal que asigna el SAT (UUID del Timbre Fiscal Digital), en mayúsculas. */
 	uuid: string | null;
 	/** La serie (Serie) con que se timbró, o null. */
@@ -950,6 +984,21 @@ export interface Invoice {
 	created_at: string | null;
 	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
 	metadata: Record<string, string>;
+	/** Solo en un borrador (status draft). */
+	draft?: {
+		/** Cuándo cambió por última vez. */
+		updated_at: string | null;
+		/** Alguien del equipo lo mandó a aprobar en Fiscalisto: no se timbra por la API hasta que un administrador lo apruebe. Cambiarlo retira la solicitud. */
+		awaiting_approval: boolean;
+		/** Se está timbrando en este momento (desde la API o desde Fiscalisto). */
+		stamping: boolean;
+		/** Programado en Fiscalisto («Programar timbrado») para timbrarse solo a esa hora; null si no. */
+		scheduled_at: string | null;
+		/** Al timbrarlo se manda por correo a customer.email. */
+		send_email: boolean;
+		/** Copias del correo al timbrarlo. */
+		email_cc: string | null;
+	};
 	/** Avisos sobre la factura (solo en la respuesta que la timbra o, con 202, la que la deja en proceso): se timbra como se mandó. */
 	warnings?: string[];
 	/** Por qué no se pudo mandar el correo; el comprobante sí se timbró. */
@@ -1174,6 +1223,8 @@ export interface Customer {
 	price_list: string | null;
 	/** Porcentaje de descuento sobre el precio, de 0 a 100; en el CFDI va como Descuento de cada concepto. */
 	discount_percent: number | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
 	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
 	created_at: string;
 	/** Cuándo cambió por última vez, ISO 8601 (-06:00). */
@@ -1252,6 +1303,8 @@ export interface Product {
 	min_order_qty: number | null;
 	/** De cuántos en cuántos se pide en el Portal del cliente (6 para pedir 6, 12, 18…), o null de uno en uno. */
 	order_step: number | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
 	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
 	created_at: string;
 	/** Cuándo cambió por última vez, ISO 8601 (-06:00). */
@@ -1342,6 +1395,8 @@ export interface Employee {
 	exit_reason: string | null;
 	/** Lo que el SAT podría observar de sus datos, antes de timbrar. */
 	warnings: string[];
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
 	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
 	created_at: string;
 }
@@ -3292,7 +3347,7 @@ export interface TrainingCourse {
 	/** Último día trabajado si ya no trabaja ahí, AAAA-MM-DD. */
 	end_date: string;
 	/** Si se canceló teniendo constancias emitidas (se conservan). */
-	cancelled: boolean;
+	canceled: boolean;
 	/** El registro del agente externo ante la STPS. */
 	trainer_registration?: string | null;
 	/** Quien firma como instructor o tutor. */
@@ -3337,7 +3392,7 @@ export interface TrainingCourseDeleted {
 	/** true si se borró. */
 	deleted: boolean;
 	/** true si se canceló porque tenía constancias emitidas. */
-	cancelled: boolean;
+	canceled: boolean;
 }
 
 /** Una constancia DC-3 emitida, con lo que pide el aviso a la STPS. */
@@ -4173,6 +4228,8 @@ export interface CustomerDataRequest {
 	description: string | null;
 	/** Cuándo deja de servir la liga. */
 	expires_at: string | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
 	/** Cuándo se creó. */
 	created_at: string | null;
 	/** Lo que mandó el cliente (el último envío: puede corregirlo en las 24 horas siguientes). null mientras no conteste. */
@@ -4791,6 +4848,8 @@ export interface Branch {
 	livemode: boolean;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "branch";
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
 	/** El emisor de la sucursal. */
 	issuer: string;
 	/** Cómo la llama su equipo; va en el PDF. */
@@ -4855,6 +4914,8 @@ export interface CostCenter {
 	livemode: boolean;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "cost_center";
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
 	/** El emisor del centro de costo. */
 	issuer: string;
 	/** Cómo lo llama su equipo, por ejemplo «Obra Norte». */
@@ -4879,6 +4940,8 @@ export interface Tag {
 	livemode: boolean;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "tag";
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
 	/** El emisor de la etiqueta. */
 	issuer: string;
 	/** Cómo la llama su equipo, por ejemplo «Obra Norte». */
@@ -4906,7 +4969,7 @@ export interface Rule {
 	/** Nombre. */
 	name: string;
 	/** Cuándo corre. */
-	trigger: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "invoice.approved" | "invoice.rejected" | "finding.created" | "payout.submitted" | "payout.paid" | "payout.failed" | "invoice.daily" | "purchase_order.daily" | "bank.movement" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.rejected" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered" | "sat.listed" | "sat.opinion" | "sat.buzon" | "sat.certificate";
+	trigger: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.canceled" | "invoice.approved" | "invoice.rejected" | "finding.created" | "payout.submitted" | "payout.paid" | "payout.failed" | "invoice.daily" | "purchase_order.daily" | "bank.movement" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.rejected" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered" | "sat.listed" | "sat.opinion" | "sat.buzon" | "sat.certificate";
 	/** Si: lo que tiene que cumplir la factura u orden. Sin condiciones, corre siempre. */
 	conditions: {
 		/** all: se cumplen todas; any: basta con una. */
@@ -5196,7 +5259,7 @@ export interface RuleRun {
 	/** La regla (rul_…). */
 	rule: string;
 	/** Cuándo corre. */
-	trigger: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "invoice.approved" | "invoice.rejected" | "finding.created" | "payout.submitted" | "payout.paid" | "payout.failed" | "invoice.daily" | "purchase_order.daily" | "bank.movement" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.rejected" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered" | "sat.listed" | "sat.opinion" | "sat.buzon" | "sat.certificate";
+	trigger: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.canceled" | "invoice.approved" | "invoice.rejected" | "finding.created" | "payout.submitted" | "payout.paid" | "payout.failed" | "invoice.daily" | "purchase_order.daily" | "bank.movement" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.rejected" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered" | "sat.listed" | "sat.opinion" | "sat.buzon" | "sat.certificate";
 	/** La factura, orden, movimiento del banco o aviso del SAT, en palabras. */
 	record: string;
 	/** Qué es el registro (sat: un aviso del SAT). */
@@ -5314,6 +5377,8 @@ export interface PriceList {
 	livemode: boolean;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "price_list";
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
 	/** El emisor (iss_…). */
 	issuer: string;
 	/** Nombre. */
@@ -5365,6 +5430,8 @@ export interface CustomerGroup {
 	livemode: boolean;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "customer_group";
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
 	/** El emisor (iss_…). */
 	issuer: string;
 	/** Nombre. */
@@ -5405,6 +5472,8 @@ export interface SupplierGroup {
 	livemode: boolean;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "supplier_group";
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
 	/** El emisor (iss_…). */
 	issuer: string;
 	/** Nombre. */
@@ -5479,6 +5548,8 @@ export interface ExpensePerson {
 	link_active: boolean;
 	/** true si está archivada. */
 	archived: boolean;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
 	/** Cuándo se agregó. */
 	created_at: string | null;
 }
@@ -5658,6 +5729,8 @@ export interface ExpenseReport {
 	items: ExpenseItem[];
 	/** El dinero que se le dio o devolvió. */
 	movements: ExpenseMovement[];
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
 	/** Cuándo se abrió. */
 	created_at: string | null;
 	/** Cuándo cambió por última vez. */
@@ -5791,6 +5864,8 @@ export interface StockAdjustment {
 	livemode: boolean;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "stock_adjustment";
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
 	/** El emisor. */
 	issuer: string;
 	/** El almacén (whs_…). */
@@ -5826,12 +5901,14 @@ export interface ProductionOrder {
 	livemode: boolean;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "production_order";
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
 	/** El emisor. */
 	issuer: string;
 	/** Su folio, como OP-12. */
 	number: string;
-	/** draft (borrador, nada se ha movido), in_process (los componentes ya salieron), completed (lo producido ya entró) o cancelled (todo regresó). */
-	status: "draft" | "in_process" | "completed" | "cancelled";
+	/** draft (borrador, nada se ha movido), in_process (los componentes ya salieron), completed (lo producido ya entró) o canceled (todo regresó). */
+	status: "draft" | "in_process" | "completed" | "canceled";
 	/** Lo que se produce (prd_…). */
 	product: string;
 	/** Cuántas unidades se planearon. */
@@ -5879,7 +5956,7 @@ export interface ProductionOrder {
 	/** Cuándo entró lo producido, o null. */
 	completed_at: string | null;
 	/** Cuándo se canceló, o null. */
-	cancelled_at: string | null;
+	canceled_at: string | null;
 }
 
 /** La opinión de cumplimiento de obligaciones fiscales (32-D) más reciente del emisor, como la dio el SAT. */
@@ -6156,7 +6233,7 @@ export interface CompanyReport {
 		/** Ingresos facturados sin impuestos, no cancelados. */
 		income: number;
 		/** Ingresos facturados y cancelados. */
-		income_cancelled: number;
+		income_canceled: number;
 		/** Por ciento de ingresos en PUE. */
 		cash_share: number | null;
 		/** Por ciento de ingresos en PPD. */
@@ -6168,7 +6245,7 @@ export interface CompanyReport {
 		/** Gastos recibidos sin impuestos, no cancelados. */
 		expenses: number;
 		/** Gastos recibidos y cancelados. */
-		expenses_cancelled: number;
+		expenses_canceled: number;
 		/** Por ciento de lo PPD ya pagado. */
 		paid_share: number | null;
 		/** Días promedio de la factura al pago. */
@@ -6592,8 +6669,8 @@ export interface Ticket {
 	folio: string;
 	/** Lo que su comprador escribe en el portal junto con el total: el folio y 4 caracteres al azar (A123-K7QX). Imprímalo en el ticket o mándelo con la compra. */
 	code: string;
-	/** pending (se puede facturar), invoiced (su comprador lo facturó: la factura en invoice), global (entró en la factura global del periodo) o cancelled. */
-	status: "pending" | "invoiced" | "global" | "cancelled";
+	/** pending (se puede facturar), invoiced (su comprador lo facturó: la factura en invoice), global (entró en la factura global del periodo) o canceled. */
+	status: "pending" | "invoiced" | "global" | "canceled";
 	/** La página del portal con el código (c) y el total (t) del ticket: el portal lo encuentra solo y el comprador solo da sus datos. Quien tenga la liga puede facturar el ticket: désela solo al comprador (como el ticket impreso). Puede incrustarla con fiscalisto.js. null si ya no está pendiente. */
 	url: string | null;
 	/** Lo que se cobró, impuestos incluidos y sin propina. */
@@ -6664,6 +6741,8 @@ export interface Ticket {
 		/** Correo a donde se envía (varios separados por comas). Solo se usa si se pide enviarlo. */
 		email: string | null;
 	} | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
 	/** Cuándo se registró. */
 	created_at: string | null;
 }
@@ -6893,6 +6972,8 @@ export interface RecurringInvoice {
 	}[];
 	/** El total de cada factura con los precios de hoy. */
 	total: number | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
 	/** Cuándo se creó. */
 	created_at: string | null;
 }
@@ -7513,6 +7594,8 @@ export interface RepseContract {
 		/** Hasta cuándo, o null mientras siga. */
 		end_date: string | null;
 	}[];
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
 	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
 	created_at: string | null;
 }
@@ -9511,7 +9594,7 @@ export interface CrossCheckCfdi {
 				/** Cuánto cambiaría invoiced. */
 				effect: number;
 				/** Por qué lo explicaría. */
-				reason: "cancelled" | "ppd_not_collected" | "other_month" | "month_edge" | "credit_note" | "ppd_payment" | "duplicate" | "left_out" | "withholding_certificate";
+				reason: "canceled" | "ppd_not_collected" | "other_month" | "month_edge" | "credit_note" | "ppd_payment" | "duplicate" | "left_out" | "withholding_certificate";
 				/** true si está en cfdi. */
 				in_invoiced: boolean;
 			}[];
@@ -9523,7 +9606,7 @@ export interface CrossCheckCfdi {
 		/** Las posibles causas, por motivo. */
 		causes: {
 			/** El motivo que comparten. */
-			reason: "cancelled" | "ppd_not_collected" | "other_month" | "month_edge" | "credit_note" | "ppd_payment" | "duplicate" | "left_out" | "withholding_certificate";
+			reason: "canceled" | "ppd_not_collected" | "other_month" | "month_edge" | "credit_note" | "ppd_payment" | "duplicate" | "left_out" | "withholding_certificate";
 			/** La suma de su effect. */
 			total: number;
 			/** Sus CFDI. */
@@ -9541,7 +9624,7 @@ export interface CrossCheckCfdi {
 				/** Cuánto cambiaría invoiced. */
 				effect: number;
 				/** Por qué lo explicaría. */
-				reason: "cancelled" | "ppd_not_collected" | "other_month" | "month_edge" | "credit_note" | "ppd_payment" | "duplicate" | "left_out" | "withholding_certificate";
+				reason: "canceled" | "ppd_not_collected" | "other_month" | "month_edge" | "credit_note" | "ppd_payment" | "duplicate" | "left_out" | "withholding_certificate";
 				/** true si está en cfdi. */
 				in_invoiced: boolean;
 			}[];
@@ -9875,6 +9958,8 @@ export interface Quote {
 	decided_by: "customer" | "user" | null;
 	/** La factura (inv_…) que se timbró de ella, o null. */
 	invoice: string | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
 	/** Cuándo se creó. */
 	created_at: string | null;
 }
@@ -9996,6 +10081,8 @@ export interface SalesOrder {
 	canceled_at: string | null;
 	/** Por qué se canceló, o null. */
 	cancel_reason: string | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
 	/** Cuándo se creó. */
 	created_at: string | null;
 }
@@ -10186,6 +10273,8 @@ export interface Payout {
 	cancel_reason: string | null;
 	/** true si lo preparó la API. */
 	created_by_api: boolean;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
 	/** Cuándo se preparó. */
 	created_at: string | null;
 	/** Cuándo tuvo todas sus firmas, o null. */
@@ -10257,6 +10346,8 @@ export interface PayoutTransfer {
 
 /** Una factura recibida con lo que falta por pagar, como la muestra Pagos › Por pagar: lo pagado cuenta complementos, notas de crédito, pagos de Fiscalisto y pagos registrados a mano. */
 export interface PayableInvoice {
+	/** Su folio fiscal (el mismo que uuid). Sirve como starting_after. */
+	id: string;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "payable_invoice";
 	/** El folio fiscal. */
@@ -10862,6 +10953,8 @@ export interface PurchaseReceipt {
 	livemode: boolean;
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "purchase_receipt";
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
 	/** El emisor (el que compró). */
 	issuer: string;
 	/** pending (por pedir), requested (pedida a la tienda), invoiced (ya tiene factura) o non_deductible (no hubo factura). */
@@ -10973,6 +11066,8 @@ export interface WebhookEndpoint {
 	previous_secret_expires_at: string | null;
 	/** La versión de la API de sus eventos; null: la de la cuenta. */
 	api_version: string | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata: Record<string, string>;
 	/** Cuándo se creó, ISO 8601 con la hora de la Ciudad de México (-06:00). */
 	created_at: string | null;
 	/** Secreto de firma (whsec_…). Solo viene al crearlo o al cambiarlo: guárdelo para verificar las firmas. */
@@ -11191,7 +11286,7 @@ export interface CfdiVerification {
 }
 
 /** Lo que puede pasar: el tipo de cada evento. */
-export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer.created" | "customer.updated" | "customer.deleted" | "product.created" | "product.updated" | "product.deleted" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "payout.approved" | "payout.paid" | "payout.partially_paid" | "payout.failed" | "payout.canceled" | "payout_transfer.succeeded" | "payout_transfer.failed" | "payout_transfer.returned" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready" | "rule.matched";
+export type EventType = "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "invoice.draft_created" | "invoice.draft_updated" | "invoice.draft_deleted" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer.created" | "customer.updated" | "customer.deleted" | "product.created" | "product.updated" | "product.deleted" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "payout.approved" | "payout.paid" | "payout.partially_paid" | "payout.failed" | "payout.canceled" | "payout_transfer.succeeded" | "payout_transfer.failed" | "payout_transfer.returned" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready" | "rule.matched";
 
 /** Algo que pasó en su cuenta: el objeto completo como quedó. Se manda a sus webhooks firmado (Standard Webhooks). */
 export interface EventBase<T extends EventType = EventType, O = unknown> {
@@ -11223,6 +11318,9 @@ export type Event =
 	| EventBase<"invoice.partially_paid", Invoice>
 	| EventBase<"invoice.email_bounced", Invoice>
 	| EventBase<"invoice.email_complained", Invoice>
+	| EventBase<"invoice.draft_created", Invoice>
+	| EventBase<"invoice.draft_updated", Invoice>
+	| EventBase<"invoice.draft_deleted", Invoice>
 	| EventBase<"retention.stamped", Retention>
 	| EventBase<"retention.failed", Retention>
 	| EventBase<"retention.canceled", Retention>
@@ -11300,6 +11398,10 @@ export interface ApiError {
 		sat_code?: string;
 		/** Con Accept-Language: en, el mensaje original en español cuando message solo dice en inglés qué significa el código. */
 		message_es?: string;
+		/** Con api_key_expired, cuándo dejó de servir la llave (ISO 8601, UTC). */
+		expired_at?: string;
+		/** Con api_key_revoked, cuándo se revocó la llave (ISO 8601, UTC). */
+		revoked_at?: string;
 		/** La explicación de este código en la documentación. */
 		doc_url: string;
 		/** El id de la solicitud (req_…). Inclúyalo si nos escribe. */
@@ -12266,6 +12368,17 @@ export interface SalesOrderList {
 	url: string;
 }
 
+export interface ApiKeyList {
+	/** Qué tipo de objeto es («invoice», «customer»…). */
+	object: "list";
+	/** Los objetos de esta página. */
+	data: ApiKey[];
+	/** true si hay más: pida la siguiente con starting_after igual al id del último. */
+	has_more: boolean;
+	/** La ruta de esta lista. */
+	url: string;
+}
+
 export interface WebhookEndpointList {
 	/** Qué tipo de objeto es («invoice», «customer»…). */
 	object: "list";
@@ -13117,12 +13230,14 @@ export interface InvoiceCreate {
 	continue_sequence?: boolean;
 	/** Fecha de emisión (Fecha) si no es ahora, AAAA-MM-DDTHH:MM:SS hora de la Ciudad de México: hasta 72 horas antes. */
 	date?: string;
-	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
+	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. A un cliente con «Enviar al timbrar: Nunca» no se le envía aunque sea true: warnings lo dice y POST /v1/invoices/{id}/send sí se la manda. */
 	send_email?: boolean;
 	/** Correos con copia, separados por comas. */
 	email_cc?: string | null;
 	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
 	metadata?: Record<string, string>;
+	/** Solo en POST /v1/invoices. true: la guarda como borrador (status draft) sin timbrar ni usar timbres, con las mismas revisiones que al timbrar (un error responde invoice_invalid; los avisos vienen en warnings). Se cambia con POST /v1/invoices/{id}, se timbra con POST /v1/invoices/{id}/stamp y se borra con DELETE /v1/invoices/{id}; también aparece en Por facturar de Fiscalisto. Idempotency-Key es opcional: con ella, repetir la solicitud devuelve el mismo borrador. En las demás rutas que reciben una factura no cambia nada. */
+	draft?: boolean;
 	/** Solo en POST /v1/invoices. true: responde 202 en cuanto la factura queda guardada con su folio (status processing) y la timbra después de responder; invoice.stamped o invoice.failed dicen cómo terminó. En las demás rutas que reciben una factura no cambia nada. */
 	async?: boolean;
 }
@@ -13347,7 +13462,7 @@ export interface ExternalPayrollReceiptCreate {
 	};
 	/** El recibo vigente (inv_… o UUID) que este sustituye: relación 04 y se cancela con motivo 01. */
 	replaces?: string;
-	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
+	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. A un cliente con «Enviar al timbrar: Nunca» no se le envía aunque sea true: warnings lo dice y POST /v1/invoices/{id}/send sí se la manda. */
 	send_email?: boolean;
 	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
 	metadata?: Record<string, string>;
@@ -13366,6 +13481,18 @@ export interface ResetTestDataParams {
 export interface CreateSandboxParams {
 	/** Para quién o para qué es, por ejemplo el nombre de quien lo usa. */
 	name: string;
+}
+
+/** Los parámetros de GET /v1/sandboxes. */
+export interface ListSandboxesParams {
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 export interface CreateTestClockParams {
@@ -13412,6 +13539,16 @@ export interface ListIssuersParams {
 	tax_id?: string;
 	/** true para incluir los archivados. */
 	include_archived?: boolean;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 export interface UpdateIssuerParams {
@@ -13456,7 +13593,7 @@ export interface UpdateIssuerBrandingParams {
 
 /** Los parámetros de GET /v1/schedule_settings. */
 export interface GetScheduleSettingsParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -13481,7 +13618,7 @@ export interface ListSettingChangesParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Solo los de este ajuste, por ejemplo cobranza.dias-credito. */
 	setting?: string;
@@ -13520,22 +13657,40 @@ export interface ListInvoicesParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
-	/** valid, pending, canceled, rejected o processing. */
-	status?: "valid" | "pending" | "canceled" | "rejected" | "processing";
+	/** valid, pending, canceled, rejected o processing; draft lista solo los borradores (sin él no salen). Con draft no van payment_status ni cost_center. */
+	status?: "valid" | "pending" | "canceled" | "rejected" | "processing" | "draft";
 	/** I, E, P, T o N. */
 	type?: "I" | "E" | "P" | "T" | "N";
 	/** RFC del cliente o su id (cus_…). */
 	customer?: string;
 	/** Facturas de ingreso por lo que deben: unpaid, partial, open (unpaid o partial) o paid. */
 	payment_status?: "unpaid" | "partial" | "open" | "paid";
-	/** Creadas desde, en ISO 8601. Un día solo (2026-10-01) cuenta desde su inicio en hora de la Ciudad de México. */
-	created_gte?: string;
-	/** Creadas hasta, en ISO 8601. Un día solo (2026-10-31) incluye el día completo en hora de la Ciudad de México. */
-	created_lte?: string;
+	/** Con fecha del CFDI desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[gte]"?: string;
+	/** Con fecha del CFDI después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[gt]"?: string;
+	/** Con fecha del CFDI hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[lte]"?: string;
+	/** Con fecha del CFDI antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[lt]"?: string;
 	/** Solo las de este centro de costo (ccn_…), o none para las que no tienen. */
 	cost_center?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
+	/** Igual que created[gte]; se conserva por compatibilidad. */
+	created_gte?: string;
+	/** Igual que created[lte]; se conserva por compatibilidad. */
+	created_lte?: string;
 }
 
 /** Los parámetros de GET /v1/invoices/search. */
@@ -13546,8 +13701,18 @@ export interface SearchInvoicesParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 /** Los parámetros de GET /v1/invoices/{id}. */
@@ -13558,11 +13723,834 @@ export interface GetInvoiceParams {
 	refresh?: boolean;
 }
 
+/** De un borrador, la factura entera, como en POST /v1/invoices (draft no se manda). De una factura timbrada, solo cost_center y notes. */
 export interface UpdateInvoiceParams {
-	/** Su centro de costo (ccn_…), o null para quitárselo. Solo facturas, notas de crédito y recibos de nómina timbrados. */
-	cost_center?: string | null;
-	/** Nota para el cliente en el PDF (hasta 1,000 caracteres), o null para quitarla. No va en el XML: la factura timbrada no cambia y el siguiente PDF (GET /v1/invoices/{id}/pdf, el correo) ya la lleva. Cada cambio queda en el historial de la factura en Fiscalisto. */
-	notes?: string | null;
+	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
+	issuer?: string;
+	/** Sucursal (brn_…) desde donde se factura: su código postal va en LugarExpedicion, su dirección en el PDF y, si las tiene, sus series. Sin ella, el domicilio fiscal del emisor (la Matriz). */
+	branch?: string;
+	/** Su centro de costo (ccn_…): la obra, proyecto, sucursal o área a la que pertenece, para ver ingresos y gastos por centro en Reportes. No cambia el CFDI. Sus notas de crédito lo toman solas. */
+	cost_center?: string;
+	/** Almacén (whs_…) de donde salen sus productos con track_stock. Por omisión, el de su sucursal (o el de la Matriz). */
+	warehouse?: string;
+	/** El cliente (Receptor): el id de uno de su catálogo (cus_…) o sus datos. Obligatorio salvo en un traslado (type T), cuyo receptor es el propio emisor. */
+	customer?: string | {
+		/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
+		tax_id: string;
+		/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
+		legal_name: string;
+		/** Régimen fiscal (RegimenFiscal), clave de c_RegimenFiscal: 601, 612, 626… */
+		tax_system: string;
+		/** Código postal del domicilio fiscal del cliente (DomicilioFiscalReceptor), 5 dígitos. */
+		zip: string;
+		/** Correo a donde se envía (varios separados por comas). Solo se usa si se pide enviarlo. */
+		email?: string | null;
+		/** Si es extranjero: su país de residencia (ResidenciaFiscal, c_Pais) y su número de registro tributario (NumRegIdTrib), con el RFC genérico XEXX010101000. */
+		foreign?: {
+			/** País de residencia fiscal, clave de 3 letras de c_Pais (USA, CAN…). */
+			country: string;
+			/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
+			tax_id: string;
+		};
+		/** true si el cliente es contribuyente de IEPS: el IEPS va desglosado en vez de sumado al precio, salvo el del alcohol y los tabacos (tasas 0.5, 1.6 y 0.304), que va en el precio siempre (LIEPS art. 19 fr. II). */
+		ieps_taxpayer?: boolean;
+	};
+	/** Conceptos (Conceptos), al menos uno. */
+	items?: {
+		/** Un producto de su catálogo (prd_…): toma su clave, unidad, precio e impuestos. */
+		product?: string;
+		/** Descripción del concepto (Descripcion), hasta 1,000 caracteres. */
+		description?: string;
+		/** Clave del producto o servicio (ClaveProdServ), 8 dígitos de c_ClaveProdServ. Búsquela con GET /v1/sat_catalogs/product_keys?q=… */
+		product_key?: string;
+		/** Clave de unidad (ClaveUnidad) de c_ClaveUnidad: E48 unidad de servicio, H87 pieza, ACT actividad… Por omisión H87 si la clave del producto es de un bien (segmentos 10 a 60) y E48 si es de un servicio. */
+		unit_key?: string;
+		/** Nombre de la unidad (Unidad), hasta 20 caracteres. */
+		unit_name?: string | null;
+		/** Número de identificación o SKU (NoIdentificacion). */
+		sku?: string | null;
+		/** Cantidad (Cantidad). Por omisión 1. */
+		quantity?: number;
+		/** Precio unitario antes de impuestos (ValorUnitario). */
+		unit_price?: number;
+		/** Descuento (Descuento). */
+		discount?: number;
+		/** Objeto de impuesto (ObjetoImp), c_ObjetoImp: 01 no objeto, 02 sí objeto (por omisión), 03 sin desglose, 04 no causa… */
+		taxability?: "01" | "02" | "03" | "04" | "05" | "06" | "07" | "08";
+		/** Tasa de IVA trasladado: "0.16" (por omisión), "0.08" (región fronteriza), "0" o "exento". También como número (0.16, 16), con seis decimales ("0.160000") o en por ciento ("16%"); la respuesta la da como "0.16". */
+		iva?: "0" | "0.16" | "0.08" | "exento";
+		/** IEPS trasladado: tasa (0.265…) o cuota en pesos por unidad, según ieps_factor. */
+		ieps?: number;
+		/** Tasa o Cuota (TipoFactor del IEPS). */
+		ieps_factor?: "Tasa" | "Cuota";
+		/** Unidades de IEPS a cuota (litros, cigarros…), si no son la cantidad. */
+		ieps_units?: number;
+		/** Tasa de IVA retenido, en fracción (por ejemplo 0.106667, dos terceras partes del 16%). */
+		iva_retention?: number;
+		/** Tasa de ISR retenido, en fracción (por ejemplo 0.10 honorarios, 0.0125 RESICO). */
+		isr_retention?: number;
+		/** Números de cuenta predial (CuentaPredial) en arrendamiento. */
+		predial?: string[];
+		/** Números de pedimento (InformacionAduanera) de mercancía importada. */
+		pedimentos?: string[];
+		/** A cuenta de terceros (ACuentaTerceros): RFC, nombre, régimen y código postal. */
+		third_party?: {
+			/** RFC de a cuenta de quién (RfcACuentaTerceros). */
+			tax_id: string;
+			/** Nombre (NombreACuentaTerceros). */
+			name: string;
+			/** Régimen fiscal (RegimenFiscalACuentaTerceros), c_RegimenFiscal. */
+			tax_system: string;
+			/** Código postal de su domicilio fiscal (DomicilioFiscalACuentaTerceros). */
+			zip: string;
+		};
+		/** Complemento de instituciones educativas privadas (IEDU): alumno, CURP, nivel y RVOE. */
+		iedu?: {
+			/** Nombre del alumno (nombreAlumno). */
+			student_name: string;
+			/** CURP, 18 caracteres. */
+			curp: string;
+			/** Nivel educativo (nivelEducativo). */
+			level: "Preescolar" | "Primaria" | "Secundaria" | "Profesional técnico" | "Bachillerato o su equivalente";
+			/** Reconocimiento de validez oficial de estudios (autRVOE). */
+			rvoe: string;
+			/** RFC de quien paga, si no es el receptor (rfcPago). */
+			payer_tax_id?: string | null;
+		};
+		/** Complemento de vehículo usado. */
+		used_vehicle?: {
+			/** Monto de adquisición (montoAdquisicion). */
+			purchase_amount: number;
+			/** Monto de enajenación (montoEnajenacion). */
+			sale_amount: number;
+			/** Clave vehicular (claveVehicular). */
+			vehicle_key: string;
+			/** Marca (marca). */
+			make: string;
+			/** Tipo o versión (tipo). */
+			type: string;
+			/** Año del modelo (modelo), 4 dígitos. */
+			model: string;
+			/** Número de motor (numeroMotor). */
+			engine_number?: string;
+			/** Número de serie (numeroSerie). */
+			serial_number?: string;
+			/** Número de identificación vehicular (NIV). */
+			niv?: string;
+			/** Valor según la guía EBC o Libro Azul (valor). */
+			guide_value: number;
+			/** Información aduanera de la importación del vehículo (InformacionAduanera). */
+			customs?: {
+				/** Número del documento de importación (numero). */
+				number: string;
+				/** Fecha del documento (fecha), AAAA-MM-DD. */
+				date: string;
+				/** Aduana (aduana). */
+				office?: string;
+			}[];
+		};
+		/** Complemento de Hidrocarburos y Petrolíferos: obligatorio en cada concepto de diésel (15101505) o gasolina (15101514, 15101515) de una factura o nota de crédito, en litros (LTR). */
+		hydrocarbon?: {
+			/** Tipo de permiso de la CNE o la CRE (TipoPermiso, c_TipoPermiso): PER01 a PER11. */
+			permit_type: string;
+			/** Número de permiso de la CNE o la CRE (NumeroPermiso), como PL/12345/EXP/ES/2016: de 15 a 35 caracteres. */
+			permit_number: string;
+			/** Subproducto (SubProductoHYP, c_SubProductoHYP): SP16 gasolina regular, SP17 premium, SP18 diésel automotriz… */
+			subproduct: string;
+		};
+		/** Addenda del receptor (Walmart, Soriana…), con sus propios campos. */
+		addenda?: Record<string, string>;
+	}[];
+	/** I ingreso (por omisión; con global, factura global) o T traslado. Notas de crédito: POST /v1/credit_notes. Pagos: POST /v1/payments. */
+	type?: "I" | "T";
+	/** Complemento Carta Porte 3.1 (traslado de mercancías). */
+	carta_porte?: {
+		/** Cómo viajan las mercancías (c_CveTransporte): 01 autotransporte, 02 marítimo, 03 aéreo, 04 ferroviario; varios si es intermodal. Por omisión 01. */
+		modes?: ("01" | "02" | "03" | "04")[];
+		/** Transporte internacional (TranspInternac Sí): entrada o salida, país, vía y regímenes aduaneros. */
+		international?: {
+			/** EntradaSalidaMerc: Entrada o Salida. */
+			direction: "Entrada" | "Salida";
+			/** País de origen o destino (PaisOrigenDestino), c_Pais. */
+			country: string;
+			/** Vía de entrada o salida (ViaEntradaSalida), c_CveTransporte (05 ducto incluido). */
+			via: string;
+			/** Regímenes aduaneros (RegimenAduanero), c_RegimenAduanero. */
+			regimes: string[];
+		};
+		/** Corredor Interoceánico del Istmo de Tehuantepec: polos de origen y destino (c_RegistroISTMO). */
+		istmo?: {
+			/** Polo de origen (UbicacionPoloOrigen). */
+			origin: string;
+			/** Polo de destino (UbicacionPoloDestino). */
+			destination: string;
+		};
+		/** Autotransporte: true si es logística inversa, recolección o devolución. */
+		reverse_logistics?: boolean;
+		/** Ubicación de origen (Ubicacion TipoUbicacion Origen): remitente, fecha y hora de salida y domicilio. */
+		origin: {
+			/** RFC del remitente (RFCRemitenteDestinatario); XEXX010101000 si es extranjero. */
+			tax_id: string;
+			/** Nombre del remitente (NombreRemitenteDestinatario). */
+			name?: string;
+			/** Si es extranjero: su país de residencia (ResidenciaFiscal, c_Pais) y su número de registro tributario (NumRegIdTrib), con el RFC genérico XEXX010101000. */
+			foreign?: {
+				/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
+				tax_id: string;
+				/** País de residencia fiscal, clave de 3 letras de c_Pais (USA, CAN…). */
+				country: string;
+			};
+			/** Fecha y hora de salida (origen) o llegada (destino), AAAA-MM-DDTHH:MM, hora local. */
+			date_time: string;
+			/** Distancia recorrida desde la ubicación anterior, en km (DistanciaRecorrida). Autotransporte y ferroviario. */
+			distance_km?: number;
+			/** Estación, puerto o aeropuerto (TipoEstacion y NumEstacion de c_Estaciones). Solo sin autotransporte. */
+			station?: {
+				/** Tipo de estación (TipoEstacion): 01 origen, 02 intermedia, 03 destino final. */
+				type?: string;
+				/** Clave de la estación, puerto o aeropuerto (NumEstacion), c_Estaciones. */
+				number?: string;
+				/** Nombre de la estación (NombreEstacion). */
+				name?: string;
+				/** true si la estación está en el extranjero (va sin TipoEstacion). */
+				foreign?: boolean;
+			};
+			/** Marítimo: tipo de tráfico (NavegacionTrafico), Altura o Cabotaje. */
+			navigation?: "Altura" | "Cabotaje";
+			/** Domicilio (Domicilio). En México basta el código postal: estado, municipio y localidad se toman de c_CodigoPostal. */
+			address: {
+				/** Calle (Calle). */
+				street?: string;
+				/** Número exterior (NumeroExterior). */
+				exterior?: string;
+				/** Número interior (NumeroInterior). */
+				interior?: string;
+				/** Código postal (CodigoPostal). En México se deducen de él estado, municipio y localidad. */
+				zip: string;
+				/** País (Pais), c_Pais. Por omisión MEX. */
+				country?: string;
+				/** Estado (Estado): en el extranjero c_Estado para USA y CAN, o texto. */
+				state?: string;
+				/** Municipio (Municipio), en el extranjero como texto. */
+				municipality?: string;
+				/** Localidad (Localidad), en el extranjero como texto. */
+				locality?: string;
+				/** Colonia (Colonia), en el extranjero como texto. */
+				colony?: string;
+			};
+		};
+		/** Ubicaciones de destino (TipoUbicacion Destino), en orden: destinatario, llegada, distancia y domicilio. */
+		destinations: {
+			/** RFC del destinatario (RFCRemitenteDestinatario); XEXX010101000 si es extranjero. */
+			tax_id: string;
+			/** Nombre del destinatario (NombreRemitenteDestinatario). */
+			name?: string;
+			/** Si es extranjero: su país de residencia (ResidenciaFiscal, c_Pais) y su número de registro tributario (NumRegIdTrib), con el RFC genérico XEXX010101000. */
+			foreign?: {
+				/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
+				tax_id: string;
+				/** País de residencia fiscal, clave de 3 letras de c_Pais (USA, CAN…). */
+				country: string;
+			};
+			/** Fecha y hora de salida (origen) o llegada (destino), AAAA-MM-DDTHH:MM, hora local. */
+			date_time: string;
+			/** Distancia recorrida desde la ubicación anterior, en km (DistanciaRecorrida). Autotransporte y ferroviario. */
+			distance_km?: number;
+			/** Estación, puerto o aeropuerto (TipoEstacion y NumEstacion de c_Estaciones). Solo sin autotransporte. */
+			station?: {
+				/** Tipo de estación (TipoEstacion): 01 origen, 02 intermedia, 03 destino final. */
+				type?: string;
+				/** Clave de la estación, puerto o aeropuerto (NumEstacion), c_Estaciones. */
+				number?: string;
+				/** Nombre de la estación (NombreEstacion). */
+				name?: string;
+				/** true si la estación está en el extranjero (va sin TipoEstacion). */
+				foreign?: boolean;
+			};
+			/** Marítimo: tipo de tráfico (NavegacionTrafico), Altura o Cabotaje. */
+			navigation?: "Altura" | "Cabotaje";
+			/** Domicilio (Domicilio). En México basta el código postal: estado, municipio y localidad se toman de c_CodigoPostal. */
+			address: {
+				/** Calle (Calle). */
+				street?: string;
+				/** Número exterior (NumeroExterior). */
+				exterior?: string;
+				/** Número interior (NumeroInterior). */
+				interior?: string;
+				/** Código postal (CodigoPostal). En México se deducen de él estado, municipio y localidad. */
+				zip: string;
+				/** País (Pais), c_Pais. Por omisión MEX. */
+				country?: string;
+				/** Estado (Estado): en el extranjero c_Estado para USA y CAN, o texto. */
+				state?: string;
+				/** Municipio (Municipio), en el extranjero como texto. */
+				municipality?: string;
+				/** Localidad (Localidad), en el extranjero como texto. */
+				locality?: string;
+				/** Colonia (Colonia), en el extranjero como texto. */
+				colony?: string;
+			};
+		}[];
+		/** Mercancías (Mercancia) que se transportan. */
+		goods: {
+			/** Clave del bien transportado (BienesTransp), c_ClaveProdServCP. */
+			product_key: string;
+			/** Descripción de la mercancía (Descripcion). */
+			description: string;
+			/** Cantidad (Cantidad). */
+			quantity: number;
+			/** Clave de unidad (ClaveUnidad), c_ClaveUnidad. */
+			unit_key: string;
+			/** Peso en kilogramos (PesoEnKg). */
+			weight_kg: number;
+			/** Dimensiones (Dimensiones), como 30/40/30cm o en plg. */
+			dimensions?: string;
+			/** Material peligroso (MaterialPeligroso Sí): clave UN y embalaje. */
+			hazmat?: {
+				/** Clave del material peligroso (CveMaterialPeligroso), c_MaterialPeligroso (número UN). */
+				key: string;
+				/** Tipo de embalaje (Embalaje), c_TipoEmbalaje. */
+				packaging: string;
+				/** Descripción del embalaje (DescripEmbalaje). */
+				packaging_description?: string;
+			};
+			/** Datos COFEPRIS de la mercancía: sector y lo que pide cada uno (medicamentos, precursores, psicotrópicos, sustancias tóxicas, plaguicidas). */
+			cofepris?: {
+				/** Sector COFEPRIS (SectorCOFEPRIS): 01 medicamento, 02 precursores y químicos de uso dual, 03 psicotrópicos y estupefacientes, 04 sustancias tóxicas, 05 plaguicidas y fertilizantes. */
+				sector: string;
+				/** Nombre del ingrediente activo (NombreIngredienteActivo). */
+				active_ingredient?: string;
+				/** Nombre químico (NomQuimico). */
+				chemical_name?: string;
+				/** Denominación genérica del producto (DenominacionGenericaProd). */
+				generic_name?: string;
+				/** Denominación distintiva o marca (DenominacionDistintivaProd). */
+				brand_name?: string;
+				/** Fabricante (Fabricante). */
+				manufacturer?: string;
+				/** Fecha de caducidad (FechaCaducidad), AAAA-MM-DD. */
+				expiry?: string;
+				/** Lote del medicamento (LoteMedicamento). */
+				lot?: string;
+				/** Forma farmacéutica (FormaFarmaceutica), c_FormaFarmaceutica. */
+				form?: string;
+				/** Condiciones especiales de transporte (CondicionesEspTransp), c_CondicionesEspeciales. */
+				conditions?: string;
+				/** Registro sanitario o folio de autorización (RegistroSanitarioFolioAutorizacion). */
+				sanitary_registry?: string;
+				/** Permiso de importación (PermisoImportacion). */
+				import_permit?: string;
+				/** Folio de importación VUCEM (FolioImpoVUCEM). */
+				vucem_folio?: string;
+				/** Número CAS de la sustancia (NumCAS). */
+				cas?: string;
+				/** Razón social de la empresa importadora (RazonSocialEmpImp). */
+				importer?: string;
+				/** Registro sanitario de plaguicidas COFEPRIS (NumRegSanPlagCOFEPRIS). */
+				pesticide_registry?: string;
+				/** Datos del fabricante (DatosFabricante). */
+				manufacturer_data?: string;
+				/** Datos del formulador (DatosFormulador). */
+				formulator_data?: string;
+				/** Datos del maquilador (DatosMaquilador). */
+				maquilador_data?: string;
+				/** Uso autorizado (UsoAutorizado). */
+				authorized_use?: string;
+			};
+			/** Valor de la mercancía (ValorMercancia); obligatorio en transporte aéreo. */
+			value?: number;
+			/** Moneda del valor de la mercancía (Moneda), c_Moneda. */
+			currency?: string;
+			/** Fracción arancelaria (FraccionArancelaria), 10 dígitos. Transporte internacional. */
+			tariff?: string;
+			/** UUID del CFDI con complemento de comercio exterior (UUIDComercioExt). */
+			cce_uuid?: string;
+			/** Tipo de materia (TipoMateria, c_TipoMateria) y su descripción si es «otra». */
+			material?: {
+				/** Tipo de materia (TipoMateria), c_TipoMateria. */
+				type: string;
+				/** Descripción de la materia (DescripcionMateria), con el tipo 05 otra. */
+				description?: string;
+			};
+			/** Documentación aduanera (DocumentacionAduanera) de la mercancía en transporte internacional. */
+			customs_docs?: {
+				/** Tipo de documento (TipoDocumento), c_DocumentoAduanero: 01 pedimento… */
+				type: string;
+				/** Número de pedimento (NumPedimento), con el formato «NN  NN  NNNN  NNNNNNN». Solo con el tipo 01. */
+				pedimento?: string;
+				/** Identificador del documento aduanero (IdentDocAduanero), con un tipo distinto de 01. */
+				doc_id?: string;
+				/** RFC del importador (RFCImpo), con un pedimento. */
+				importer_tax_id?: string;
+			}[];
+			/** Paquetería: guías de los paquetes o tarimas (GuiasIdentificacion). */
+			guides?: {
+				/** Número de guía (NumeroGuiaIdentificacion). */
+				number: string;
+				/** Descripción del contenido (DescripGuiaIdentificacion). */
+				description: string;
+				/** Peso en kilogramos (PesoEnKg). */
+				weight_kg: number;
+			}[];
+			/** Cuánto va a cada destino (CantidadTransporta), por destino. */
+			quantities?: {
+				/** Cantidad que va a ese destino. */
+				quantity: number;
+				/** El destino, por su posición en destinations (desde 0). */
+				destination: number;
+				/** Medio en que va esa cantidad (CvesTransporte), c_CveTransporte. */
+				mode?: "01" | "02" | "03" | "04";
+			}[];
+			/** Marítimo: detalle de la mercancía (DetalleMercancia): kilos netos, tara y piezas. */
+			detail?: {
+				/** Peso neto en kg (PesoNeto). */
+				net_kg: number;
+				/** Tara en kg (PesoTara). */
+				tare_kg: number;
+				/** Número de piezas (NumPiezas). */
+				pieces?: number;
+			};
+			/** Ferroviario: clave STCC (ClaveSTCC). */
+			stcc?: string;
+		}[];
+		/** Autotransporte (Autotransporte): vehículo, permiso SCT, seguros y remolques. */
+		vehicle?: {
+			/** Configuración vehicular (ConfigVehicular), c_ConfigAutotransporte: C2, T3S2… */
+			config: string;
+			/** Placa (PlacaVM), sin guiones ni espacios. */
+			plate: string;
+			/** Año del modelo (AnioModeloVM). */
+			year: number;
+			/** Peso bruto vehicular en toneladas (PesoBrutoVehicular). */
+			gross_weight: number;
+			/** Tipo de permiso SCT (PermSCT), c_TipoPermiso. */
+			permit_type: string;
+			/** Número de permiso SCT (NumPermisoSCT). */
+			permit_number: string;
+			/** Aseguradora de responsabilidad civil (AseguraRespCivil). */
+			insurer: string;
+			/** Póliza de responsabilidad civil (PolizaRespCivil). */
+			policy: string;
+			/** Aseguradora de daños al medio ambiente (AseguraMedAmbiente); obligatoria con material peligroso. */
+			env_insurer?: string;
+			/** Póliza de daños al medio ambiente (PolizaMedAmbiente). */
+			env_policy?: string;
+			/** Aseguradora de la carga (AseguraCarga). */
+			cargo_insurer?: string;
+			/** Póliza de la carga (PolizaCarga). */
+			cargo_policy?: string;
+			/** Prima del seguro (PrimaSeguro). */
+			premium?: number;
+			/** Remolques o semirremolques (Remolque): tipo (c_SubTipoRem) y placa. */
+			trailers?: {
+				/** Subtipo de remolque (SubTipoRem), c_SubTipoRem. */
+				type: string;
+				/** Placa del remolque (Placa). */
+				plate: string;
+			}[];
+		};
+		/** Transporte marítimo (TransporteMaritimo): embarcación, naviero y contenedores. */
+		sea?: {
+			/** Tipo de permiso SCT (PermSCT), c_TipoPermiso. */
+			permit_type?: string;
+			/** Número de permiso SCT (NumPermisoSCT). */
+			permit_number?: string;
+			/** Aseguradora de responsabilidad civil (AseguraRespCivil). */
+			insurer?: string;
+			/** Póliza de responsabilidad civil (PolizaRespCivil). */
+			policy?: string;
+			/** Tipo de embarcación (TipoEmbarcacion), c_ConfigMaritima. */
+			vessel_type: string;
+			/** Matrícula (Matricula). */
+			registration: string;
+			/** Número IMO (NumeroOMI): IMO y 7 dígitos. */
+			imo: string;
+			/** Año de la embarcación (AnioEmbarcacion). */
+			year?: number;
+			/** Nombre de la embarcación (NombreEmbarc). */
+			vessel_name?: string;
+			/** Nacionalidad de la embarcación (NacionalidadEmbarc), c_Pais. */
+			flag: string;
+			/** Unidades de arqueo bruto (UnidadesDeArqBruto). */
+			gross_tonnage: number;
+			/** Tipo de carga (TipoCarga), c_ClaveTipoCarga. */
+			cargo_type: string;
+			/** Eslora en metros (Eslora). */
+			length?: number;
+			/** Manga en metros (Manga). */
+			beam?: number;
+			/** Calado en metros (Calado). */
+			draft?: number;
+			/** Puntal en metros (Puntal). */
+			depth?: number;
+			/** Línea naviera (LineaNaviera). */
+			line?: string;
+			/** Nombre del agente naviero consignatario (NombreAgenteNaviero). */
+			agent_name: string;
+			/** Autorización del agente naviero (NumAutorizacionNaviero), c_NumAutorizacionNaviero. */
+			agent_authorization: string;
+			/** Número de viaje (NumViaje). */
+			voyage?: string;
+			/** Número de conocimiento de embarque (NumConocEmbarc). */
+			bill_of_lading?: string;
+			/** Permiso temporal de navegación (PermisoTempNavegacion), para una embarcación extranjera. */
+			temp_permit?: string;
+			/** Contenedores (Contenedor). */
+			containers?: {
+				/** Tipo de contenedor (TipoContenedor), c_ContenedorMaritimo o c_Contenedor en ferroviario. */
+				type: string;
+				/** Matrícula (Matricula). */
+				registration?: string;
+				/** Número de precinto (NumPrecinto). */
+				seal?: string;
+				/** Ferri: el IdCCP de la Carta Porte del autotransporte a bordo (IdCCPRelacionado). */
+				related_id_ccp?: string;
+				/** Ferri: placa del vehículo a bordo (PlacaVMCCP). */
+				truck_plate?: string;
+				/** Ferri: fecha de certificación de la Carta Porte del vehículo (FechaCertificacionCCP). */
+				certified_at?: string;
+				/** Remolques o semirremolques (Remolque): tipo (c_SubTipoRem) y placa. */
+				trailers?: {
+					/** Subtipo de remolque (SubTipoRem), c_SubTipoRem. */
+					type: string;
+					/** Placa del remolque (Placa). */
+					plate: string;
+				}[];
+			}[];
+		};
+		/** Transporte aéreo (TransporteAereo): permiso, guía y transportista. */
+		air?: {
+			/** Tipo de permiso SCT (PermSCT), c_TipoPermiso. */
+			permit_type: string;
+			/** Número de permiso SCT (NumPermisoSCT). */
+			permit_number: string;
+			/** Matrícula de la aeronave (MatriculaAeronave). */
+			aircraft?: string;
+			/** Aseguradora de responsabilidad civil (AseguraRespCivil). */
+			insurer?: string;
+			/** Póliza de responsabilidad civil (PolizaRespCivil). */
+			policy?: string;
+			/** Número de guía aérea (NumeroGuia), de 12 a 15 caracteres. */
+			waybill: string;
+			/** Lugar del contrato (LugarContrato). */
+			contract_place?: string;
+			/** Código del transportista (CodigoTransportista), c_CodigoTransporteAereo. */
+			carrier: string;
+			/** Embarcador (RFCEmbarcador o NumRegIdTribEmbarc y ResidenciaFiscalEmbarc, NombreEmbarcador). */
+			shipper?: {
+				/** RFC del embarcador (RFCEmbarcador). */
+				tax_id?: string;
+				/** Si es extranjero: su país de residencia (ResidenciaFiscal, c_Pais) y su número de registro tributario (NumRegIdTrib), con el RFC genérico XEXX010101000. */
+				foreign?: {
+					/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
+					tax_id: string;
+					/** País de residencia fiscal, clave de 3 letras de c_Pais (USA, CAN…). */
+					country: string;
+				};
+				/** Nombre del embarcador (NombreEmbarcador). */
+				name?: string;
+			};
+			/** Cargo por tasación (CargoPorTasacion). */
+			rate_charge?: number;
+		};
+		/** Transporte ferroviario (TransporteFerroviario): servicio, tráfico, derechos de paso y carros. */
+		rail?: {
+			/** Tipo de servicio (TipoDeServicio), c_TipoDeServicio. */
+			service: string;
+			/** Tipo de tráfico (TipoDeTrafico), c_TipoDeTrafico. */
+			traffic: string;
+			/** Aseguradora de responsabilidad civil (AseguraRespCivil). */
+			insurer?: string;
+			/** Póliza de responsabilidad civil (PolizaRespCivil). */
+			policy?: string;
+			/** Derechos de paso (DerechosDePaso): tipo y kilómetros. */
+			rights?: {
+				/** Tipo de derecho de paso (TipoDerechoDePaso), c_DerechosDePaso. */
+				type: string;
+				/** Kilometraje pagado (KilometrajePagado). */
+				km: number;
+			}[];
+			/** Carros (Carro). */
+			cars: {
+				/** Tipo de carro (TipoCarro), c_TipoCarro. */
+				type: string;
+				/** Matrícula (Matricula). */
+				registration: string;
+				/** Guía del carro (GuiaCarro). */
+				guide: string;
+				/** Toneladas netas del carro (ToneladasNetasCarro). */
+				net_tons: number;
+				/** Contenedores (Contenedor). */
+				containers?: {
+					/** Tipo de contenedor (TipoContenedor), c_ContenedorMaritimo o c_Contenedor en ferroviario. */
+					type: string;
+					/** Peso del contenedor vacío en kg (PesoContenedorVacio). */
+					empty_kg: number;
+					/** Peso neto en kg (PesoNeto). */
+					net_kg: number;
+				}[];
+			}[];
+		};
+		/** Operadores (FiguraTransporte tipo 01): RFC, licencia y nombre. */
+		drivers: {
+			/** RFC del operador (RFCFigura); vacío si es extranjero (con foreign). */
+			tax_id: string | "";
+			/** Número de licencia (NumLicencia). */
+			license: string;
+			/** Nombre del operador (NombreFigura). */
+			name: string;
+			/** Si es extranjero: su país de residencia (ResidenciaFiscal, c_Pais) y su número de registro tributario (NumRegIdTrib), con el RFC genérico XEXX010101000. */
+			foreign?: {
+				/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
+				tax_id: string;
+				/** País de residencia fiscal, clave de 3 letras de c_Pais (USA, CAN…). */
+				country: string;
+			};
+		}[];
+		/** Otras figuras de transporte: 02 propietario, 03 arrendador, 04 notificado, 05 integrante de coordinados. */
+		figures?: {
+			/** Tipo de figura (TipoFigura): 02 propietario, 03 arrendador, 04 notificado, 05 integrante. */
+			type: "02" | "03" | "04" | "05";
+			/** RFC de la figura (RFCFigura). */
+			tax_id?: string;
+			/** Si es extranjero: su país de residencia (ResidenciaFiscal, c_Pais) y su número de registro tributario (NumRegIdTrib), con el RFC genérico XEXX010101000. */
+			foreign?: {
+				/** Número de registro de identidad fiscal en su país (NumRegIdTrib). */
+				tax_id: string;
+				/** País de residencia fiscal, clave de 3 letras de c_Pais (USA, CAN…). */
+				country: string;
+			};
+			/** Nombre de la figura (NombreFigura). */
+			name: string;
+			/** Partes del transporte que posee o arrienda (ParteTransporte), c_ParteTransporte. */
+			parts?: string[];
+			/** Domicilio (Domicilio). En México basta el código postal: estado, municipio y localidad se toman de c_CodigoPostal. */
+			address?: {
+				/** Calle (Calle). */
+				street?: string;
+				/** Número exterior (NumeroExterior). */
+				exterior?: string;
+				/** Número interior (NumeroInterior). */
+				interior?: string;
+				/** Código postal (CodigoPostal). En México se deducen de él estado, municipio y localidad. */
+				zip: string;
+				/** País (Pais), c_Pais. Por omisión MEX. */
+				country?: string;
+				/** Estado (Estado): en el extranjero c_Estado para USA y CAN, o texto. */
+				state?: string;
+				/** Municipio (Municipio), en el extranjero como texto. */
+				municipality?: string;
+				/** Localidad (Localidad), en el extranjero como texto. */
+				locality?: string;
+				/** Colonia (Colonia), en el extranjero como texto. */
+				colony?: string;
+			};
+		}[];
+	};
+	/** Solo en un traslado (type T) sin carta_porte: la regla de la RMF 2026 que lo permite. 2.7.7.2.1 mercancías propias en un traslado local (no medicamentos, hidrocarburos ni mercancías para despacho aduanero); 2.7.7.2.2 paquetería o mensajería en primera o última milla, un concepto por paquete con su número de guía en sku; 2.7.7.2.3 grúa de arrastre o salvamento local, relacionando con related (05) la factura de ingreso del servicio. Mandarlo es declarar que el traslado no transita por ningún tramo de jurisdicción federal. Los conceptos van con unit_price 0 y taxability 01 (por omisión en un traslado). */
+	carta_porte_exemption?: "2.7.7.2.1" | "2.7.7.2.2" | "2.7.7.2.3";
+	/** Complemento INE (procesos electorales). */
+	ine?: {
+		/** Tipo de proceso (TipoProceso): Ordinario, Precampaña o Campaña. */
+		process: "Ordinario" | "Precampaña" | "Campaña";
+		/** Tipo de comité (TipoComite), con el proceso Ordinario. */
+		committee?: "Ejecutivo Nacional" | "Ejecutivo Estatal" | "Directivo Estatal";
+		/** Clave de contabilidad (IdContabilidad), hasta 6 dígitos. */
+		accounting_id?: string;
+		/** Entidades (Entidad): clave del estado, ámbito y claves de contabilidad. */
+		entities?: {
+			/** Clave de la entidad (ClaveEntidad): la del estado (JAL, QUE…), NAC (nacional) o la circunscripción CR1 a CR5; estas seis no van con ámbito Local. */
+			key: string;
+			/** Ámbito (Ambito): Local o Federal. */
+			scope?: "Local" | "Federal";
+			/** Claves de contabilidad (IdContabilidad). */
+			accounting_ids?: string[];
+		}[];
+	};
+	/** Complemento de leyendas fiscales. */
+	leyendas?: {
+		/** Texto de la leyenda (textoLeyenda). */
+		text: string;
+		/** Disposición fiscal (disposicionFiscal), por ejemplo LISR. */
+		disposition?: string;
+		/** Norma o artículo (norma). */
+		norm?: string;
+	}[];
+	/** Complemento de donatarias: un recibo de donativo. El emisor debe ser donataria (tax_system 603) con su oficio en donation_authorization (POST /v1/issuers/{id}). */
+	donation?: {
+		/** true si el donativo es en especie (bienes): va con forma de pago 12 (dación en pago) y un concepto por cada tipo de bien. */
+		in_kind?: boolean;
+		/** true si el donante ya había deducido los bienes que dona: el recibo dice que el donativo no es deducible. */
+		deducted?: boolean;
+	};
+	/** Impuestos locales (complemento implocal): traslados y retenciones estatales. */
+	local_taxes?: {
+		/** true si es una retención local; false si es un traslado. */
+		retention: boolean;
+		/** Nombre del impuesto local (ImpLocTrasladado o ImpLocRetenido), como ISH. */
+		name: string;
+		/** Tasa en por ciento (TasadeTraslado o TasadeRetencion). */
+		rate: number;
+		/** Importe del impuesto local. */
+		amount: number;
+	}[];
+	/** Exportación (Exportacion), c_Exportacion: 01 no aplica (por omisión), 02 definitiva con clave A1 (lleva comercio_exterior), 03 temporal (sin él), 04 definitiva con clave distinta a A1 o sin enajenación (con o sin comercio_exterior; con él, incoterm opcional). */
+	export?: "01" | "02" | "03" | "04";
+	/** Complemento de comercio exterior 2.0. */
+	comercio_exterior?: {
+		/** Motivo de traslado (MotivoTraslado), c_MotivoTraslado, solo en un traslado: 01 mercancías facturadas con anterioridad (relacione la factura de venta en related), 02 reubicación de mercancías propias, 03 consignación, 04 para posterior enajenación, 05 propiedad de terceros (con owners), 99 otros. */
+		motive?: "99" | "01" | "02" | "03" | "04" | "05";
+		/** Propietarios de la mercancía si no es el emisor (Propietario), con motive 05. */
+		owners?: {
+			/** Número de registro tributario del propietario (NumRegIdTrib). */
+			tax_id: string;
+			/** País de residencia del propietario (ResidenciaFiscal), c_Pais. */
+			country: string;
+		}[];
+		/** Incoterm (Incoterm), c_INCOTERM: EXW, FOB, CIF, DAP, DDP… */
+		incoterm?: string;
+		/** Número de certificado de origen (NumCertificadoOrigen). */
+		certificate?: string;
+		/** Tipo de cambio a dólares (TipoCambioUSD). */
+		usd_rate: number;
+		/** CURP del emisor persona física (Emisor Curp). */
+		issuer_curp?: string;
+		/** Domicilio del emisor (Emisor Domicilio): calle y números; lo demás sale de su código postal. */
+		issuer_address?: {
+			/** Calle (Calle). */
+			street: string;
+			/** Número exterior (NumeroExterior). */
+			exterior?: string;
+			/** Número interior (NumeroInterior). */
+			interior?: string;
+			/** Código postal del emisor (CodigoPostal). */
+			zip?: string;
+		};
+		/** Domicilio del receptor en el extranjero (Receptor Domicilio). */
+		receiver_address?: {
+			/** Calle (Calle). */
+			street: string;
+			/** Número exterior (NumeroExterior). */
+			exterior?: string;
+			/** Número interior (NumeroInterior). */
+			interior?: string;
+			/** Colonia (Colonia), en el extranjero como texto. */
+			colony?: string;
+			/** Localidad (Localidad), en el extranjero como texto. */
+			locality?: string;
+			/** Municipio (Municipio), en el extranjero como texto. */
+			municipality?: string;
+			/** Estado (Estado), c_Estado para USA y CAN. */
+			state?: string;
+			/** País (Pais), c_Pais. */
+			country: string;
+			/** Código postal en su país (CodigoPostal). */
+			zip: string;
+		};
+		/** Destinatario, si no es el receptor (Destinatario). */
+		recipient?: {
+			/** Nombre del destinatario (Nombre). */
+			name?: string;
+			/** Número de registro tributario del destinatario (NumRegIdTrib). */
+			tax_id?: string;
+			/** Domicilio del destinatario (Domicilio). */
+			address: {
+				/** Calle (Calle). */
+				street: string;
+				/** Número exterior (NumeroExterior). */
+				exterior?: string;
+				/** Número interior (NumeroInterior). */
+				interior?: string;
+				/** Colonia (Colonia), en el extranjero como texto. */
+				colony?: string;
+				/** Localidad (Localidad), en el extranjero como texto. */
+				locality?: string;
+				/** Municipio (Municipio), en el extranjero como texto. */
+				municipality?: string;
+				/** Estado (Estado): en el extranjero c_Estado para USA y CAN, o texto. */
+				state?: string;
+				/** País (Pais), c_Pais. Por omisión MEX. */
+				country: string;
+				/** Código postal (CodigoPostal). En México se deducen de él estado, municipio y localidad. */
+				zip: string;
+			};
+		};
+		/** Mercancías (Mercancia), una por concepto exportado. */
+		goods: {
+			/** Número de identificación de la mercancía (NoIdentificacion): el sku de su concepto. */
+			id?: string;
+			/** Fracción arancelaria (FraccionArancelaria), 10 dígitos con el NICO, vigente en c_FraccionArancelaria (búsquela en `GET /v1/sat_catalogs/customs_tariffs`); una que no lo esté se rechaza antes de timbrar. */
+			tariff?: string;
+			/** Unidad aduana (UnidadAduana), c_UnidadAduana; 99 en un servicio. Con `tariff` puede omitirse: va la UMT de la fracción en el catálogo del SAT (otra la rechaza el SAT con CCE161). */
+			unit?: string;
+			/** Cantidad en la unidad aduana (CantidadAduana). */
+			quantity?: number;
+			/** Valor unitario en dólares (ValorUnitarioAduana). */
+			unit_value_usd?: number;
+		}[];
+		/** Observaciones del complemento (Observaciones). */
+		notes?: string;
+	};
+	/** Factura global a público en general (InformacionGlobal): periodicidad, meses y año. */
+	global?: {
+		/** Periodicidad (Periodicidad), c_Periodicidad: 01 diario, 02 semanal, 03 quincenal, 04 mensual, 05 bimestral. */
+		periodicity: string;
+		/** Meses (Meses), c_Meses: 01 a 12, o 13 a 18 bimestres. */
+		months: string;
+		/** Año (Año): el de la fecha de la factura o hasta cinco años antes (CFDI40136). */
+		year: number;
+		/** Solo emisores con régimen 603 (donatarias y asociaciones): true conserva la descripción, claves, unidad y cantidad de cada concepto en vez de «Venta», 01010101, ACT. */
+		keep_concepts?: boolean;
+	};
+	/** Uso del CFDI (UsoCFDI), clave de c_UsoCFDI. Por omisión G03, o S01 con régimen 616. */
+	use?: string;
+	/** Forma de pago (FormaPago), clave de c_FormaPago: 01 efectivo, 03 transferencia, 04 tarjeta de crédito, 28 débito, 99 por definir… Obligatoria con PUE; con PPD es 99. */
+	payment_form?: string;
+	/** Método de pago (MetodoPago): PUE (una sola exhibición, por omisión) o PPD (en parcialidades o diferido, se cobra con complementos de pago). */
+	payment_method?: "PUE" | "PPD";
+	/** Con PUE: true si aún no le pagan («Por cobrar» en la app) aunque se pagará este mes. */
+	paid_later?: boolean;
+	/** Moneda, clave ISO 4217 de c_Moneda (MXN, USD, EUR…). Por omisión MXN. */
+	currency?: string;
+	/** Serie (Serie), hasta 25 caracteres. Cada serie lleva sus propios folios. */
+	series?: string;
+	/** Observaciones que aparecen en el PDF (no van en el XML). */
+	notes?: string;
+	/** Condiciones de pago (CondicionesDePago), hasta 1,000 caracteres sin «|»: «Crédito a 30 días», «50 % anticipo». Van en el XML y en el PDF; solo en ingresos y egresos. No cambian cuándo vence (due_date usa los días de crédito del cliente). */
+	payment_terms?: string;
+	/** Idioma del PDF: es (por omisión) o en. */
+	pdf_language?: "es" | "en" | "bi";
+	/** Addenda del receptor (Walmart, Soriana…), con sus propios campos. */
+	addenda?: {
+		type: "walmart" | "soriana" | "liverpool" | "homedepot" | "chedraui" | "generic";
+		values: Record<string, string>;
+		customer?: Record<string, string>;
+	};
+	/** CFDI relacionados (CfdiRelacionados): tipo de relación de c_TipoRelacion y los UUID. */
+	related?: {
+		/** Tipo de relación (TipoRelacion): 01 nota de crédito, 03 devolución, 04 sustitución, 07 anticipo… */
+		relationship: string;
+		/** Folios fiscales relacionados. */
+		uuids: string[];
+	};
+	/** Tipo de cambio a pesos (TipoCambio). Obligatorio si la moneda no es MXN; use el del DOF del día anterior. */
+	exchange_rate?: number;
+	/** Folio (Folio) de esta factura en vez del siguiente de la serie: ese número toma su lugar en la numeración. También acepta un texto de hasta 40 caracteres sin «|» ("TIME002", "000120"), como lo acepta el SAT (Anexo 20): va solo en esta factura y la numeración no cambia; "120" es el folio 120. Si otro CFDI del RFC y la serie ya lo tiene, se rechaza. */
+	folio?: number;
+	/** Con un folio elegido: true para que los siguientes sigan desde ese número. */
+	continue_sequence?: boolean;
+	/** Fecha de emisión (Fecha) si no es ahora, AAAA-MM-DDTHH:MM:SS hora de la Ciudad de México: hasta 72 horas antes. */
+	date?: string;
+	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. A un cliente con «Enviar al timbrar: Nunca» no se le envía aunque sea true: warnings lo dice y POST /v1/invoices/{id}/send sí se la manda. */
+	send_email?: boolean;
+	/** Correos con copia, separados por comas. */
+	email_cc?: string | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
+	/** Solo en POST /v1/invoices. true: la guarda como borrador (status draft) sin timbrar ni usar timbres, con las mismas revisiones que al timbrar (un error responde invoice_invalid; los avisos vienen en warnings). Se cambia con POST /v1/invoices/{id}, se timbra con POST /v1/invoices/{id}/stamp y se borra con DELETE /v1/invoices/{id}; también aparece en Por facturar de Fiscalisto. Idempotency-Key es opcional: con ella, repetir la solicitud devuelve el mismo borrador. En las demás rutas que reciben una factura no cambia nada. */
+	draft?: boolean;
+	/** Solo en POST /v1/invoices. true: responde 202 en cuanto la factura queda guardada con su folio (status processing) y la timbra después de responder; invoice.stamped o invoice.failed dicen cómo terminó. En las demás rutas que reciben una factura no cambia nada. */
+	async?: boolean;
 }
 
 /** Los parámetros de GET /v1/invoices/{id}/pdf. */
@@ -13595,6 +14583,8 @@ export interface CancelInvoiceParams {
 	motive?: "01" | "02" | "03" | "04";
 	/** El comprobante que sustituye a este (su id o su UUID), con el motivo 01. */
 	substitution?: string;
+	/** true para avisarle al cliente por correo que se canceló, con el diseño de Fiscalisto, a las direcciones a las que se le mandó la factura (con la que la sustituye, si hay). Por omisión no se avisa. Solo si la factura se le mandó por correo; quien se dio de baja de los avisos no lo recibe. */
+	notify_customer?: boolean;
 }
 
 export interface MarkInvoicePaidParams {
@@ -13608,7 +14598,7 @@ export interface ListReceivablesParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Solo este cliente: su RFC o su id (cus_…). */
 	customer?: string;
@@ -13616,7 +14606,7 @@ export interface ListReceivablesParams {
 
 /** Los parámetros de GET /v1/cash_forecast. */
 export interface GetCashForecastParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Escenario: sus clientes le pagan estos días después (0 a 120). */
 	customers_pay_days_later?: number;
@@ -13719,10 +14709,26 @@ export interface ListBankTransactionsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** open (sin conciliar), matched o classified. */
 	status?: "open" | "matched" | "classified";
+	/** Con fecha del movimiento desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[gte]"?: string;
+	/** Con fecha del movimiento después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[gt]"?: string;
+	/** Con fecha del movimiento hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[lte]"?: string;
+	/** Con fecha del movimiento antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[lt]"?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 export interface MatchBankTransactionParams {
@@ -13773,6 +14779,8 @@ export interface CreatePurchaseReceiptParams {
 	use?: string | null;
 	/** Una nota para su equipo. */
 	note?: string | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
 }
 
 /** Los parámetros de GET /v1/purchase_receipts. */
@@ -13781,10 +14789,20 @@ export interface ListPurchaseReceiptsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** pending, requested, invoiced o non_deductible. */
 	status?: "pending" | "requested" | "invoiced" | "non_deductible";
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 export interface UpdatePurchaseReceiptParams {
@@ -13815,6 +14833,8 @@ export interface UpdatePurchaseReceiptParams {
 	use?: string | null;
 	/** Una nota para su equipo. */
 	note?: string | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string> | null;
 }
 
 export interface RequestPurchaseReceiptInvoiceParams {
@@ -13857,7 +14877,7 @@ export interface CreatePaymentParams {
 		/** Solo si la factura es de otra moneda que el pago: lo que recibió por ella en la moneda del pago. Fiscalisto calcula la equivalencia (EquivalenciaDR). */
 		received?: number | null;
 	}[];
-	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
+	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. A un cliente con «Enviar al timbrar: Nunca» no se le envía aunque sea true: warnings lo dice y POST /v1/invoices/{id}/send sí se la manda. */
 	send_email?: boolean;
 	/** Correo a donde se envía (varios separados por comas). Solo se usa si se pide enviarlo. */
 	email?: string;
@@ -13882,7 +14902,7 @@ export interface CreateCreditNoteParams {
 	payment_form: string;
 	/** Tipo de relación (TipoRelacion) con la factura: 01 nota de crédito (por omisión) o 03 devolución de mercancía. */
 	relationship?: "01" | "03";
-	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
+	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. A un cliente con «Enviar al timbrar: Nunca» no se le envía aunque sea true: warnings lo dice y POST /v1/invoices/{id}/send sí se la manda. */
 	send_email?: boolean;
 	/** Correo a donde se envía (varios separados por comas). Solo se usa si se pide enviarlo. */
 	email?: string;
@@ -13933,7 +14953,7 @@ export interface CreateAdvanceParams {
 	series?: string;
 	/** Observaciones que aparecen en el PDF (no van en el XML). */
 	notes?: string;
-	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
+	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. A un cliente con «Enviar al timbrar: Nunca» no se le envía aunque sea true: warnings lo dice y POST /v1/invoices/{id}/send sí se la manda. */
 	send_email?: boolean;
 	/** Correos con copia, separados por comas. */
 	email_cc?: string | null;
@@ -14230,7 +15250,7 @@ export interface CreateRetentionParams {
 	};
 	/** Folio fiscal (UUID) de la constancia que esta corrige: vigente, del mismo emisor y al mismo receptor (emitida aquí o en otro sistema). Va en CfdiRetenRelacionados (04) y, timbrada esta, la anterior se cancela con el motivo 01; `replaced` dice si se canceló. */
 	replaces?: string;
-	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
+	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. A un cliente con «Enviar al timbrar: Nunca» no se le envía aunque sea true: warnings lo dice y POST /v1/invoices/{id}/send sí se la manda. */
 	send_email?: boolean;
 	/** Correo a donde se envía (varios separados por comas). Solo se usa si se pide enviarlo. */
 	email?: string;
@@ -14244,7 +15264,7 @@ export interface ListRetentionsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** valid, canceled, rejected o processing. */
 	status?: "valid" | "canceled" | "rejected" | "processing";
@@ -14252,6 +15272,16 @@ export interface ListRetentionsParams {
 	recipient?: string;
 	/** Ejercicio, 4 dígitos. */
 	year?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 /** Los parámetros de GET /v1/retentions/{id}. */
@@ -14355,6 +15385,8 @@ export interface CreateEmployeeParams {
 	family_medicine_unit?: string | null;
 	/** Causa de la baja ante el IMSS, con end_date: 1 término de contrato, 2 separación voluntaria (la usual), 3 abandono, 4 defunción, 5 clausura, 6 otras, 7 ausentismo, 8 rescisión, 9 jubilación, A pensión. */
 	exit_reason?: "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "A" | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
 }
 
 /** Los parámetros de GET /v1/employees. */
@@ -14363,8 +15395,18 @@ export interface ListEmployeesParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 export interface CreateEmployeeRaiseParams {
@@ -14451,6 +15493,8 @@ export interface UpdateEmployeeParams {
 	family_medicine_unit?: string | null;
 	/** Causa de la baja ante el IMSS, con end_date: 1 término de contrato, 2 separación voluntaria (la usual), 3 abandono, 4 defunción, 5 clausura, 6 otras, 7 ausentismo, 8 rescisión, 9 jubilación, A pensión. */
 	exit_reason?: "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "A" | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string> | null;
 }
 
 /** Los parámetros de GET /v1/employees/{id}/vacations. */
@@ -14493,7 +15537,7 @@ export interface UpdateEmployeePortalParams {
 
 /** Los parámetros de GET /v1/employee_notice_settings. */
 export interface GetEmployeeNoticeSettingsParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -14526,8 +15570,18 @@ export interface ListVacationRequestsParams {
 	status?: "pending" | "approved" | "rejected" | "canceled";
 	/** Cuántas, de 1 a 500. Por omisión 100. */
 	limit?: number;
+	/** El id (vrq_…) de la última de la página anterior, para la siguiente. */
+	starting_after?: string;
 	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
 	issuer?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 export interface ApproveVacationRequestParams {
@@ -14604,7 +15658,7 @@ export interface CreatePayrollReceiptParams {
 	};
 	/** El recibo vigente (inv_… o UUID) que este corrige, calculado por Fiscalisto para el mismo empleado: el nuevo se calcula con los datos del empleado como están ahora, va relacionado con 04 y el anterior se cancela con motivo 01. Para un recibo que calculó su sistema use POST /v1/payroll_receipts/external con replaces. */
 	replaces?: string;
-	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
+	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. A un cliente con «Enviar al timbrar: Nunca» no se le envía aunque sea true: warnings lo dice y POST /v1/invoices/{id}/send sí se la manda. */
 	send_email?: boolean;
 	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
 	metadata?: Record<string, string>;
@@ -14695,7 +15749,7 @@ export interface PreviewPayrollReceiptParams {
 	};
 	/** El recibo vigente (inv_… o UUID) que este corrige, calculado por Fiscalisto para el mismo empleado: el nuevo se calcula con los datos del empleado como están ahora, va relacionado con 04 y el anterior se cancela con motivo 01. Para un recibo que calculó su sistema use POST /v1/payroll_receipts/external con replaces. */
 	replaces?: string;
-	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
+	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. A un cliente con «Enviar al timbrar: Nunca» no se le envía aunque sea true: warnings lo dice y POST /v1/invoices/{id}/send sí se la manda. */
 	send_email?: boolean;
 	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
 	metadata?: Record<string, string>;
@@ -14724,7 +15778,7 @@ export interface CreateExtraordinaryPayrollReceiptParams {
 	vacation_days_taken?: number;
 	/** finiquito: los días de vacaciones de años de servicio cumplidos que no disfrutó ni han prescrito; se pagan con su prima vacacional. Por omisión, pending_days de sus vacaciones. */
 	vacation_days_owed?: number;
-	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
+	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. A un cliente con «Enviar al timbrar: Nunca» no se le envía aunque sea true: warnings lo dice y POST /v1/invoices/{id}/send sí se la manda. */
 	send_email?: boolean;
 	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
 	metadata?: Record<string, string>;
@@ -14755,7 +15809,7 @@ export interface PreviewExtraordinaryPayrollReceiptParams {
 	vacation_days_taken?: number;
 	/** finiquito: los días de vacaciones de años de servicio cumplidos que no disfrutó ni han prescrito; se pagan con su prima vacacional. Por omisión, pending_days de sus vacaciones. */
 	vacation_days_owed?: number;
-	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
+	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. A un cliente con «Enviar al timbrar: Nunca» no se le envía aunque sea true: warnings lo dice y POST /v1/invoices/{id}/send sí se la manda. */
 	send_email?: boolean;
 	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
 	metadata?: Record<string, string>;
@@ -14814,8 +15868,16 @@ export interface ListPayrollBatchesParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 export interface CreatePayrollApprovalParams {
@@ -14893,7 +15955,7 @@ export interface ListPayrollApprovalsParams {
 	starting_after?: string;
 	/** pending, approved, rejected, withdrawn o replaced. */
 	status?: "pending" | "approved" | "rejected" | "withdrawn" | "replaced";
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -14921,6 +15983,8 @@ export interface CreatePayrollPayoutParams {
 	payment_date: string;
 	/** El día en que sale (AAAA-MM-DD, hoy o después). Por omisión, hoy: sale en cuanto lo firmen. */
 	pay_on?: string;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
 }
 
 export interface CreateImssMovementParams {
@@ -14942,7 +16006,7 @@ export interface ListImssMovementsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** pending (por omisión) o reported. */
 	status?: "pending" | "reported";
@@ -15011,7 +16075,7 @@ export interface CreateEmployeeDeductionParams {
 
 /** Los parámetros de GET /v1/employee_deductions. */
 export interface ListEmployeeDeductionsParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Solo los de este empleado (emp_…). */
 	employee?: string;
@@ -15040,7 +16104,7 @@ export interface UpdateEmployeeDeductionParams {
 
 /** Los parámetros de GET /v1/variable_salaries. */
 export interface GetVariableSalaryParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** AAAA-B: 2026-5 es septiembre–octubre de 2026. */
 	bimester: string;
@@ -15057,7 +16121,7 @@ export interface ApplyVariableSalaryParams {
 
 /** Los parámetros de GET /v1/annual_adjustments. */
 export interface GetAnnualAdjustmentParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** El ejercicio: 2026. */
 	year: number;
@@ -15076,7 +16140,7 @@ export interface UpdateAnnualAdjustmentParams {
 
 /** Los parámetros de GET /v1/payroll_taxes. */
 export interface GetPayrollTaxParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** El mes: 2026-11. */
 	month: string;
@@ -15084,7 +16148,7 @@ export interface GetPayrollTaxParams {
 
 /** Los parámetros de GET /v1/payroll_reports/accumulated. */
 export interface GetPayrollAccumulatedParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** El año: 2026 (por omisión, el actual). */
 	year?: number;
@@ -15094,7 +16158,7 @@ export interface GetPayrollAccumulatedParams {
 
 /** Los parámetros de GET /v1/payroll_reports/cost. */
 export interface GetPayrollCostParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** El año: 2026 (por omisión, el actual). */
 	year?: number;
@@ -15102,7 +16166,7 @@ export interface GetPayrollCostParams {
 
 /** Los parámetros de GET /v1/payroll_calendar. */
 export interface GetPayrollCalendarParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Hasta cuántos días adelante (por omisión 90, hasta 366). */
 	days_ahead?: number;
@@ -15189,6 +16253,8 @@ export interface CreateRepseContractParams {
 		/** Hasta cuándo; null mientras siga. */
 		end_date?: string | null;
 	}[];
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
 }
 
 /** Los parámetros de GET /v1/repse_contracts. */
@@ -15197,8 +16263,18 @@ export interface ListRepseContractsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 export interface UpdateRepseContractParams {
@@ -15267,11 +16343,13 @@ export interface UpdateRepseContractParams {
 		/** Hasta cuándo; null mientras siga. */
 		end_date?: string | null;
 	}[];
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string> | null;
 }
 
 /** Los parámetros de GET /v1/repse_profile. */
 export interface GetRepseProfileParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -15306,13 +16384,13 @@ export interface UpdateRepseProfileParams {
 
 /** Los parámetros de GET /v1/repse_returns/{period}. */
 export interface GetRepseReturnParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
 /** Los parámetros de GET /v1/payroll_org_chart. */
 export interface GetPayrollOrgChartParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Un día pasado (YYYY-MM-DD): el organigrama como estaba al cierre de ese día, con los jefes, departamentos y sucursales que tenían (se guardan desde el 21 de noviembre de 2026). */
 	as_of?: string;
@@ -15419,7 +16497,7 @@ export interface PublishPayrollVacancyParams {
 
 /** Los parámetros de GET /v1/hiring. */
 export interface GetHiringParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -15558,12 +16636,20 @@ export interface ListCandidatesParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Solo las de una vacante (vac_…). */
 	vacancy?: string;
 	/** Solo las de una etapa, como en stages de hiring. */
 	stage?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 export interface UpdateCandidateParams {
@@ -15582,7 +16668,7 @@ export interface HireCandidateParams {
 
 /** Los parámetros de GET /v1/training. */
 export interface GetTrainingParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -15634,7 +16720,7 @@ export interface ListTrainingCoursesParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -15756,7 +16842,7 @@ export interface UpdateEmployeeTrainingParams {
 
 /** Los parámetros de GET /v1/climate. */
 export interface GetClimateParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -15777,8 +16863,16 @@ export interface ListClimateSurveysParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 export interface CreateClimateSurveyParams {
@@ -15877,10 +16971,18 @@ export interface ListClimateActionsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Solo las de esta encuesta (cls_…). */
 	survey?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 export interface CreateClimateActionParams {
@@ -15931,7 +17033,7 @@ export interface ListClimateComplaintsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Solo las nueva, en_atencion o atendida. */
 	status?: string;
@@ -15950,8 +17052,16 @@ export interface ListReviewCyclesParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 export interface CreateReviewCycleParams {
@@ -16176,8 +17286,16 @@ export interface ListInvoiceBatchesParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 export interface ValidateTaxIdParams {
@@ -16240,6 +17358,8 @@ export interface CreateBranchParams {
 	pdf_style?: "clasico" | "moderno" | "compacto" | "minimalista" | null;
 	/** Su zona horaria (IANA), cuando no es la de su código postal: cuándo empieza su día para «hoy», los límites por día y los avisos. null sigue la de su código postal. La fecha de sus facturas siempre es la hora local de su código postal (Anexo 20). */
 	time_zone?: "America/Mexico_City" | "America/Cancun" | "America/Mazatlan" | "America/Hermosillo" | "America/Tijuana" | "America/Matamoros" | "America/Ciudad_Juarez" | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
 }
 
 /** Los parámetros de GET /v1/branches. */
@@ -16248,12 +17368,22 @@ export interface ListBranchesParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** true para incluir las archivadas. */
 	include_archived?: boolean;
 	/** Solo la de este código postal. */
 	zip?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 export interface UpdateBranchParams {
@@ -16301,6 +17431,8 @@ export interface UpdateBranchParams {
 	time_zone?: "America/Mexico_City" | "America/Cancun" | "America/Mazatlan" | "America/Hermosillo" | "America/Tijuana" | "America/Matamoros" | "America/Ciudad_Juarez" | null;
 	/** true la archiva: ya no se puede facturar desde ella, y sus facturas la siguen nombrando. false la restaura. */
 	archived?: boolean;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string> | null;
 }
 
 export interface UploadBranchLogoParams {
@@ -16313,15 +17445,15 @@ export interface CreateRuleParams {
 	issuer?: string;
 	/** Cómo se llama en Ajustes › Reglas. Sin él, se nombra por lo que hace. */
 	name?: string;
-	/** Cuándo corre: invoice.received (llega una factura de un proveedor), invoice.issued (se emite una factura), invoice.paid (una factura PPD queda pagada), invoice.cancelled (el SAT la cancela), invoice.approved (se aprueba en el Portal de proveedores), invoice.rejected (se rechaza en el portal), payout.submitted (se manda a firmar un pago que la incluye), payout.paid (se le paga una factura a un proveedor), payout.failed (falla o se devuelve su pago), invoice.daily (cada mañana a las 8, a cada factura con saldo, recibida o emitida, de Ingreso y no cancelada), purchase_order.daily (cada mañana a las 8, a cada orden que aún no llega toda ni está cerrada o cancelada), finding.created (aparece un hallazgo en una factura de los últimos 45 días), purchase_order.saved, .approved, .rejected, .sent, .confirmed, .received_part, .received_all, .invoiced_all, .price_variance, .registered, bank.movement (llega un movimiento del banco: un retiro al importar el estado de cuenta, un depósito cuando Conciliación lo clasifica como préstamo, traspaso, devolución o intereses), sat.listed (un proveedor, cliente o RFC suyo aparece en una lista del SAT; cada mañana, una vez por RFC, lista y situación), sat.opinion (cambia la opinión de cumplimiento de un RFC suyo), sat.buzon (llega un comunicado, una notificación por abrir o el buzón no tiene medios de contacto), sat.certificate (cada mañana a las 8, a cada CSD y e.firma, con sus días para vencer). */
-	trigger: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "invoice.approved" | "invoice.rejected" | "finding.created" | "payout.submitted" | "payout.paid" | "payout.failed" | "invoice.daily" | "purchase_order.daily" | "bank.movement" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.rejected" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered" | "sat.listed" | "sat.opinion" | "sat.buzon" | "sat.certificate";
+	/** Cuándo corre: invoice.received (llega una factura de un proveedor), invoice.issued (se emite una factura), invoice.paid (una factura PPD queda pagada), invoice.canceled (el SAT la cancela; también se acepta invoice.cancelled), invoice.approved (se aprueba en el Portal de proveedores), invoice.rejected (se rechaza en el portal), payout.submitted (se manda a firmar un pago que la incluye), payout.paid (se le paga una factura a un proveedor), payout.failed (falla o se devuelve su pago), invoice.daily (cada mañana a las 8, a cada factura con saldo, recibida o emitida, de Ingreso y no cancelada), purchase_order.daily (cada mañana a las 8, a cada orden que aún no llega toda ni está cerrada o cancelada), finding.created (aparece un hallazgo en una factura de los últimos 45 días), purchase_order.saved, .approved, .rejected, .sent, .confirmed, .received_part, .received_all, .invoiced_all, .price_variance, .registered, bank.movement (llega un movimiento del banco: un retiro al importar el estado de cuenta, un depósito cuando Conciliación lo clasifica como préstamo, traspaso, devolución o intereses), sat.listed (un proveedor, cliente o RFC suyo aparece en una lista del SAT; cada mañana, una vez por RFC, lista y situación), sat.opinion (cambia la opinión de cumplimiento de un RFC suyo), sat.buzon (llega un comunicado, una notificación por abrir o el buzón no tiene medios de contacto), sat.certificate (cada mañana a las 8, a cada CSD y e.firma, con sus días para vencer). */
+	trigger: "invoice.cancelled" | "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.canceled" | "invoice.approved" | "invoice.rejected" | "finding.created" | "payout.submitted" | "payout.paid" | "payout.failed" | "invoice.daily" | "purchase_order.daily" | "bank.movement" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.rejected" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered" | "sat.listed" | "sat.opinion" | "sat.buzon" | "sat.certificate";
 	/** Si: lo que tiene que cumplir. Sin condiciones, corre siempre. */
 	conditions?: {
 		/** all: se cumplen todas (las condiciones y los grupos); any: basta con una. */
 		match?: "all" | "any";
 		/** Las condiciones sueltas. */
 		conditions?: {
-			/** Qué se revisa. Facturas: supplier, customer, supplierGroup (recibidas: el grupo del proveedor, sgr_…), customerGroup (emitidas: el grupo del cliente, cgr_…), partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, iva, saldo, saldoPct (el saldo en % del total), orderDiff (recibidas: cuánto pasa de sus órdenes, en %), orderTotal (recibidas: el total de sus órdenes, en pesos), lastTotal (el total de la factura anterior de ese proveedor o cliente), avgTotal (el promedio de sus facturas en los últimos 6 meses), age (días desde su fecha), weekday (el día de su fecha: lun, mar, mie, jue, vie, sab, dom), newParty (la primera factura de ese proveedor o cliente), monthTotal (lo facturado ese mes por ese proveedor o cliente, en pesos), dayCount (sus facturas ese día), opinion (recibidas: la opinión 32-D del proveedor en el portal: positive, negative, expired o none), satList (está en una lista del SAT: 69-B o 69), hasOrder (recibidas: ligada a una orden de compra), payoutAmount, newAccount y accountCheck (en payout.*: lo que se le paga al proveedor en el pago, si es el primer pago a esa cuenta y cómo se verificó: bank, hand o none), tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, supplierGroup (sgr_…), ownRfc, total, category, warehouse, stage, createdBy, moneda, note, project (el id del proyecto), paymentDays, deliveryDays (días para la entrega), advance (lleva anticipo), newSupplier (la primera orden a ese proveedor), monthTotal (lo ordenado ese mes a ese proveedor, en pesos), lastTotal (el total de la orden anterior a ese proveedor), avgTotal (el promedio de sus órdenes en los últimos 6 meses). Movimientos del banco: flow (out: retiro; in: depósito), description (el texto del banco), reference, amount, bankAccount (los últimos 4 dígitos de la cuenta), ownRfc, classification (de un depósito: prestamo, traspaso, devolucion o intereses), monthDay (el día del mes), weekday. Avisos del SAT (sat.*): party (supplier/customer/own), supplier, customer, supplierGroup, customerGroup, ownRfc, list (69b, 69b_bis, 69_no_localizados, 69_exigibles, 69_firmes, 69_sentencias, 69_cancelados, 69_csd_sin_efectos), situation (presunto, definitivo, desvirtuado, sentencia_favorable, listado), billed12m (lo facturado con ese RFC en 12 meses, en pesos), balance (su saldo pendiente) en sat.listed; sentido y previous (positivo, negativo, sin_obligaciones, suspendido; previous también ninguno) y pending (obligaciones pendientes) en sat.opinion; kind (comunicado, notificacion, sin_medios), urgency (urgente, atender, informativo) y text (el asunto) en sat.buzon; certificate (csd, efirma) y daysLeft (días para vencer; negativo si ya venció) en sat.certificate. */
+			/** Qué se revisa. Facturas: supplier, customer, supplierGroup (recibidas: el grupo del proveedor, sgr_…), customerGroup (emitidas: el grupo del cliente, cgr_…), partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.canceled), category (categoría de gasto), tags (tag_…), total, subtotal, iva, saldo, saldoPct (el saldo en % del total), orderDiff (recibidas: cuánto pasa de sus órdenes, en %), orderTotal (recibidas: el total de sus órdenes, en pesos), lastTotal (el total de la factura anterior de ese proveedor o cliente), avgTotal (el promedio de sus facturas en los últimos 6 meses), age (días desde su fecha), weekday (el día de su fecha: lun, mar, mie, jue, vie, sab, dom), newParty (la primera factura de ese proveedor o cliente), monthTotal (lo facturado ese mes por ese proveedor o cliente, en pesos), dayCount (sus facturas ese día), opinion (recibidas: la opinión 32-D del proveedor en el portal: positive, negative, expired o none), satList (está en una lista del SAT: 69-B o 69), hasOrder (recibidas: ligada a una orden de compra), payoutAmount, newAccount y accountCheck (en payout.*: lo que se le paga al proveedor en el pago, si es el primer pago a esa cuenta y cómo se verificó: bank, hand o none), tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, supplierGroup (sgr_…), ownRfc, total, category, warehouse, stage, createdBy, moneda, note, project (el id del proyecto), paymentDays, deliveryDays (días para la entrega), advance (lleva anticipo), newSupplier (la primera orden a ese proveedor), monthTotal (lo ordenado ese mes a ese proveedor, en pesos), lastTotal (el total de la orden anterior a ese proveedor), avgTotal (el promedio de sus órdenes en los últimos 6 meses). Movimientos del banco: flow (out: retiro; in: depósito), description (el texto del banco), reference, amount, bankAccount (los últimos 4 dígitos de la cuenta), ownRfc, classification (de un depósito: prestamo, traspaso, devolucion o intereses), monthDay (el día del mes), weekday. Avisos del SAT (sat.*): party (supplier/customer/own), supplier, customer, supplierGroup, customerGroup, ownRfc, list (69b, 69b_bis, 69_no_localizados, 69_exigibles, 69_firmes, 69_sentencias, 69_cancelados, 69_csd_sin_efectos), situation (presunto, definitivo, desvirtuado, sentencia_favorable, listado), billed12m (lo facturado con ese RFC en 12 meses, en pesos), balance (su saldo pendiente) en sat.listed; sentido y previous (positivo, negativo, sin_obligaciones, suspendido; previous también ninguno) y pending (obligaciones pendientes) en sat.opinion; kind (comunicado, notificacion, sin_medios), urgency (urgente, atender, informativo) y text (el asunto) en sat.buzon; certificate (csd, efirma) y daysLeft (días para vencer; negativo si ya venció) en sat.certificate. */
 			field: string;
 			/** Listas: is (alguno de values), not (ninguno), set, unset. Montos (MXN): gte, lte, between (value y to; o contra otro campo con compare_to). Texto: contains, not_contains, starts (text; sin importar acentos ni mayúsculas), set, unset. Sí/no: yes, no. */
 			operator: "is" | "not" | "gte" | "lte" | "between" | "contains" | "not_contains" | "starts" | "yes" | "no" | "set" | "unset";
@@ -16342,7 +17474,7 @@ export interface CreateRuleParams {
 			match: "all" | "any";
 			/** Las condiciones del grupo. */
 			conditions: {
-				/** Qué se revisa. Facturas: supplier, customer, supplierGroup (recibidas: el grupo del proveedor, sgr_…), customerGroup (emitidas: el grupo del cliente, cgr_…), partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, iva, saldo, saldoPct (el saldo en % del total), orderDiff (recibidas: cuánto pasa de sus órdenes, en %), orderTotal (recibidas: el total de sus órdenes, en pesos), lastTotal (el total de la factura anterior de ese proveedor o cliente), avgTotal (el promedio de sus facturas en los últimos 6 meses), age (días desde su fecha), weekday (el día de su fecha: lun, mar, mie, jue, vie, sab, dom), newParty (la primera factura de ese proveedor o cliente), monthTotal (lo facturado ese mes por ese proveedor o cliente, en pesos), dayCount (sus facturas ese día), opinion (recibidas: la opinión 32-D del proveedor en el portal: positive, negative, expired o none), satList (está en una lista del SAT: 69-B o 69), hasOrder (recibidas: ligada a una orden de compra), payoutAmount, newAccount y accountCheck (en payout.*: lo que se le paga al proveedor en el pago, si es el primer pago a esa cuenta y cómo se verificó: bank, hand o none), tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, supplierGroup (sgr_…), ownRfc, total, category, warehouse, stage, createdBy, moneda, note, project (el id del proyecto), paymentDays, deliveryDays (días para la entrega), advance (lleva anticipo), newSupplier (la primera orden a ese proveedor), monthTotal (lo ordenado ese mes a ese proveedor, en pesos), lastTotal (el total de la orden anterior a ese proveedor), avgTotal (el promedio de sus órdenes en los últimos 6 meses). Movimientos del banco: flow (out: retiro; in: depósito), description (el texto del banco), reference, amount, bankAccount (los últimos 4 dígitos de la cuenta), ownRfc, classification (de un depósito: prestamo, traspaso, devolucion o intereses), monthDay (el día del mes), weekday. Avisos del SAT (sat.*): party (supplier/customer/own), supplier, customer, supplierGroup, customerGroup, ownRfc, list (69b, 69b_bis, 69_no_localizados, 69_exigibles, 69_firmes, 69_sentencias, 69_cancelados, 69_csd_sin_efectos), situation (presunto, definitivo, desvirtuado, sentencia_favorable, listado), billed12m (lo facturado con ese RFC en 12 meses, en pesos), balance (su saldo pendiente) en sat.listed; sentido y previous (positivo, negativo, sin_obligaciones, suspendido; previous también ninguno) y pending (obligaciones pendientes) en sat.opinion; kind (comunicado, notificacion, sin_medios), urgency (urgente, atender, informativo) y text (el asunto) en sat.buzon; certificate (csd, efirma) y daysLeft (días para vencer; negativo si ya venció) en sat.certificate. */
+				/** Qué se revisa. Facturas: supplier, customer, supplierGroup (recibidas: el grupo del proveedor, sgr_…), customerGroup (emitidas: el grupo del cliente, cgr_…), partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.canceled), category (categoría de gasto), tags (tag_…), total, subtotal, iva, saldo, saldoPct (el saldo en % del total), orderDiff (recibidas: cuánto pasa de sus órdenes, en %), orderTotal (recibidas: el total de sus órdenes, en pesos), lastTotal (el total de la factura anterior de ese proveedor o cliente), avgTotal (el promedio de sus facturas en los últimos 6 meses), age (días desde su fecha), weekday (el día de su fecha: lun, mar, mie, jue, vie, sab, dom), newParty (la primera factura de ese proveedor o cliente), monthTotal (lo facturado ese mes por ese proveedor o cliente, en pesos), dayCount (sus facturas ese día), opinion (recibidas: la opinión 32-D del proveedor en el portal: positive, negative, expired o none), satList (está en una lista del SAT: 69-B o 69), hasOrder (recibidas: ligada a una orden de compra), payoutAmount, newAccount y accountCheck (en payout.*: lo que se le paga al proveedor en el pago, si es el primer pago a esa cuenta y cómo se verificó: bank, hand o none), tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, supplierGroup (sgr_…), ownRfc, total, category, warehouse, stage, createdBy, moneda, note, project (el id del proyecto), paymentDays, deliveryDays (días para la entrega), advance (lleva anticipo), newSupplier (la primera orden a ese proveedor), monthTotal (lo ordenado ese mes a ese proveedor, en pesos), lastTotal (el total de la orden anterior a ese proveedor), avgTotal (el promedio de sus órdenes en los últimos 6 meses). Movimientos del banco: flow (out: retiro; in: depósito), description (el texto del banco), reference, amount, bankAccount (los últimos 4 dígitos de la cuenta), ownRfc, classification (de un depósito: prestamo, traspaso, devolucion o intereses), monthDay (el día del mes), weekday. Avisos del SAT (sat.*): party (supplier/customer/own), supplier, customer, supplierGroup, customerGroup, ownRfc, list (69b, 69b_bis, 69_no_localizados, 69_exigibles, 69_firmes, 69_sentencias, 69_cancelados, 69_csd_sin_efectos), situation (presunto, definitivo, desvirtuado, sentencia_favorable, listado), billed12m (lo facturado con ese RFC en 12 meses, en pesos), balance (su saldo pendiente) en sat.listed; sentido y previous (positivo, negativo, sin_obligaciones, suspendido; previous también ninguno) y pending (obligaciones pendientes) en sat.opinion; kind (comunicado, notificacion, sin_medios), urgency (urgente, atender, informativo) y text (el asunto) en sat.buzon; certificate (csd, efirma) y daysLeft (días para vencer; negativo si ya venció) en sat.certificate. */
 				field: string;
 				/** Listas: is (alguno de values), not (ninguno), set, unset. Montos (MXN): gte, lte, between (value y to; o contra otro campo con compare_to). Texto: contains, not_contains, starts (text; sin importar acentos ni mayúsculas), set, unset. Sí/no: yes, no. */
 				operator: "is" | "not" | "gte" | "lte" | "between" | "contains" | "not_contains" | "starts" | "yes" | "no" | "set" | "unset";
@@ -16554,10 +17686,18 @@ export interface ListRulesParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Solo las de este trigger, por ejemplo invoice.received. */
 	trigger?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 export interface OrderRulesParams {
@@ -16570,15 +17710,15 @@ export interface OrderRulesParams {
 export interface UpdateRuleParams {
 	/** Cómo se llama en Ajustes › Reglas. Sin él, se nombra por lo que hace. */
 	name?: string;
-	/** Cuándo corre: invoice.received (llega una factura de un proveedor), invoice.issued (se emite una factura), invoice.paid (una factura PPD queda pagada), invoice.cancelled (el SAT la cancela), invoice.approved (se aprueba en el Portal de proveedores), invoice.rejected (se rechaza en el portal), payout.submitted (se manda a firmar un pago que la incluye), payout.paid (se le paga una factura a un proveedor), payout.failed (falla o se devuelve su pago), invoice.daily (cada mañana a las 8, a cada factura con saldo, recibida o emitida, de Ingreso y no cancelada), purchase_order.daily (cada mañana a las 8, a cada orden que aún no llega toda ni está cerrada o cancelada), finding.created (aparece un hallazgo en una factura de los últimos 45 días), purchase_order.saved, .approved, .rejected, .sent, .confirmed, .received_part, .received_all, .invoiced_all, .price_variance, .registered, bank.movement (llega un movimiento del banco: un retiro al importar el estado de cuenta, un depósito cuando Conciliación lo clasifica como préstamo, traspaso, devolución o intereses), sat.listed (un proveedor, cliente o RFC suyo aparece en una lista del SAT; cada mañana, una vez por RFC, lista y situación), sat.opinion (cambia la opinión de cumplimiento de un RFC suyo), sat.buzon (llega un comunicado, una notificación por abrir o el buzón no tiene medios de contacto), sat.certificate (cada mañana a las 8, a cada CSD y e.firma, con sus días para vencer). */
-	trigger?: "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.cancelled" | "invoice.approved" | "invoice.rejected" | "finding.created" | "payout.submitted" | "payout.paid" | "payout.failed" | "invoice.daily" | "purchase_order.daily" | "bank.movement" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.rejected" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered" | "sat.listed" | "sat.opinion" | "sat.buzon" | "sat.certificate";
+	/** Cuándo corre: invoice.received (llega una factura de un proveedor), invoice.issued (se emite una factura), invoice.paid (una factura PPD queda pagada), invoice.canceled (el SAT la cancela; también se acepta invoice.cancelled), invoice.approved (se aprueba en el Portal de proveedores), invoice.rejected (se rechaza en el portal), payout.submitted (se manda a firmar un pago que la incluye), payout.paid (se le paga una factura a un proveedor), payout.failed (falla o se devuelve su pago), invoice.daily (cada mañana a las 8, a cada factura con saldo, recibida o emitida, de Ingreso y no cancelada), purchase_order.daily (cada mañana a las 8, a cada orden que aún no llega toda ni está cerrada o cancelada), finding.created (aparece un hallazgo en una factura de los últimos 45 días), purchase_order.saved, .approved, .rejected, .sent, .confirmed, .received_part, .received_all, .invoiced_all, .price_variance, .registered, bank.movement (llega un movimiento del banco: un retiro al importar el estado de cuenta, un depósito cuando Conciliación lo clasifica como préstamo, traspaso, devolución o intereses), sat.listed (un proveedor, cliente o RFC suyo aparece en una lista del SAT; cada mañana, una vez por RFC, lista y situación), sat.opinion (cambia la opinión de cumplimiento de un RFC suyo), sat.buzon (llega un comunicado, una notificación por abrir o el buzón no tiene medios de contacto), sat.certificate (cada mañana a las 8, a cada CSD y e.firma, con sus días para vencer). */
+	trigger?: "invoice.cancelled" | "invoice.received" | "invoice.issued" | "invoice.paid" | "invoice.canceled" | "invoice.approved" | "invoice.rejected" | "finding.created" | "payout.submitted" | "payout.paid" | "payout.failed" | "invoice.daily" | "purchase_order.daily" | "bank.movement" | "purchase_order.saved" | "purchase_order.approved" | "purchase_order.rejected" | "purchase_order.sent" | "purchase_order.confirmed" | "purchase_order.received_part" | "purchase_order.received_all" | "purchase_order.invoiced_all" | "purchase_order.price_variance" | "purchase_order.registered" | "sat.listed" | "sat.opinion" | "sat.buzon" | "sat.certificate";
 	/** Si: lo que tiene que cumplir. Sin condiciones, corre siempre. */
 	conditions?: {
 		/** all: se cumplen todas (las condiciones y los grupos); any: basta con una. */
 		match?: "all" | "any";
 		/** Las condiciones sueltas. */
 		conditions?: {
-			/** Qué se revisa. Facturas: supplier, customer, supplierGroup (recibidas: el grupo del proveedor, sgr_…), customerGroup (emitidas: el grupo del cliente, cgr_…), partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, iva, saldo, saldoPct (el saldo en % del total), orderDiff (recibidas: cuánto pasa de sus órdenes, en %), orderTotal (recibidas: el total de sus órdenes, en pesos), lastTotal (el total de la factura anterior de ese proveedor o cliente), avgTotal (el promedio de sus facturas en los últimos 6 meses), age (días desde su fecha), weekday (el día de su fecha: lun, mar, mie, jue, vie, sab, dom), newParty (la primera factura de ese proveedor o cliente), monthTotal (lo facturado ese mes por ese proveedor o cliente, en pesos), dayCount (sus facturas ese día), opinion (recibidas: la opinión 32-D del proveedor en el portal: positive, negative, expired o none), satList (está en una lista del SAT: 69-B o 69), hasOrder (recibidas: ligada a una orden de compra), payoutAmount, newAccount y accountCheck (en payout.*: lo que se le paga al proveedor en el pago, si es el primer pago a esa cuenta y cómo se verificó: bank, hand o none), tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, supplierGroup (sgr_…), ownRfc, total, category, warehouse, stage, createdBy, moneda, note, project (el id del proyecto), paymentDays, deliveryDays (días para la entrega), advance (lleva anticipo), newSupplier (la primera orden a ese proveedor), monthTotal (lo ordenado ese mes a ese proveedor, en pesos), lastTotal (el total de la orden anterior a ese proveedor), avgTotal (el promedio de sus órdenes en los últimos 6 meses). Movimientos del banco: flow (out: retiro; in: depósito), description (el texto del banco), reference, amount, bankAccount (los últimos 4 dígitos de la cuenta), ownRfc, classification (de un depósito: prestamo, traspaso, devolucion o intereses), monthDay (el día del mes), weekday. Avisos del SAT (sat.*): party (supplier/customer/own), supplier, customer, supplierGroup, customerGroup, ownRfc, list (69b, 69b_bis, 69_no_localizados, 69_exigibles, 69_firmes, 69_sentencias, 69_cancelados, 69_csd_sin_efectos), situation (presunto, definitivo, desvirtuado, sentencia_favorable, listado), billed12m (lo facturado con ese RFC en 12 meses, en pesos), balance (su saldo pendiente) en sat.listed; sentido y previous (positivo, negativo, sin_obligaciones, suspendido; previous también ninguno) y pending (obligaciones pendientes) en sat.opinion; kind (comunicado, notificacion, sin_medios), urgency (urgente, atender, informativo) y text (el asunto) en sat.buzon; certificate (csd, efirma) y daysLeft (días para vencer; negativo si ya venció) en sat.certificate. */
+			/** Qué se revisa. Facturas: supplier, customer, supplierGroup (recibidas: el grupo del proveedor, sgr_…), customerGroup (emitidas: el grupo del cliente, cgr_…), partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.canceled), category (categoría de gasto), tags (tag_…), total, subtotal, iva, saldo, saldoPct (el saldo en % del total), orderDiff (recibidas: cuánto pasa de sus órdenes, en %), orderTotal (recibidas: el total de sus órdenes, en pesos), lastTotal (el total de la factura anterior de ese proveedor o cliente), avgTotal (el promedio de sus facturas en los últimos 6 meses), age (días desde su fecha), weekday (el día de su fecha: lun, mar, mie, jue, vie, sab, dom), newParty (la primera factura de ese proveedor o cliente), monthTotal (lo facturado ese mes por ese proveedor o cliente, en pesos), dayCount (sus facturas ese día), opinion (recibidas: la opinión 32-D del proveedor en el portal: positive, negative, expired o none), satList (está en una lista del SAT: 69-B o 69), hasOrder (recibidas: ligada a una orden de compra), payoutAmount, newAccount y accountCheck (en payout.*: lo que se le paga al proveedor en el pago, si es el primer pago a esa cuenta y cómo se verificó: bank, hand o none), tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, supplierGroup (sgr_…), ownRfc, total, category, warehouse, stage, createdBy, moneda, note, project (el id del proyecto), paymentDays, deliveryDays (días para la entrega), advance (lleva anticipo), newSupplier (la primera orden a ese proveedor), monthTotal (lo ordenado ese mes a ese proveedor, en pesos), lastTotal (el total de la orden anterior a ese proveedor), avgTotal (el promedio de sus órdenes en los últimos 6 meses). Movimientos del banco: flow (out: retiro; in: depósito), description (el texto del banco), reference, amount, bankAccount (los últimos 4 dígitos de la cuenta), ownRfc, classification (de un depósito: prestamo, traspaso, devolucion o intereses), monthDay (el día del mes), weekday. Avisos del SAT (sat.*): party (supplier/customer/own), supplier, customer, supplierGroup, customerGroup, ownRfc, list (69b, 69b_bis, 69_no_localizados, 69_exigibles, 69_firmes, 69_sentencias, 69_cancelados, 69_csd_sin_efectos), situation (presunto, definitivo, desvirtuado, sentencia_favorable, listado), billed12m (lo facturado con ese RFC en 12 meses, en pesos), balance (su saldo pendiente) en sat.listed; sentido y previous (positivo, negativo, sin_obligaciones, suspendido; previous también ninguno) y pending (obligaciones pendientes) en sat.opinion; kind (comunicado, notificacion, sin_medios), urgency (urgente, atender, informativo) y text (el asunto) en sat.buzon; certificate (csd, efirma) y daysLeft (días para vencer; negativo si ya venció) en sat.certificate. */
 			field: string;
 			/** Listas: is (alguno de values), not (ninguno), set, unset. Montos (MXN): gte, lte, between (value y to; o contra otro campo con compare_to). Texto: contains, not_contains, starts (text; sin importar acentos ni mayúsculas), set, unset. Sí/no: yes, no. */
 			operator: "is" | "not" | "gte" | "lte" | "between" | "contains" | "not_contains" | "starts" | "yes" | "no" | "set" | "unset";
@@ -16599,7 +17739,7 @@ export interface UpdateRuleParams {
 			match: "all" | "any";
 			/** Las condiciones del grupo. */
 			conditions: {
-				/** Qué se revisa. Facturas: supplier, customer, supplierGroup (recibidas: el grupo del proveedor, sgr_…), customerGroup (emitidas: el grupo del cliente, cgr_…), partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.cancelled), category (categoría de gasto), tags (tag_…), total, subtotal, iva, saldo, saldoPct (el saldo en % del total), orderDiff (recibidas: cuánto pasa de sus órdenes, en %), orderTotal (recibidas: el total de sus órdenes, en pesos), lastTotal (el total de la factura anterior de ese proveedor o cliente), avgTotal (el promedio de sus facturas en los últimos 6 meses), age (días desde su fecha), weekday (el día de su fecha: lun, mar, mie, jue, vie, sab, dom), newParty (la primera factura de ese proveedor o cliente), monthTotal (lo facturado ese mes por ese proveedor o cliente, en pesos), dayCount (sus facturas ese día), opinion (recibidas: la opinión 32-D del proveedor en el portal: positive, negative, expired o none), satList (está en una lista del SAT: 69-B o 69), hasOrder (recibidas: ligada a una orden de compra), payoutAmount, newAccount y accountCheck (en payout.*: lo que se le paga al proveedor en el pago, si es el primer pago a esa cuenta y cómo se verificó: bank, hand o none), tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, supplierGroup (sgr_…), ownRfc, total, category, warehouse, stage, createdBy, moneda, note, project (el id del proyecto), paymentDays, deliveryDays (días para la entrega), advance (lleva anticipo), newSupplier (la primera orden a ese proveedor), monthTotal (lo ordenado ese mes a ese proveedor, en pesos), lastTotal (el total de la orden anterior a ese proveedor), avgTotal (el promedio de sus órdenes en los últimos 6 meses). Movimientos del banco: flow (out: retiro; in: depósito), description (el texto del banco), reference, amount, bankAccount (los últimos 4 dígitos de la cuenta), ownRfc, classification (de un depósito: prestamo, traspaso, devolucion o intereses), monthDay (el día del mes), weekday. Avisos del SAT (sat.*): party (supplier/customer/own), supplier, customer, supplierGroup, customerGroup, ownRfc, list (69b, 69b_bis, 69_no_localizados, 69_exigibles, 69_firmes, 69_sentencias, 69_cancelados, 69_csd_sin_efectos), situation (presunto, definitivo, desvirtuado, sentencia_favorable, listado), billed12m (lo facturado con ese RFC en 12 meses, en pesos), balance (su saldo pendiente) en sat.listed; sentido y previous (positivo, negativo, sin_obligaciones, suspendido; previous también ninguno) y pending (obligaciones pendientes) en sat.opinion; kind (comunicado, notificacion, sin_medios), urgency (urgente, atender, informativo) y text (el asunto) en sat.buzon; certificate (csd, efirma) y daysLeft (días para vencer; negativo si ya venció) en sat.certificate. */
+				/** Qué se revisa. Facturas: supplier, customer, supplierGroup (recibidas: el grupo del proveedor, sgr_…), customerGroup (emitidas: el grupo del cliente, cgr_…), partyName, ownRfc, direction (received/issued, en invoice.paid e invoice.canceled), category (categoría de gasto), tags (tag_…), total, subtotal, iva, saldo, saldoPct (el saldo en % del total), orderDiff (recibidas: cuánto pasa de sus órdenes, en %), orderTotal (recibidas: el total de sus órdenes, en pesos), lastTotal (el total de la factura anterior de ese proveedor o cliente), avgTotal (el promedio de sus facturas en los últimos 6 meses), age (días desde su fecha), weekday (el día de su fecha: lun, mar, mie, jue, vie, sab, dom), newParty (la primera factura de ese proveedor o cliente), monthTotal (lo facturado ese mes por ese proveedor o cliente, en pesos), dayCount (sus facturas ese día), opinion (recibidas: la opinión 32-D del proveedor en el portal: positive, negative, expired o none), satList (está en una lista del SAT: 69-B o 69), hasOrder (recibidas: ligada a una orden de compra), payoutAmount, newAccount y accountCheck (en payout.*: lo que se le paga al proveedor en el pago, si es el primer pago a esa cuenta y cómo se verificó: bank, hand o none), tipo, metodo, forma, uso, moneda, serie, concept, clave, costCenter, ivaRetenido, isrRetenido, hasFindings. Órdenes de compra: supplier, supplierGroup (sgr_…), ownRfc, total, category, warehouse, stage, createdBy, moneda, note, project (el id del proyecto), paymentDays, deliveryDays (días para la entrega), advance (lleva anticipo), newSupplier (la primera orden a ese proveedor), monthTotal (lo ordenado ese mes a ese proveedor, en pesos), lastTotal (el total de la orden anterior a ese proveedor), avgTotal (el promedio de sus órdenes en los últimos 6 meses). Movimientos del banco: flow (out: retiro; in: depósito), description (el texto del banco), reference, amount, bankAccount (los últimos 4 dígitos de la cuenta), ownRfc, classification (de un depósito: prestamo, traspaso, devolucion o intereses), monthDay (el día del mes), weekday. Avisos del SAT (sat.*): party (supplier/customer/own), supplier, customer, supplierGroup, customerGroup, ownRfc, list (69b, 69b_bis, 69_no_localizados, 69_exigibles, 69_firmes, 69_sentencias, 69_cancelados, 69_csd_sin_efectos), situation (presunto, definitivo, desvirtuado, sentencia_favorable, listado), billed12m (lo facturado con ese RFC en 12 meses, en pesos), balance (su saldo pendiente) en sat.listed; sentido y previous (positivo, negativo, sin_obligaciones, suspendido; previous también ninguno) y pending (obligaciones pendientes) en sat.opinion; kind (comunicado, notificacion, sin_medios), urgency (urgente, atender, informativo) y text (el asunto) en sat.buzon; certificate (csd, efirma) y daysLeft (días para vencer; negativo si ya venció) en sat.certificate. */
 				field: string;
 				/** Listas: is (alguno de values), not (ninguno), set, unset. Montos (MXN): gte, lte, between (value y to; o contra otro campo con compare_to). Texto: contains, not_contains, starts (text; sin importar acentos ni mayúsculas), set, unset. Sí/no: yes, no. */
 				operator: "is" | "not" | "gte" | "lte" | "between" | "contains" | "not_contains" | "starts" | "yes" | "no" | "set" | "unset";
@@ -16818,11 +17958,31 @@ export interface ListRuleRunsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 export interface BacktestRuleParams {
 	/** Cuántos días hacia atrás (90 por omisión, hasta 90). */
 	days?: number;
+}
+
+/** Los parámetros de GET /v1/rules/{id}/versions. */
+export interface ListRuleVersionsParams {
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 export interface CreateSupplierGroupParams {
@@ -16834,6 +17994,8 @@ export interface CreateSupplierGroupParams {
 	color?: "info" | "warning" | "positive" | "critical" | "muted";
 	/** RFC de los proveedores que entran al grupo (hasta 500); salen del que tenían. */
 	suppliers?: string[];
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
 }
 
 /** Los parámetros de GET /v1/supplier_groups. */
@@ -16842,8 +18004,18 @@ export interface ListSupplierGroupsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 export interface UpdateSupplierGroupParams {
@@ -16855,11 +18027,13 @@ export interface UpdateSupplierGroupParams {
 	add_suppliers?: string[];
 	/** RFC de los proveedores que salen del grupo y quedan sin grupo (hasta 500). */
 	remove_suppliers?: string[];
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string> | null;
 }
 
 /** Los parámetros de GET /v1/findings. */
 export interface ListFindingsParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Cuántos por página, de 1 a 100. Por omisión 10. */
 	limit?: number;
@@ -16875,6 +18049,14 @@ export interface ListFindingsParams {
 	code?: string;
 	/** Solo los de este proveedor (su RFC). */
 	counterparty_tax_id?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 export interface ReviewFindingParams {
@@ -16889,6 +18071,8 @@ export interface CreateCostCenterParams {
 	name: string;
 	/** Su clave, si su contabilidad usa claves (por ejemplo «CC-01»). */
 	code?: string | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
 }
 
 /** Los parámetros de GET /v1/cost_centers. */
@@ -16897,10 +18081,20 @@ export interface ListCostCentersParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** true para incluir los archivados. */
 	include_archived?: boolean;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 export interface UpdateCostCenterParams {
@@ -16910,6 +18104,8 @@ export interface UpdateCostCenterParams {
 	code?: string | null;
 	/** true lo archiva: ya no se pueden poner facturas en él, pero las suyas lo conservan. false lo restaura. */
 	archived?: boolean;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string> | null;
 }
 
 /** Los parámetros de DELETE /v1/cost_centers/{id}. */
@@ -16925,6 +18121,8 @@ export interface CreateTagParams {
 	name: string;
 	/** Su color: info (azul), positive (verde), warning (ámbar), critical (rojo) o muted (gris). Por omisión, el siguiente de la lista. */
 	color?: "info" | "positive" | "warning" | "critical" | "muted";
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
 }
 
 /** Los parámetros de GET /v1/tags. */
@@ -16933,8 +18131,18 @@ export interface ListTagsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 export interface UpdateTagParams {
@@ -16942,6 +18150,8 @@ export interface UpdateTagParams {
 	name?: string;
 	/** Su color: info (azul), positive (verde), warning (ámbar), critical (rojo) o muted (gris). Por omisión, el siguiente de la lista. */
 	color?: "info" | "positive" | "warning" | "critical" | "muted";
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string> | null;
 }
 
 export interface CreatePriceListParams {
@@ -16976,6 +18186,8 @@ export interface CreatePriceListParams {
 		/** Un descuento sobre el precio de la lista. Mande este o unit_price. */
 		discount_percent?: number;
 	}[];
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
 }
 
 /** Los parámetros de GET /v1/price_lists. */
@@ -16984,8 +18196,18 @@ export interface ListPriceListsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 export interface UpdatePriceListParams {
@@ -17018,6 +18240,8 @@ export interface UpdatePriceListParams {
 		/** Un descuento sobre el precio de la lista. Mande este o unit_price. */
 		discount_percent?: number;
 	}[];
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string> | null;
 }
 
 export interface CreateCustomerGroupParams {
@@ -17047,6 +18271,8 @@ export interface CreateCustomerGroupParams {
 	cutoff_hour?: number | null;
 	/** Días para preparar un pedido antes de poder entregarlo (0 por omisión). */
 	prep_days?: number;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
 }
 
 /** Los parámetros de GET /v1/customer_groups. */
@@ -17055,8 +18281,18 @@ export interface ListCustomerGroupsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 export interface UpdateCustomerGroupParams {
@@ -17084,6 +18320,8 @@ export interface UpdateCustomerGroupParams {
 	cutoff_hour?: number | null;
 	/** Días para preparar un pedido antes de poder entregarlo (0 por omisión). */
 	prep_days?: number;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string> | null;
 }
 
 export interface QuotePricesParams {
@@ -17104,7 +18342,7 @@ export interface QuotePricesParams {
 
 /** Los parámetros de GET /v1/attendance. */
 export interface GetAttendanceParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Primer día, AAAA-MM-DD. */
 	from: string;
@@ -17223,7 +18461,7 @@ export interface UpdateAttendanceRotationParams {
 
 /** Los parámetros de GET /v1/attendance/calendar. */
 export interface GetAttendanceCalendarParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** El mes, AAAA-MM. */
 	month: string;
@@ -17261,6 +18499,8 @@ export interface CreateExpensePersonParams {
 	base_city?: string | null;
 	/** Su área. */
 	department?: string | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
 }
 
 /** Los parámetros de GET /v1/expense_people. */
@@ -17269,10 +18509,20 @@ export interface ListExpensePeopleParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** true para incluir las archivadas. */
 	include_archived?: boolean;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 export interface UpdateExpensePersonParams {
@@ -17292,6 +18542,8 @@ export interface UpdateExpensePersonParams {
 	department?: string | null;
 	/** true la archiva (y apaga su enlace): ya no se le abren comprobaciones. false la restaura. */
 	archived?: boolean;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string> | null;
 }
 
 export interface CreateExpensePersonLinkParams {
@@ -17318,6 +18570,8 @@ export interface CreateExpenseReportParams {
 	start_date?: string | null;
 	/** El regreso (o el fin del periodo). */
 	end_date?: string | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
 }
 
 /** Los parámetros de GET /v1/expense_reports. */
@@ -17326,12 +18580,22 @@ export interface ListExpenseReportsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Solo las de un estado: draft, submitted, rejected, approved o closed. */
 	status?: string;
 	/** Solo las de una persona (exp_…). */
 	person?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 export interface UpdateExpenseReportParams {
@@ -17349,6 +18613,8 @@ export interface UpdateExpenseReportParams {
 	start_date?: string | null;
 	/** El regreso (o el fin del periodo). */
 	end_date?: string | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string> | null;
 }
 
 export interface ApproveExpenseReportParams {
@@ -17428,7 +18694,7 @@ export interface CreateExpenseMovementParams {
 
 /** Los parámetros de GET /v1/expense_policy. */
 export interface GetExpensePolicyParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -17461,6 +18727,8 @@ export interface UpdateExpensePolicyParams {
 export interface CreateCustomerParams {
 	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
 	issuer?: string;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string> | null;
 	/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
 	tax_id: string;
 	/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
@@ -17502,10 +18770,20 @@ export interface ListCustomersParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Solo el de este RFC. */
 	tax_id?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 /** Los parámetros de GET /v1/customers/search. */
@@ -17516,11 +18794,23 @@ export interface SearchCustomersParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 export interface UpdateCustomerParams {
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string> | null;
 	/** RFC (Rfc), 12 caracteres una persona moral y 13 una física. */
 	tax_id?: string;
 	/** Nombre o razón social tal como está en la constancia de situación fiscal, sin el régimen de capital (sin «S.A. de C.V.»). */
@@ -17565,6 +18855,8 @@ export interface CreateCustomerDataRequestParams {
 	description?: string;
 	/** Días que la liga sirve, de 1 a 60. Por omisión 60. */
 	expires_in_days?: number;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
 }
 
 /** Los parámetros de GET /v1/customer_data_requests. */
@@ -17573,13 +18865,25 @@ export interface ListCustomerDataRequestsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 export interface CreateProductParams {
 	/** Emisor (iss_…). Si la llave tiene un solo emisor o la cuenta tiene uno solo, puede omitirse. */
 	issuer?: string;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string> | null;
 	/** Nombre corto para encontrarlo, solo para usted; en el CFDI va description. */
 	name?: string | null;
 	/** Descripción. */
@@ -17650,7 +18954,7 @@ export interface ListProductsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Solo el de este SKU. */
 	sku?: string;
@@ -17658,6 +18962,16 @@ export interface ListProductsParams {
 	product_key?: string;
 	/** Solo los de esta categoría y sus subcategorías: «Ferretería» o «Ferretería › Tornillos». */
 	category?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 /** Los parámetros de GET /v1/products/search. */
@@ -17668,11 +18982,23 @@ export interface SearchProductsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 export interface UpdateProductParams {
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string> | null;
 	/** Nombre corto para encontrarlo, solo para usted; en el CFDI va description. */
 	name?: string | null;
 	/** Descripción. */
@@ -17743,31 +19069,47 @@ export interface ListSatMailboxMessagesParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** true para solo los no leídos en el SAT, false para los leídos. */
 	unread?: boolean;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 /** Los parámetros de GET /v1/sat_findings. */
 export interface ListSatFindingsParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** issued (emitidos) o received (recibidos); sin él, los dos. */
 	direction?: "issued" | "received";
-	/** CFDI desde este día (AAAA-MM-DD). */
-	date_gte?: string;
-	/** CFDI hasta este día (AAAA-MM-DD, completo). */
-	date_lte?: string;
+	/** De los CFDI con fecha desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[gte]"?: string;
+	/** De los CFDI con fecha después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[gt]"?: string;
+	/** De los CFDI con fecha hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[lte]"?: string;
+	/** De los CFDI con fecha antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[lt]"?: string;
 	/** Solo los de esta gravedad: critical, warning o info. */
 	severity?: "critical" | "warning" | "info";
 	/** Solo los CFDI de este proveedor o cliente (su RFC): qué hallazgos tiene. */
 	counterparty?: string;
+	/** Igual que date[gte]; se conserva por compatibilidad. */
+	date_gte?: string;
+	/** Igual que date[lte]; se conserva por compatibilidad. */
+	date_lte?: string;
 }
 
 /** Los parámetros de GET /v1/sat_finding_counterparties. */
 export interface ListSatFindingCounterpartiesParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Cuántos por página, de 1 a 100. Por omisión 10. */
 	limit?: number;
@@ -17775,19 +19117,27 @@ export interface ListSatFindingCounterpartiesParams {
 	starting_after?: string;
 	/** issued (emitidos: clientes) o received (recibidos: proveedores); sin él, los dos. */
 	direction?: "issued" | "received";
-	/** CFDI desde este día (AAAA-MM-DD). */
-	date_gte?: string;
-	/** CFDI hasta este día (AAAA-MM-DD, completo). */
-	date_lte?: string;
+	/** De los CFDI con fecha desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[gte]"?: string;
+	/** De los CFDI con fecha después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[gt]"?: string;
+	/** De los CFDI con fecha hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[lte]"?: string;
+	/** De los CFDI con fecha antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[lt]"?: string;
 	/** Solo los de esta gravedad: critical, warning o info. */
 	severity?: "critical" | "warning" | "info";
 	/** Solo quienes tienen este hallazgo (efos_definitivo, cancelado, regla_12…; el code de GET /v1/sat_findings). */
 	code?: string;
+	/** Igual que date[gte]; se conserva por compatibilidad. */
+	date_gte?: string;
+	/** Igual que date[lte]; se conserva por compatibilidad. */
+	date_lte?: string;
 }
 
 /** Los parámetros de GET /v1/company_report. */
 export interface GetCompanyReportParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Desde este día (AAAA-MM-DD). */
 	date_gte?: string;
@@ -17799,28 +19149,44 @@ export interface GetCompanyReportParams {
 
 /** Los parámetros de GET /v1/materiality_suppliers. */
 export interface ListMaterialitySuppliersParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
-	/** Facturas desde este día (AAAA-MM-DD). */
-	date_gte?: string;
-	/** Facturas hasta este día (AAAA-MM-DD, completo). */
-	date_lte?: string;
+	/** De las facturas con fecha desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[gte]"?: string;
+	/** De las facturas con fecha después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[gt]"?: string;
+	/** De las facturas con fecha hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[lte]"?: string;
+	/** De las facturas con fecha antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[lt]"?: string;
 	/** Solo este proveedor (su RFC). */
 	supplier_tax_id?: string;
+	/** Igual que date[gte]; se conserva por compatibilidad. */
+	date_gte?: string;
+	/** Igual que date[lte]; se conserva por compatibilidad. */
+	date_lte?: string;
 }
 
 /** Los parámetros de GET /v1/materiality_invoices. */
 export interface ListMaterialityInvoicesParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
-	/** Facturas desde este día (AAAA-MM-DD). */
-	date_gte?: string;
-	/** Facturas hasta este día (AAAA-MM-DD, completo). */
-	date_lte?: string;
+	/** Facturas con fecha desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[gte]"?: string;
+	/** Facturas con fecha después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[gt]"?: string;
+	/** Facturas con fecha hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[lte]"?: string;
+	/** Facturas con fecha antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[lt]"?: string;
 	/** Solo las de este proveedor (su RFC). */
 	supplier_tax_id?: string;
 	/** Solo las de este estado: complete, partial o none. Sin él, las que no están completas. */
 	state?: "complete" | "partial" | "none";
+	/** Igual que date[gte]; se conserva por compatibilidad. */
+	date_gte?: string;
+	/** Igual que date[lte]; se conserva por compatibilidad. */
+	date_lte?: string;
 }
 
 export interface CreateSatReviewParams {
@@ -17872,10 +19238,18 @@ export interface CreateSatReviewParams {
 
 /** Los parámetros de GET /v1/sat_reviews. */
 export interface ListSatReviewsParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Solo las de este estado: open, answered, concluded, assessed, in_defense o closed. */
 	status?: "open" | "answered" | "concluded" | "assessed" | "in_defense" | "closed";
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 export interface UpdateSatReviewParams {
@@ -17925,13 +19299,13 @@ export interface UpdateSatReviewParams {
 
 /** Los parámetros de GET /v1/sat_risk_check. */
 export interface GetSatRiskCheckParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
 /** Los parámetros de GET /v1/tax_discrepancy. */
 export interface GetTaxDiscrepancyParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** El ejercicio (por omisión, el año pasado). */
 	year?: number;
@@ -17941,10 +19315,18 @@ export interface GetTaxDiscrepancyParams {
 
 /** Los parámetros de GET /v1/warehouses. */
 export interface ListWarehousesParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** true para incluir los archivados. */
 	include_archived?: boolean;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 /** Los parámetros de GET /v1/warehouses/{id}/stock. */
@@ -17963,7 +19345,7 @@ export interface ListStockMovementsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Solo los de este producto (prd_…). */
 	product?: string;
@@ -17971,9 +19353,25 @@ export interface ListStockMovementsParams {
 	warehouse?: string;
 	/** Solo los de este tipo. */
 	type?: "sale" | "purchase" | "customer_return" | "supplier_return" | "adjustment" | "count" | "transfer_out" | "transfer_in" | "production_consumption" | "production_output" | "initial" | "cost" | "reversal";
-	/** Desde este día (AAAA-MM-DD) u hora (AAAA-MM-DDTHH:MM:SS) de la Ciudad de México. */
+	/** Con fecha desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[gte]"?: string;
+	/** Con fecha después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[gt]"?: string;
+	/** Con fecha hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[lte]"?: string;
+	/** Con fecha antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[lt]"?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Igual que date[gte]; se conserva por compatibilidad. */
 	date_gte?: string;
-	/** Hasta este día (completo) u hora de la Ciudad de México. */
+	/** Igual que date[lte]; se conserva por compatibilidad. */
 	date_lte?: string;
 }
 
@@ -17999,6 +19397,8 @@ export interface CreateStockAdjustmentParams {
 		/** La caducidad de un lote nuevo (AAAA-MM-DD). */
 		expires_on?: string;
 	}[];
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
 }
 
 /** Los parámetros de GET /v1/stock_adjustments. */
@@ -18007,12 +19407,22 @@ export interface ListStockAdjustmentsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Solo los de este almacén (whs_…). */
 	warehouse?: string;
 	/** applied, pending, rejected o reversed. */
 	status?: "applied" | "pending" | "rejected" | "reversed";
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 export interface CreateProductionOrderParams {
@@ -18030,6 +19440,8 @@ export interface CreateProductionOrderParams {
 	due_date?: string | null;
 	/** Una nota. */
 	note?: string | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
 }
 
 /** Los parámetros de GET /v1/production_orders. */
@@ -18038,12 +19450,22 @@ export interface ListProductionOrdersParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Solo las de este producto (prd_…). */
 	product?: string;
-	/** draft, in_process, completed o cancelled. */
-	status?: "draft" | "in_process" | "completed" | "cancelled";
+	/** draft, in_process, completed o canceled (también se acepta cancelled). */
+	status?: "draft" | "in_process" | "completed" | "canceled" | "cancelled";
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 export interface StartProductionOrderParams {
@@ -18102,8 +19524,16 @@ export interface VerifyCfdiParams {
 
 /** Los parámetros de GET /v1/members. */
 export interface ListMembersParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 export interface UpdateMemberParams {
@@ -18129,7 +19559,7 @@ export interface DeleteMemberParams {
 
 /** Los parámetros de GET /v1/invitations. */
 export interface ListInvitationsParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -18154,7 +19584,7 @@ export interface CreateInvitationParams {
 
 /** Los parámetros de GET /v1/roles. */
 export interface ListRolesParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -18186,7 +19616,7 @@ export interface UpdateRoleParams {
 
 /** Los parámetros de DELETE /v1/roles/{id}. */
 export interface DeleteRoleParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -18215,8 +19645,16 @@ export interface ListExportsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 export interface CreateSatDownloadParams {
@@ -18242,8 +19680,16 @@ export interface ListSatDownloadsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 /** Los parámetros de GET /v1/sat_invoices. */
@@ -18252,7 +19698,7 @@ export interface ListSatInvoicesParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** received (por omisión) o issued. */
 	direction?: "received" | "issued";
@@ -18260,16 +19706,24 @@ export interface ListSatInvoicesParams {
 	type?: "I" | "E" | "P" | "T" | "N";
 	/** El RFC de quien la emitió (recibidas) o de quien la recibió (emitidas). */
 	counterparty_tax_id?: string;
-	/** Con fecha desde este día (AAAA-MM-DD). */
-	date_gte?: string;
-	/** Con fecha hasta este día (AAAA-MM-DD), incluido. */
-	date_lte?: string;
+	/** Con fecha desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[gte]"?: string;
+	/** Con fecha después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[gt]"?: string;
+	/** Con fecha hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[lte]"?: string;
+	/** Con fecha antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[lt]"?: string;
 	/** Solo las de este centro de costo (ccn_…), o none para las que no tienen. */
 	cost_center?: string;
 	/** Solo las que llevan esta etiqueta (tag_…). */
 	tag?: string;
 	/** Solo las PUE recibidas en efectivo que la empresa pide confirmar: pending (nadie ha anotado de dónde salió el dinero) o confirmed. */
 	cash_confirmation?: "pending" | "confirmed";
+	/** Igual que date[gte]; se conserva por compatibilidad. */
+	date_gte?: string;
+	/** Igual que date[lte]; se conserva por compatibilidad. */
+	date_lte?: string;
 }
 
 export interface UpdateSatInvoiceParams {
@@ -18298,7 +19752,7 @@ export interface ListSatRetentionsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** received (por omisión) o issued. */
 	direction?: "received" | "issued";
@@ -18327,12 +19781,20 @@ export interface ListPortalSuppliersParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Solo los que estén en este estado. */
 	status?: "invited" | "onboarding" | "in_review" | "approved" | "rejected" | "suspended";
 	/** Solo el de este RFC. */
 	tax_id?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 /** Los parámetros de GET /v1/supplier_invoices. */
@@ -18341,13 +19803,21 @@ export interface ListSupplierInvoicesParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Solo las que estén en este estado. */
 	status?: "received" | "approved" | "scheduled" | "paid" | "rejected";
 	/** Solo las de este proveedor (sup_…). */
 	supplier?: string;
-	/** Solo las que llegaron desde este día (AAAA-MM-DD). */
+	/** Llegadas desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"received[gte]"?: string;
+	/** Llegadas después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"received[gt]"?: string;
+	/** Llegadas hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"received[lte]"?: string;
+	/** Llegadas antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"received[lt]"?: string;
+	/** Igual que received[gte]; se conserva por compatibilidad. */
 	received_since?: string;
 }
 
@@ -18369,6 +19839,8 @@ export interface ListPayableInvoicesParams {
 	issuer?: string;
 	/** Cuántas, de 1 a 500. Por omisión 100. */
 	limit?: number;
+	/** El id (folio fiscal) de la última de la página anterior, para la siguiente. */
+	starting_after?: string;
 	/** Solo las de este proveedor (su RFC). */
 	supplier_tax_id?: string;
 	/** Solo estas: hasta 100 folios fiscales separados por comas. */
@@ -18408,6 +19880,8 @@ export interface CreatePayoutParams {
 		/** Si nunca llevará factura (una nómina, cuyo CFDI es el recibo; un reembolso), por qué: no se le pide factura ni aparece en Pagos sin factura. Sin él, se le pide como a cualquier pago sin factura. */
 		no_invoice_reason?: string | null;
 	}[];
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
 }
 
 /** Los parámetros de GET /v1/payouts. */
@@ -18416,19 +19890,37 @@ export interface ListPayoutsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Solo los que estén en este estado. */
 	status?: "draft" | "pending_approval" | "approved" | "sending" | "paid" | "partially_paid" | "failed" | "canceled";
-	/** Solo los que salen desde este día (AAAA-MM-DD). */
+	/** Con fecha de pago desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"pay_on[gte]"?: string;
+	/** Con fecha de pago después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"pay_on[gt]"?: string;
+	/** Con fecha de pago hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"pay_on[lte]"?: string;
+	/** Con fecha de pago antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"pay_on[lt]"?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
+	/** Igual que pay_on[gte]; se conserva por compatibilidad. */
 	pay_on_from?: string;
-	/** Solo los que salen hasta este día (AAAA-MM-DD). */
+	/** Igual que pay_on[lte]; se conserva por compatibilidad. */
 	pay_on_to?: string;
 }
 
 /** Los parámetros de GET /v1/payouts/pause. */
 export interface GetPayoutsPauseParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -18446,16 +19938,32 @@ export interface CancelPayoutParams {
 
 /** Los parámetros de GET /v1/payee_accounts. */
 export interface ListPayeeAccountsParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Solo las de este proveedor (su RFC). */
 	supplier_tax_id?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 /** Los parámetros de GET /v1/payout_mandates. */
 export interface ListPayoutMandatesParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 export interface RefreshSatDeclarationsParams {
@@ -18473,6 +19981,14 @@ export interface ListSatRefreshesParams {
 	issuer?: string;
 	/** Solo las de un documento. */
 	document?: "declarations" | "compliance_opinion" | "tax_status_certificate" | "sat_mailbox";
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 /** Los parámetros de GET /v1/sat_declarations. */
@@ -18481,7 +19997,7 @@ export interface ListSatDeclarationsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Solo las de un ejercicio, como 2025. */
 	year?: number;
@@ -18491,11 +20007,19 @@ export interface ListSatDeclarationsParams {
 	month?: number;
 	/** normal o complementary (complementarias). */
 	type?: "normal" | "complementary";
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 /** Los parámetros de GET /v1/sat_declarations/calendar. */
 export interface GetSatDeclarationCalendarParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** El ejercicio, como 2026. Por omisión, el actual. */
 	year?: number;
@@ -18503,7 +20027,7 @@ export interface GetSatDeclarationCalendarParams {
 
 /** Los parámetros de GET /v1/sat_declarations/annual_preload. */
 export interface GetSatAnnualPreloadParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** El ejercicio, como 2025. Por omisión, el anterior (el que se declara). */
 	year?: number;
@@ -18586,6 +20110,8 @@ export interface CreateTicketParams {
 		/** Lo que se cobró por este concepto, impuestos incluidos. */
 		total: number;
 	}[];
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
 }
 
 /** Los parámetros de GET /v1/tickets. */
@@ -18594,13 +20120,31 @@ export interface ListTicketsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
-	/** pending, invoiced, global o cancelled. */
-	status?: "pending" | "invoiced" | "global" | "cancelled";
-	/** Vendidos desde (ISO 8601 o AAAA-MM-DD). */
+	/** pending, invoiced, global o canceled (también se acepta cancelled). */
+	status?: "pending" | "invoiced" | "global" | "canceled" | "cancelled";
+	/** Vendidos desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"sold_at[gte]"?: string;
+	/** Vendidos después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"sold_at[gt]"?: string;
+	/** Vendidos hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"sold_at[lte]"?: string;
+	/** Vendidos antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"sold_at[lt]"?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
+	/** Igual que sold_at[gte]; se conserva por compatibilidad. */
 	sold_at_gte?: string;
-	/** Vendidos hasta (ISO 8601 o AAAA-MM-DD, el día completo). */
+	/** Igual que sold_at[lte]; se conserva por compatibilidad. */
 	sold_at_lte?: string;
 }
 
@@ -18867,7 +20411,7 @@ export interface ListJournalEntriesParams {
 	limit?: number;
 	/** El id de la última póliza de la página anterior. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -18875,7 +20419,7 @@ export interface ListJournalEntriesParams {
 export interface GetTrialBalanceParams {
 	/** El mes (AAAA-MM). */
 	month: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -18889,7 +20433,7 @@ export interface GetGeneralLedgerParams {
 	account?: string;
 	/** Solo las cuentas de este código agrupador del SAT (102 trae 102.01, 102.02…), como el renglón de un estado financiero. Con account no se usa. */
 	grouping_code?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -18897,7 +20441,7 @@ export interface GetGeneralLedgerParams {
 export interface GetFinancialStatementsParams {
 	/** El mes (AAAA-MM). */
 	month: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -18907,7 +20451,7 @@ export interface GetCashFlowParams {
 	month: string;
 	/** month (solo el mes) o year_to_date (de enero al mes, por omisión). */
 	period?: "month" | "year_to_date";
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -18915,7 +20459,7 @@ export interface GetCashFlowParams {
 export interface GetEquityChangesParams {
 	/** El mes (AAAA-MM). */
 	month: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -18925,7 +20469,7 @@ export interface GetComparativeStatementsParams {
 	month: string;
 	/** previous_year (el mismo mes del año anterior, por omisión) o previous_month. */
 	compare_to?: "previous_year" | "previous_month";
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -18933,7 +20477,7 @@ export interface GetComparativeStatementsParams {
 export interface GetFinancialRatiosParams {
 	/** El mes (AAAA-MM). */
 	month: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -18941,7 +20485,7 @@ export interface GetFinancialRatiosParams {
 export interface GetCrossChecksParams {
 	/** El ejercicio. Por omisión, el actual. */
 	year?: number;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -18949,7 +20493,7 @@ export interface GetCrossChecksParams {
 export interface GetVatRefundParams {
 	/** El mes del saldo a revisar (AAAA-MM). Sin él, solo los saldos. */
 	month?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -18959,7 +20503,7 @@ export interface GetCrossCheckCfdiParams {
 	month: string;
 	/** La cifra: vat_charged, vat_creditable, vat_withheld, isr_income, isr_withheld_salaries, isr_withheld_suppliers o vat_withheld_suppliers. */
 	key: "vat_charged" | "vat_creditable" | "vat_withheld" | "isr_income" | "isr_withheld_salaries" | "isr_withheld_suppliers" | "vat_withheld_suppliers";
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19028,12 +20572,28 @@ export interface ListManualEntriesParams {
 	limit?: number;
 	/** La última (mje_…) de la página anterior. */
 	starting_after?: string;
-	/** Desde este día (AAAA-MM-DD). */
-	from?: string;
-	/** Hasta este día (AAAA-MM-DD). */
-	to?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Con fecha de la póliza desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[gte]"?: string;
+	/** Con fecha de la póliza después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[gt]"?: string;
+	/** Con fecha de la póliza hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[lte]"?: string;
+	/** Con fecha de la póliza antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"date[lt]"?: string;
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Igual que date[gte]; se conserva por compatibilidad. */
+	from?: string;
+	/** Igual que date[lte]; se conserva por compatibilidad. */
+	to?: string;
 }
 
 export interface UpdateManualEntryParams {
@@ -19078,7 +20638,7 @@ export interface UpdateManualEntryParams {
 
 /** Los parámetros de GET /v1/accounting/automatic_entries/{uuid}. */
 export interface GetAutomaticEntryParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19112,13 +20672,13 @@ export interface UpdateAutomaticEntryParams {
 
 /** Los parámetros de DELETE /v1/accounting/automatic_entries/{uuid}. */
 export interface RevertAutomaticEntryParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
 /** Los parámetros de GET /v1/accounting/prepaid_expenses/{uuid}. */
 export interface GetPrepaidExpenseParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19141,7 +20701,7 @@ export interface UpdatePrepaidExpenseParams {
 
 /** Los parámetros de DELETE /v1/accounting/prepaid_expenses/{uuid}. */
 export interface RemovePrepaidExpenseParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19184,7 +20744,7 @@ export interface ImportManualEntriesParams {
 
 /** Los parámetros de GET /v1/accounting/opening_balances. */
 export interface GetOpeningBalancesParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19208,7 +20768,7 @@ export interface SetOpeningBalancesParams {
 export interface ListFixedAssetsParams {
 	/** El mes (AAAA-MM) a cuyo cierre van las cifras. Por omisión, el actual. */
 	month?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19238,7 +20798,7 @@ export interface DisposeFixedAssetParams {
 
 /** Los parámetros de GET /v1/accounting/settings. */
 export interface GetAccountingSettingsParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19251,7 +20811,7 @@ export interface UpdateAccountingSettingsParams {
 
 /** Los parámetros de GET /v1/accounting/closed_period. */
 export interface GetClosedPeriodParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19264,7 +20824,7 @@ export interface SetClosedPeriodParams {
 
 /** Los parámetros de GET /v1/accounting/fx_revaluations/{month}. */
 export interface GetFxRevaluationParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19277,13 +20837,13 @@ export interface CreateFxRevaluationParams {
 
 /** Los parámetros de DELETE /v1/accounting/fx_revaluations/{month}. */
 export interface DeleteFxRevaluationParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
 /** Los parámetros de GET /v1/accounting/cost_of_sales/{month}. */
 export interface GetCostOfSalesParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19296,13 +20856,13 @@ export interface CreateCostOfSalesParams {
 
 /** Los parámetros de DELETE /v1/accounting/cost_of_sales/{month}. */
 export interface DeleteCostOfSalesParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
 /** Los parámetros de GET /v1/accounting/budgets/{year}. */
 export interface GetBudgetParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** El centro de costo (ccn_…). Sin él, toda la empresa. */
 	cost_center?: string;
@@ -19326,7 +20886,7 @@ export interface SaveBudgetParams {
 
 /** Los parámetros de GET /v1/accounting/inflation_adjustments/{year}. */
 export interface GetInflationAdjustmentParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** El primer mes del ejercicio, de 1 a 12. Por omisión 1; otro si la empresa empezó en el año. */
 	from_month?: number;
@@ -19348,7 +20908,7 @@ export interface SaveInflationAccountsParams {
 
 /** Los parámetros de GET /v1/accounting/annual_returns/{year}. */
 export interface GetAnnualReturnParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** El último mes, de 1 a 12, para estimar el año en curso. Por omisión 12 en un año pasado y el mes actual en el año en curso. */
 	through_month?: number;
@@ -19441,7 +21001,7 @@ export interface CarryForwardAnnualReturnParams {
 
 /** Los parámetros de GET /v1/accounting/depreciation_reconciliations/{year}. */
 export interface GetDepreciationReconciliationParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19493,16 +21053,24 @@ export interface RenumberAccountsParams {
 export interface ListBooksLogParams {
 	/** Solo los cambios de una cosa: manual_journal_entry, opening_balances, account, chart_of_accounts, period_close, consolidation_elimination, entry_template, fixed_asset, invoice_account (la cuenta de una factura) o automatic_journal_entry (una póliza automática editada). */
 	subject?: "manual_journal_entry" | "opening_balances" | "account" | "chart_of_accounts" | "period_close" | "consolidation_elimination" | "entry_template" | "fixed_asset" | "invoice_account" | "automatic_journal_entry" | "prepaid_expense";
-	/** Desde este día (AAAA-MM-DD, hora de la Ciudad de México). */
-	from?: string;
-	/** Hasta este día, incluido. */
-	to?: string;
 	/** Cuántos por página, de 1 a 100. Por omisión 10. */
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Igual que created[gte]; se conserva por compatibilidad. */
+	from?: string;
+	/** Igual que created[lte]; se conserva por compatibilidad. */
+	to?: string;
 }
 
 /** Los parámetros de GET /v1/accounting/consolidated_statements. */
@@ -19511,7 +21079,7 @@ export interface GetConsolidatedStatementsParams {
 	rfcs: string;
 	/** El mes (AAAA-MM). */
 	month: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19519,7 +21087,7 @@ export interface GetConsolidatedStatementsParams {
 export interface ListConsolidationEliminationsParams {
 	/** El mes (AAAA-MM). */
 	month: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19563,7 +21131,7 @@ export interface UpdateConsolidationEliminationParams {
 
 /** Los parámetros de GET /v1/accounting/entry_templates. */
 export interface ListEntryTemplatesParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19624,13 +21192,13 @@ export interface ApplyEntryTemplateParams {
 
 /** Los parámetros de GET /v1/accounting/cost_center_results/{month}. */
 export interface GetCostCenterResultsParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
 /** Los parámetros de GET /v1/accounting/payroll_provisions/{month}. */
 export interface GetPayrollProvisionParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19651,7 +21219,7 @@ export interface CreatePayrollProvisionParams {
 
 /** Los parámetros de DELETE /v1/accounting/payroll_provisions/{month}. */
 export interface DeletePayrollProvisionParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19664,7 +21232,7 @@ export interface CompareSuaCedulaParams {
 
 /** Los parámetros de GET /v1/accounting/tax_determinations/{month}. */
 export interface GetTaxDeterminationParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19677,13 +21245,13 @@ export interface CreateTaxDeterminationParams {
 
 /** Los parámetros de DELETE /v1/accounting/tax_determinations/{month}. */
 export interface DeleteTaxDeterminationParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
 /** Los parámetros de GET /v1/accounting/bank_accounts. */
 export interface ListLedgerBankAccountsParams {
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19700,7 +21268,7 @@ export interface UpdateLedgerBankAccountParams {
 export interface ListBankMovementsParams {
 	/** El mes (AAAA-MM). Por omisión, el actual. */
 	month?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19734,7 +21302,7 @@ export interface GetElectronicAccountingParams {
 	order_number?: string;
 	/** DE y CO: el número de trámite (AB123456789012). */
 	procedure_number?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19744,7 +21312,7 @@ export interface GetBooksExportParams {
 	from_month: string;
 	/** El último mes (AAAA-MM), hasta 24 meses después y no después del mes actual; por omisión, from_month. */
 	to_month?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19752,7 +21320,7 @@ export interface GetBooksExportParams {
 export interface GetDiotParams {
 	/** El mes (AAAA-MM). */
 	month: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19762,7 +21330,7 @@ export interface GetDiotFileParams {
 	month: string;
 	/** true para agrupar proveedores de hasta $50,000 en el mes (regla 4.5.2). */
 	group_small_suppliers?: boolean;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19772,7 +21340,7 @@ export interface GetIepsCustomersParams {
 	year: string;
 	/** Solo ese trimestre (1 a 4); por omisión, los cuatro. */
 	quarter?: "1" | "2" | "3" | "4";
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19782,7 +21350,7 @@ export interface GetIepsCustomersFileParams {
 	year: string;
 	/** El trimestre (1 a 4). */
 	quarter: "1" | "2" | "3" | "4";
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 }
 
@@ -19842,8 +21410,16 @@ export interface ListStoreConnectionsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 export interface UpdateStoreConnectionParams {
@@ -19901,6 +21477,8 @@ export interface CreateRecurringInvoiceParams {
 	send_email?: boolean;
 	/** Si quedaron periodos sin timbrar (sin timbres, en pausa con su fecha pasada): all los timbra todos, cada uno con su mes; latest solo el más reciente. Por omisión all. */
 	catch_up?: "all" | "latest";
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
 }
 
 /** Los parámetros de GET /v1/recurring_invoices. */
@@ -19909,10 +21487,20 @@ export interface ListRecurringInvoicesParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** active o paused. */
 	status?: "active" | "paused";
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 export interface UpdateRecurringInvoiceParams {
@@ -19935,12 +21523,14 @@ export interface UpdateRecurringInvoiceParams {
 	};
 	/** La factura completa que se repite desde la siguiente vez (reemplaza la anterior). */
 	invoice?: InvoiceCreate;
-	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. */
+	/** true para mandar el PDF y el XML por correo al timbrar, con el diseño de Fiscalisto. Por omisión no se envía. A un cliente con «Enviar al timbrar: Nunca» no se le envía aunque sea true: warnings lo dice y POST /v1/invoices/{id}/send sí se la manda. */
 	send_email?: boolean;
 	/** Si quedaron periodos sin timbrar: all los timbra todos, cada uno con su mes; latest solo el más reciente. */
 	catch_up?: "all" | "latest";
 	/** false la pausa; true la reanuda desde hoy, sin timbrar las fechas que pasaron en pausa. */
 	active?: boolean;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string> | null;
 }
 
 export interface CreateQuoteParams {
@@ -20087,10 +21677,14 @@ export interface CreateQuoteParams {
 	payment_form?: string;
 	/** Método de pago (MetodoPago): PUE (una sola exhibición, por omisión) o PPD (en parcialidades o diferido, se cobra con complementos de pago). */
 	payment_method?: "PUE" | "PPD";
+	/** Con PUE: true si aún no le pagan («Por cobrar» en la app) aunque se pagará este mes. */
+	paid_later?: boolean;
 	/** Uso del CFDI (UsoCFDI), clave de c_UsoCFDI. Por omisión G03, o S01 con régimen 616. */
 	use?: string;
 	/** Observaciones que aparecen en el PDF (no van en el XML). */
 	notes?: string;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
 	/** Hasta cuándo es válida (AAAA-MM-DD, hasta un año). Por omisión, en 15 días. */
 	valid_until?: string;
 	/** Condiciones: tiempo de entrega, anticipo, garantía… */
@@ -20105,10 +21699,20 @@ export interface ListQuotesParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Solo las que estén en este estado. */
 	status?: "draft" | "sent" | "viewed" | "accepted" | "rejected" | "withdrawn" | "expired" | "invoiced";
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 export interface UpdateQuoteParams {
@@ -20253,6 +21857,8 @@ export interface UpdateQuoteParams {
 	payment_form?: string;
 	/** Método de pago (MetodoPago): PUE (una sola exhibición, por omisión) o PPD (en parcialidades o diferido, se cobra con complementos de pago). */
 	payment_method?: "PUE" | "PPD";
+	/** Con PUE: true si aún no le pagan («Por cobrar» en la app) aunque se pagará este mes. */
+	paid_later?: boolean;
 	/** Uso del CFDI (UsoCFDI), clave de c_UsoCFDI. Por omisión G03, o S01 con régimen 616. */
 	use?: string;
 	/** Observaciones que aparecen en el PDF (no van en el XML). */
@@ -20261,6 +21867,8 @@ export interface UpdateQuoteParams {
 	valid_until?: string;
 	/** Condiciones: tiempo de entrega, anticipo, garantía… */
 	terms?: string;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string> | null;
 }
 
 export interface SendQuoteParams {
@@ -20421,6 +22029,8 @@ export interface CreateSalesOrderParams {
 	}[];
 	/** Confirmarlo en el mismo paso (por omisión false: queda en draft). Confirmado, aparta lo pedido en el almacén. */
 	confirm?: boolean;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
 	/** Moneda, clave ISO 4217 de c_Moneda (MXN, USD, EUR…). Por omisión MXN. */
 	currency?: string;
 	/** Tipo de cambio a pesos (TipoCambio). Obligatorio si la moneda no es MXN; use el del DOF del día anterior. */
@@ -20429,6 +22039,8 @@ export interface CreateSalesOrderParams {
 	payment_form?: string;
 	/** Método de pago (MetodoPago): PUE (una sola exhibición, por omisión) o PPD (en parcialidades o diferido, se cobra con complementos de pago). */
 	payment_method?: "PUE" | "PPD";
+	/** Con PUE: true si aún no le pagan («Por cobrar» en la app) aunque se pagará este mes. */
+	paid_later?: boolean;
 	/** Uso del CFDI (UsoCFDI), clave de c_UsoCFDI. Por omisión G03, o S01 con régimen 616. */
 	use?: string;
 	/** Observaciones que aparecen en el PDF (no van en el XML). */
@@ -20457,12 +22069,22 @@ export interface ListSalesOrdersParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
-	/** El emisor (iss_…). Puede omitirse si la llave o la cuenta tienen uno solo. */
+	/** Solo los de este emisor (iss_…). Sin él, los de todos los emisores que la llave puede usar, emisor por emisor (cada objeto dice el suyo en issuer); con más de 25, mándelo. */
 	issuer?: string;
 	/** Solo los que estén en este estado. */
 	status?: "draft" | "confirmed" | "partially_delivered" | "delivered" | "invoiced" | "paid" | "closed" | "canceled";
 	/** Solo los de este RFC. */
 	customer?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 export interface UpdateSalesOrderParams {
@@ -20594,6 +22216,8 @@ export interface UpdateSalesOrderParams {
 		/** Addenda del receptor (Walmart, Soriana…), con sus propios campos. */
 		addenda?: Record<string, string>;
 	}[];
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string> | null;
 	/** Moneda, clave ISO 4217 de c_Moneda (MXN, USD, EUR…). Por omisión MXN. */
 	currency?: string;
 	/** Tipo de cambio a pesos (TipoCambio). Obligatorio si la moneda no es MXN; use el del DOF del día anterior. */
@@ -20602,6 +22226,8 @@ export interface UpdateSalesOrderParams {
 	payment_form?: string;
 	/** Método de pago (MetodoPago): PUE (una sola exhibición, por omisión) o PPD (en parcialidades o diferido, se cobra con complementos de pago). */
 	payment_method?: "PUE" | "PPD";
+	/** Con PUE: true si aún no le pagan («Por cobrar» en la app) aunque se pagará este mes. */
+	paid_later?: boolean;
 	/** Uso del CFDI (UsoCFDI), clave de c_UsoCFDI. Por omisión G03, o S01 con régimen 616. */
 	use?: string;
 	/** Observaciones que aparecen en el PDF (no van en el XML). */
@@ -20682,6 +22308,53 @@ export interface CancelSalesOrderParams {
 	reason?: string;
 }
 
+export interface CreateApiKeyParams {
+	/** Para qué es, para usted (por ejemplo, el nombre de su cliente). */
+	name: string;
+	/** Qué puede hacer la llave en cada recurso: `read` o `write` (escritura incluye lectura). Un recurso que no está es sin acceso. Cada uno, como mucho lo que tiene la llave que la crea. */
+	permissions: Record<string, "read" | "write">;
+	/** Los emisores con que trabaja (sus id). Vacío o sin mandar: todos los del modo; si la llave que la crea está limitada a algunos emisores, sin mandar son esos mismos y la nueva solo puede tener algunos de ellos. */
+	issuers?: string[];
+	/** Solo funciona desde estas IP o rangos CIDR (203.0.113.7, 203.0.113.0/24, 2001:db8::/32). Vacío: desde cualquiera; si la llave que la crea tiene IP, sin mandar son esas mismas y la nueva solo puede tener direcciones dentro de ellas. */
+	allowed_ips?: string[];
+	/** Horas hasta que deja de funcionar (1 hora a 3 años); null: no vence. Sin mandar: vence cuando vence la llave que la crea, o nunca. No puede pasar del vencimiento de la llave que la crea. */
+	lifetime_hours?: number | null;
+	/** En vez de lifetime_hours: el momento en que deja de funcionar (ISO 8601), entre 1 hora y 3 años después. */
+	expires_at?: string;
+}
+
+/** Los parámetros de GET /v1/api_keys. */
+export interface ListApiKeysParams {
+	/** Cuántos por página, de 1 a 100. Por omisión 10. */
+	limit?: number;
+	/** El id del último de la página anterior, para la siguiente. */
+	starting_after?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+}
+
+export interface UpdateApiKeyParams {
+	/** Nombre. */
+	name?: string;
+	/** Qué puede hacer la llave en cada recurso: `read` o `write` (escritura incluye lectura). Un recurso que no está es sin acceso. Cada uno, como mucho lo que tiene la llave que la crea. */
+	permissions?: Record<string, "read" | "write">;
+	/** Los emisores con que trabaja (sus id). Vacío o sin mandar: todos los del modo; si la llave que la crea está limitada a algunos emisores, sin mandar son esos mismos y la nueva solo puede tener algunos de ellos. */
+	issuers?: string[];
+	/** Solo funciona desde estas IP o rangos CIDR (203.0.113.7, 203.0.113.0/24, 2001:db8::/32). Vacío: desde cualquiera; si la llave que la crea tiene IP, sin mandar son esas mismas y la nueva solo puede tener direcciones dentro de ellas. */
+	allowed_ips?: string[];
+}
+
+export interface RollApiKeyParams {
+	/** Segundos que la llave anterior sigue funcionando (0: deja de funcionar ya; hasta 7 días). Sin mandar: 24 horas. */
+	expires_in?: number;
+}
+
 export interface CreateWebhookEndpointParams {
 	/** Dirección https de su servidor que recibe los avisos. */
 	url: string;
@@ -20691,6 +22364,8 @@ export interface CreateWebhookEndpointParams {
 	description?: string | null;
 	/** La versión de la API en que llegan sus eventos (por ejemplo 2026-10-24); null o sin mandar: la de la cuenta. Así actualiza un endpoint a la vez. */
 	api_version?: string | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string>;
 }
 
 /** Los parámetros de GET /v1/webhook_endpoints. */
@@ -20699,6 +22374,16 @@ export interface ListWebhookEndpointsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
+	/** Solo los que tienen este valor en esta llave de su metadata: metadata[pedido]=A-1042. Hasta 10 llaves, todas deben coincidir. */
+	metadata?: Record<string, string>;
 }
 
 export interface UpdateWebhookEndpointParams {
@@ -20712,6 +22397,8 @@ export interface UpdateWebhookEndpointParams {
 	disabled?: boolean;
 	/** La versión de la API en que llegan sus eventos (por ejemplo 2026-10-24); null o sin mandar: la de la cuenta. Así actualiza un endpoint a la vez. */
 	api_version?: string | null;
+	/** Sus propios datos: hasta 50 llaves de 40 caracteres con valores de texto de hasta 500. No van al CFDI; vuelven en el objeto y en los webhooks. */
+	metadata?: Record<string, string> | null;
 }
 
 export interface RollWebhookSecretParams {
@@ -20721,7 +22408,7 @@ export interface RollWebhookSecretParams {
 
 export interface TestWebhookEndpointParams {
 	/** El evento a mandar. Por omisión invoice.stamped. */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer.created" | "customer.updated" | "customer.deleted" | "product.created" | "product.updated" | "product.deleted" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "payout.approved" | "payout.paid" | "payout.partially_paid" | "payout.failed" | "payout.canceled" | "payout_transfer.succeeded" | "payout_transfer.failed" | "payout_transfer.returned" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready" | "rule.matched";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "invoice.draft_created" | "invoice.draft_updated" | "invoice.draft_deleted" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer.created" | "customer.updated" | "customer.deleted" | "product.created" | "product.updated" | "product.deleted" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "payout.approved" | "payout.paid" | "payout.partially_paid" | "payout.failed" | "payout.canceled" | "payout_transfer.succeeded" | "payout_transfer.failed" | "payout_transfer.returned" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready" | "rule.matched";
 }
 
 /** Los parámetros de GET /v1/webhook_endpoints/{id}/deliveries. */
@@ -20732,6 +22419,14 @@ export interface ListWebhookDeliveriesParams {
 	starting_after?: string;
 	/** false: solo los que fallaron en su último intento. true: solo los que llegaron. */
 	succeeded?: boolean;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 export interface RecoverWebhookEndpointParams {
@@ -20745,12 +22440,22 @@ export interface ListEventsParams {
 	limit?: number;
 	/** El id del último de la página anterior, para la siguiente. */
 	starting_after?: string;
+	/** Un evento (evt_…): contesta los limit que llegaron justo después de él, los más recientes primero; has_more dice si hay más nuevos. Para la página siguiente hacia adelante use el primero de data. No va con starting_after. */
+	ending_before?: string;
 	/** Solo de este tipo (invoice.stamped), o todos los de un recurso con un comodín (invoice.*). */
-	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer.created" | "customer.updated" | "customer.deleted" | "product.created" | "product.updated" | "product.deleted" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "payout.approved" | "payout.paid" | "payout.partially_paid" | "payout.failed" | "payout.canceled" | "payout_transfer.succeeded" | "payout_transfer.failed" | "payout_transfer.returned" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready" | "rule.matched" | "invoice.*" | "invoice_batch.*" | "payroll_batch.*" | "recurring_invoice.*" | "quote.*" | "sales_order.*" | "supplier_invoice.*" | "portal_supplier.*" | "payout.*" | "payout_transfer.*" | "ticket.*" | "retention.*" | "customer.*" | "product.*" | "customer_data_request.*" | "sat_download.*" | "sat_declaration.*" | "sat_refresh.*" | "issuer.*" | "balance.*" | "usage.*" | "test_clock.*" | "rule.*";
+	type?: "invoice.stamped" | "invoice.failed" | "invoice.canceled" | "invoice.cancellation_pending" | "invoice.cancellation_rejected" | "invoice.cancellation_failed" | "invoice.paid" | "invoice.partially_paid" | "invoice.email_bounced" | "invoice.email_complained" | "invoice.draft_created" | "invoice.draft_updated" | "invoice.draft_deleted" | "retention.stamped" | "retention.failed" | "retention.canceled" | "invoice_batch.completed" | "payroll_batch.completed" | "customer.created" | "customer.updated" | "customer.deleted" | "product.created" | "product.updated" | "product.deleted" | "customer_data_request.completed" | "sat_download.completed" | "sat_download.failed" | "sat_declaration.created" | "sat_declaration.updated" | "sat_refresh.completed" | "sat_refresh.failed" | "ticket.invoiced" | "ticket.included_in_global" | "recurring_invoice.failed" | "quote.viewed" | "quote.accepted" | "quote.changes_requested" | "quote.rejected" | "quote.withdrawn" | "sales_order.confirmed" | "sales_order.customer_confirmed" | "sales_order.delivered" | "sales_order.paid" | "sales_order.canceled" | "supplier_invoice.received" | "supplier_invoice.approved" | "supplier_invoice.rejected" | "supplier_invoice.scheduled" | "supplier_invoice.paid" | "portal_supplier.approved" | "payout.approved" | "payout.paid" | "payout.partially_paid" | "payout.failed" | "payout.canceled" | "payout_transfer.succeeded" | "payout_transfer.failed" | "payout_transfer.returned" | "issuer.ready" | "balance.low" | "usage.high" | "test_clock.ready" | "rule.matched" | "invoice.*" | "invoice_batch.*" | "payroll_batch.*" | "recurring_invoice.*" | "quote.*" | "sales_order.*" | "supplier_invoice.*" | "portal_supplier.*" | "payout.*" | "payout_transfer.*" | "ticket.*" | "retention.*" | "customer.*" | "product.*" | "customer_data_request.*" | "sat_download.*" | "sat_declaration.*" | "sat_refresh.*" | "issuer.*" | "balance.*" | "usage.*" | "test_clock.*" | "rule.*";
 	/** Solo los de este objeto (inv_…, ret_…, bat_…). */
 	object?: string;
 	/** false: los que algún webhook no recibió (su último intento falló). true: los que recibieron todos los webhooks a los que se mandaron. */
 	delivery_success?: boolean;
+	/** Creados desde, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gte]"?: string;
+	/** Creados después de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[gt]"?: string;
+	/** Creados hasta, incluido. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lte]"?: string;
+	/** Creados antes de, sin incluirlo. Una fecha ISO 8601: un día (2026-10-01) es ese día en hora de la Ciudad de México; con hora (2026-10-01T09:00:00-06:00), ese segundo. */
+	"created[lt]"?: string;
 }
 
 export interface ResendEventParams {
@@ -20837,8 +22542,8 @@ export class SandboxesResource {
 	 * GET /v1/sandboxes
 	 * @see https://fiscalisto.com/docs/api/referencia/entornos-de-prueba/list-sandboxes
 	 */
-	list(options?: RequestOptions): Promise<SandboxList> {
-		return this.#client.request({ method: "GET", path: "/v1/sandboxes" }, options);
+	list(params?: ListSandboxesParams, options?: RequestOptions): Promise<SandboxList> {
+		return this.#client.request({ method: "GET", path: "/v1/sandboxes", query: params }, options);
 	}
 
 	/**
@@ -21324,7 +23029,7 @@ export class InvoicesResource {
 	/**
 	 * Buscar facturas
 	 *
-	 * Con un lenguaje de búsqueda, como el de Stripe: campo:'valor' (igual, sin importar mayúsculas), campo~'valor' (contiene, 3 caracteres o más), >, >=, < y <= en números y fechas, -campo:'valor' (no) y campo:null; hasta 10 cláusulas unidas con AND o con OR. Se busca por customer (RFC), customer_name, uuid, series, folio, total, status (valid, pending, canceled, rejected o processing) y created. Los más recientes primero, por páginas como las listas. Una búsqueda que no se entiende responde search_query_invalid diciendo dónde.
+	 * Con un lenguaje de búsqueda, como el de Stripe: campo:'valor' (igual, sin importar mayúsculas), campo~'valor' (contiene, 3 caracteres o más), >, >=, < y <= en números y fechas, -campo:'valor' (no) y campo:null; hasta 10 cláusulas unidas con AND o con OR. Se busca por customer (RFC), customer_name, uuid, series, folio, total, status (valid, pending, canceled, rejected o processing), created y metadata (metadata['order_id']:'123', con la llave entre corchetes). Los más recientes primero, por páginas como las listas. Una búsqueda que no se entiende responde search_query_invalid diciendo dónde.
 	 *
 	 * GET /v1/invoices/search
 	 * @see https://fiscalisto.com/docs/api/referencia/facturas/search-invoices
@@ -21336,7 +23041,7 @@ export class InvoicesResource {
 	/**
 	 * Ver una factura
 	 *
-	 * Por su id (inv_…) o por su folio fiscal (UUID).
+	 * Por su id (inv_…) o por su folio fiscal (UUID). Un borrador responde con status draft; ya timbrado, su id responde con la factura timbrada (que tiene su propio id).
 	 *
 	 * GET /v1/invoices/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/facturas/get-invoice
@@ -21346,15 +23051,39 @@ export class InvoicesResource {
 	}
 
 	/**
-	 * Actualizar una factura
+	 * Actualizar una factura o un borrador
 	 *
-	 * Lo que se puede cambiar de una factura timbrada sin tocar el CFDI: su centro de costo (cost_center, o null para quitárselo; los complementos de pago y los traslados no llevan) y la nota para el cliente del PDF (notes, o null para quitarla; el XML no cambia y el siguiente PDF y correo ya la llevan).
+	 * Un borrador (status draft) se cambia completo: mande la factura entera, con el mismo cuerpo y las mismas revisiones que POST /v1/invoices (un error responde invoice_invalid; los avisos vienen en warnings); metadata que no mande se queda como estaba. Si esperaba la aprobación de un administrador en Fiscalisto, la solicitud se retira. De una factura timbrada solo cambia lo que no toca el CFDI: su centro de costo (cost_center, o null para quitárselo; los complementos de pago y los traslados no llevan) y la nota para el cliente del PDF (notes, o null para quitarla; el XML no cambia y el siguiente PDF y correo ya la llevan).
 	 *
 	 * POST /v1/invoices/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/facturas/update-invoice
 	 */
 	update(id: string, params?: UpdateInvoiceParams, options?: RequestOptions): Promise<Invoice> {
 		return this.#client.request({ method: "POST", path: `/v1/invoices/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Borrar un borrador
+	 *
+	 * Borra un borrador (status draft), hecho con la API o en Fiscalisto. Una factura timbrada no se borra: responde invoice_not_draft; cancélela con POST /v1/invoices/{id}/cancel.
+	 *
+	 * DELETE /v1/invoices/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/facturas/delete-invoice
+	 */
+	delete(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/invoices/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Timbrar un borrador
+	 *
+	 * Timbra un borrador tal como está guardado (no lleva cuerpo; cámbielo antes con POST /v1/invoices/{id}), con las mismas revisiones y respuestas que POST /v1/invoices: 201 timbrada, o 202 en processing si el PAC tarda. Pide Idempotency-Key; además, un borrador se timbra una sola vez aunque lo timbren a la vez desde la API y desde Fiscalisto. Ya timbrado, responde con esa factura. Uno que espera la aprobación de un administrador responde draft_awaiting_approval.
+	 *
+	 * POST /v1/invoices/{id}/stamp
+	 * @see https://fiscalisto.com/docs/api/referencia/facturas/stamp-invoice
+	 */
+	stamp(id: string, options?: RequestOptions): Promise<Invoice> {
+		return this.#client.request({ method: "POST", path: `/v1/invoices/${encodeURIComponent(id)}/stamp`, idempotent: true }, options);
 	}
 
 	/**
@@ -21520,7 +23249,7 @@ export class CustomersResource {
 	/**
 	 * Buscar clientes
 	 *
-	 * Con un lenguaje de búsqueda, como el de Stripe: campo:'valor' (igual, sin importar mayúsculas), campo~'valor' (contiene, 3 caracteres o más), >, >=, < y <= en números y fechas, -campo:'valor' (no) y campo:null; hasta 10 cláusulas unidas con AND o con OR. Se busca por tax_id, legal_name, email, zip, tax_system, use y created. Los más recientes primero, por páginas como las listas. Una búsqueda que no se entiende responde search_query_invalid diciendo dónde.
+	 * Con un lenguaje de búsqueda, como el de Stripe: campo:'valor' (igual, sin importar mayúsculas), campo~'valor' (contiene, 3 caracteres o más), >, >=, < y <= en números y fechas, -campo:'valor' (no) y campo:null; hasta 10 cláusulas unidas con AND o con OR. Se busca por tax_id, legal_name, email, zip, tax_system, use, created y metadata (metadata['order_id']:'123', con la llave entre corchetes). Los más recientes primero, por páginas como las listas. Una búsqueda que no se entiende responde search_query_invalid diciendo dónde.
 	 *
 	 * GET /v1/customers/search
 	 * @see https://fiscalisto.com/docs/api/referencia/clientes/search-customers
@@ -22241,8 +23970,8 @@ export class VacationRequestsResource {
 	 * GET /v1/vacation_requests
 	 * @see https://fiscalisto.com/docs/api/referencia/nomina/list-vacation-requests
 	 */
-	list(params?: ListVacationRequestsParams, options?: RequestOptions): Promise<VacationRequestList> {
-		return this.#client.request({ method: "GET", path: "/v1/vacation_requests", query: params }, options);
+	list(params?: ListVacationRequestsParams, options?: RequestOptions): List<VacationRequest> {
+		return this.#client.list({ path: "/v1/vacation_requests", query: params }, options);
 	}
 
 	/**
@@ -23328,7 +25057,7 @@ export class TrainingCoursesResource {
 	/**
 	 * Borrar un curso de capacitación
 	 *
-	 * Lo borra si nadie tiene su constancia; si alguien la tiene, lo cancela (cancelled true), porque las copias se conservan a disposición de la STPS (artículo 26, fracción III).
+	 * Lo borra si nadie tiene su constancia; si alguien la tiene, lo cancela (canceled true), porque las copias se conservan a disposición de la STPS (artículo 26, fracción III).
 	 *
 	 * DELETE /v1/training_courses/{id}
 	 * @see https://fiscalisto.com/docs/api/referencia/nomina/delete-training-course
@@ -24109,8 +25838,8 @@ export class RulesResource {
 	 * GET /v1/rules/{id}/versions
 	 * @see https://fiscalisto.com/docs/api/referencia/reglas/list-rule-versions
 	 */
-	listVersions(id: string, options?: RequestOptions): Promise<RuleVersionList> {
-		return this.#client.request({ method: "GET", path: `/v1/rules/${encodeURIComponent(id)}/versions` }, options);
+	listVersions(id: string, params?: ListRuleVersionsParams, options?: RequestOptions): Promise<RuleVersionList> {
+		return this.#client.request({ method: "GET", path: `/v1/rules/${encodeURIComponent(id)}/versions`, query: params }, options);
 	}
 
 	/**
@@ -25072,7 +26801,7 @@ export class ProductsResource {
 	/**
 	 * Buscar productos
 	 *
-	 * Con un lenguaje de búsqueda, como el de Stripe: campo:'valor' (igual, sin importar mayúsculas), campo~'valor' (contiene, 3 caracteres o más), >, >=, < y <= en números y fechas, -campo:'valor' (no) y campo:null; hasta 10 cláusulas unidas con AND o con OR. Se busca por name, description, sku, product_key, unit_key, unit_price y created. Los más recientes primero, por páginas como las listas. Una búsqueda que no se entiende responde search_query_invalid diciendo dónde.
+	 * Con un lenguaje de búsqueda, como el de Stripe: campo:'valor' (igual, sin importar mayúsculas), campo~'valor' (contiene, 3 caracteres o más), >, >=, < y <= en números y fechas, -campo:'valor' (no) y campo:null; hasta 10 cláusulas unidas con AND o con OR. Se busca por name, description, sku, product_key, unit_key, unit_price, created y metadata (metadata['order_id']:'123', con la llave entre corchetes). Los más recientes primero, por páginas como las listas. Una búsqueda que no se entiende responde search_query_invalid diciendo dónde.
 	 *
 	 * GET /v1/products/search
 	 * @see https://fiscalisto.com/docs/api/referencia/productos/search-products
@@ -25584,7 +27313,7 @@ export class ProductionOrdersResource {
 	/**
 	 * Cancelar una orden de producción
 	 *
-	 * Los componentes regresan a su almacén y lo producido sale (status cancelled). Una ya cancelada: 400 inventory_refused.
+	 * Los componentes regresan a su almacén y lo producido sale (status canceled). Una ya cancelada: 400 inventory_refused.
 	 *
 	 * POST /v1/production_orders/{id}/cancel
 	 * @see https://fiscalisto.com/docs/api/referencia/inventario/cancel-production-order
@@ -26205,8 +27934,8 @@ export class PayableInvoicesResource {
 	 * GET /v1/payable_invoices
 	 * @see https://fiscalisto.com/docs/api/referencia/pagos-a-proveedores/list-payable-invoices
 	 */
-	list(params?: ListPayableInvoicesParams, options?: RequestOptions): Promise<PayableInvoiceList> {
-		return this.#client.request({ method: "GET", path: "/v1/payable_invoices", query: params }, options);
+	list(params?: ListPayableInvoicesParams, options?: RequestOptions): List<PayableInvoice> {
+		return this.#client.list({ path: "/v1/payable_invoices", query: params }, options);
 	}
 }
 
@@ -26712,7 +28441,7 @@ export class AccountingResource {
 	/**
 	 * Descargar la contabilidad electrónica
 	 *
-	 * El ZIP del mes para el Buzón Tributario: el catálogo (CT) y la balanza (BN, o BC si es complementaria), cada uno en su ZIP con el nombre que espera el SAT, en el formato 1.3 del Anexo 24. Con journal_request, también las pólizas (PL), que se entregan cuando el SAT las pide. Con month AAAA-13, la balanza de comprobación ajustada al cierre del ejercicio (regla 2.8.1.6 RMF): solo la balanza, con los saldos finales de diciembre como saldos iniciales y, con closing_entry, la póliza de cierre.
+	 * El ZIP del mes para el Buzón Tributario: el catálogo (CT) y la balanza (BN, o BC si es complementaria), cada uno en su ZIP con el nombre que espera el SAT, en el formato 1.3 del Anexo 24. Con journal_request, también las pólizas (PL), que se entregan cuando el SAT las pide. Con month AAAA-13, la balanza de comprobación ajustada al cierre del ejercicio (regla 2.8.1.6 RMF), con los saldos finales de diciembre como saldos iniciales y, con closing_entry, la póliza de cierre, y el catálogo como mes 12 (se envía con ella si no cambió en el ejercicio, fr. I); sin pólizas.
 	 *
 	 * GET /v1/accounting/electronic_accounting
 	 * @see https://fiscalisto.com/docs/api/referencia/contabilidad/get-electronic-accounting
@@ -28286,6 +30015,86 @@ export class SalesOrdersResource {
 	}
 }
 
+/** Llaves de API: fiscalisto.apiKeys. */
+export class ApiKeysResource {
+	readonly #client: Client;
+	constructor(client: Client) {
+		this.#client = client;
+	}
+
+	/**
+	 * Crear una llave
+	 *
+	 * Una llave nueva con permisos por recurso, para dar a cada uno de sus clientes (o a cada servidor) la suya. La respuesta trae la llave completa (secret) una sola vez. Nunca tiene más que la llave que la crea: el mismo modo y entorno de prueba, en cada recurso como mucho su acceso, dentro de sus emisores y sus IP, y vence antes o al mismo tiempo. Una llave de producción solo la crea otra de producción. Hasta 30 por hora por cuenta.
+	 *
+	 * POST /v1/api_keys
+	 * @see https://fiscalisto.com/docs/api/referencia/llaves-de-api/create-api-key
+	 */
+	create(params: CreateApiKeyParams, options?: RequestOptions): Promise<ApiKey> {
+		return this.#client.request({ method: "POST", path: "/v1/api_keys", body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Listar llaves
+	 *
+	 * Las llaves vigentes del modo que la llave puede manejar (las que no tienen más que ella), la más nueva primero. Sin el secreto. Hasta 50 por modo.
+	 *
+	 * GET /v1/api_keys
+	 * @see https://fiscalisto.com/docs/api/referencia/llaves-de-api/list-api-keys
+	 */
+	list(params?: ListApiKeysParams, options?: RequestOptions): List<ApiKey> {
+		return this.#client.list({ path: "/v1/api_keys", query: params }, options);
+	}
+
+	/**
+	 * Ver una llave
+	 *
+	 * Sus permisos, emisores, IP, vencimiento y último uso. El secreto solo viene al crearla o cambiarla.
+	 *
+	 * GET /v1/api_keys/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/llaves-de-api/get-api-key
+	 */
+	get(id: string, options?: RequestOptions): Promise<ApiKey> {
+		return this.#client.request({ method: "GET", path: `/v1/api_keys/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Actualizar una llave
+	 *
+	 * Cambia su nombre, sus permisos, sus emisores o sus IP, con el mismo secreto. Solo cambia lo que mande, con los mismos límites que al crearla. Su vencimiento no se cambia.
+	 *
+	 * POST /v1/api_keys/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/llaves-de-api/update-api-key
+	 */
+	update(id: string, params?: UpdateApiKeyParams, options?: RequestOptions): Promise<ApiKey> {
+		return this.#client.request({ method: "POST", path: `/v1/api_keys/${encodeURIComponent(id)}`, body: params, idempotent: true }, options);
+	}
+
+	/**
+	 * Revocar una llave
+	 *
+	 * Deja de funcionar en ese momento. No se puede deshacer.
+	 *
+	 * DELETE /v1/api_keys/{id}
+	 * @see https://fiscalisto.com/docs/api/referencia/llaves-de-api/revoke-api-key
+	 */
+	revoke(id: string, options?: RequestOptions): Promise<Deleted> {
+		return this.#client.request({ method: "DELETE", path: `/v1/api_keys/${encodeURIComponent(id)}` }, options);
+	}
+
+	/**
+	 * Cambiar una llave
+	 *
+	 * Una llave nueva con el mismo nombre, permisos, emisores, IP y duración, que la respuesta trae una sola vez. La anterior sigue funcionando el tiempo que elija (expires_in), 24 horas por omisión, para que la cambie sin cortar el servicio. Si se filtró, mande expires_in: 0.
+	 *
+	 * POST /v1/api_keys/{id}/roll
+	 * @see https://fiscalisto.com/docs/api/referencia/llaves-de-api/roll-api-key
+	 */
+	roll(id: string, params?: RollApiKeyParams, options?: RequestOptions): Promise<ApiKey> {
+		return this.#client.request({ method: "POST", path: `/v1/api_keys/${encodeURIComponent(id)}/roll`, body: params, idempotent: true }, options);
+	}
+}
+
 /** Webhooks: fiscalisto.webhookEndpoints. */
 export class WebhookEndpointsResource {
 	readonly #client: Client;
@@ -28412,7 +30221,7 @@ export class EventsResource {
 	/**
 	 * Listar eventos
 	 *
-	 * Los de los últimos 30 días, los más recientes primero.
+	 * Los de los últimos 30 días, los más recientes primero. Para leer hacia adelante sin perder ninguno (lo que llegó después del último que procesó), mande ending_before con ese evento y repita con el primero de data mientras has_more sea true.
 	 *
 	 * GET /v1/events
 	 * @see https://fiscalisto.com/docs/api/referencia/eventos/list-events
@@ -28576,6 +30385,7 @@ export class FiscalistoApi extends Core {
 	readonly recurringInvoices = new RecurringInvoicesResource(this);
 	readonly quotes = new QuotesResource(this);
 	readonly salesOrders = new SalesOrdersResource(this);
+	readonly apiKeys = new ApiKeysResource(this);
 	readonly webhookEndpoints = new WebhookEndpointsResource(this);
 	readonly events = new EventsResource(this);
 }
